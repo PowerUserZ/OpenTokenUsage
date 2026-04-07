@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import { getCurrentWindow, PhysicalSize, currentMonitor } from "@tauri-apps/api/window"
@@ -40,14 +40,13 @@ export function usePanel({
   const [canScrollDown, setCanScrollDown] = useState(false)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
+  const focusContainer = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      containerRef.current?.focus({ preventScroll: true })
+    })
+  }, [])
 
   useEffect(() => {
-    const focusContainer = () => {
-      window.requestAnimationFrame(() => {
-        containerRef.current?.focus({ preventScroll: true })
-      })
-    }
-
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         focusContainer()
@@ -61,7 +60,7 @@ export function usePanel({
       window.removeEventListener("focus", focusContainer)
       document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-  }, [])
+  }, [focusContainer])
 
   useEffect(() => {
     if (!isTauri()) return
@@ -86,12 +85,6 @@ export function usePanel({
     if (!isTauri()) return
     let cancelled = false
     const unlisteners: (() => void)[] = []
-
-    const focusContainer = () => {
-      window.requestAnimationFrame(() => {
-        containerRef.current?.focus({ preventScroll: true })
-      })
-    }
 
     async function setup() {
       const u1 = await listen<string>("tray:navigate", (event) => {
@@ -121,7 +114,7 @@ export function usePanel({
       cancelled = true
       for (const fn of unlisteners) fn()
     }
-  }, [setActiveView, setShowAbout])
+  }, [focusContainer, setActiveView, setShowAbout])
 
   useEffect(() => {
     if (showAbout) return
