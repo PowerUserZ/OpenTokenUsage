@@ -87,7 +87,7 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
       <div className="bg-card rounded-lg border shadow-xl p-6 max-w-xs w-full mx-4 text-center animate-in fade-in zoom-in-95 duration-200">
         <img
           src="/icon.png"
-          alt="OpenUsage"
+          alt="OpenTokenUsage"
           className="w-16 h-16 mx-auto mb-3 rounded-xl"
         />
 
