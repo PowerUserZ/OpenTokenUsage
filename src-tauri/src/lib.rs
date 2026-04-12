@@ -214,27 +214,9 @@ fn reanchor_window(app_handle: tauri::AppHandle) {
     let Ok(current_size) = window.outer_size() else {
         return;
     };
-    // Use available_monitors + primary to find the work-area height.
-    // Tauri reports monitor size = full resolution. The tray icon Y that
-    // was used for initial positioning reflects the real work area.
-    // We saved the bottom edge on the last tray-click positioning:
-    // just keep the window's current X and push it so its bottom sits at
-    // the same Y as the screen bottom minus a small taskbar offset.
-    let scale = window.scale_factor().unwrap_or(1.0);
-    let panel_h = current_size.height as f64;
-
-    // screen.availHeight from JS might be unreliable. Instead, use the
-    // monitor height and subtract a standard taskbar estimate (48 logical px).
-    let monitor_h = window
-        .primary_monitor()
-        .ok()
-        .flatten()
-        .map(|m| m.size().height as f64)
-        .unwrap_or(1080.0);
-    let taskbar_h = 48.0 * scale;
-    let work_bottom = monitor_h - taskbar_h;
-
-    let new_y = (work_bottom - panel_h).max(0.0) as i32;
+    let anchor_bottom = tray::last_anchor_bottom_physical_y()
+        .unwrap_or(current_pos.y.saturating_add(current_size.height as i32));
+    let new_y = anchor_bottom.saturating_sub(current_size.height as i32).max(0);
     let _ = window.set_position(tauri::PhysicalPosition::new(current_pos.x, new_y));
 }
 
@@ -547,9 +529,15 @@ fn promote_tray_icon(exe_path: &str) {
             Err(_) => continue,
         };
 
-        if !path.to_lowercase().contains(&exe_lower)
-            && !exe_lower.contains(&path.to_lowercase())
-        {
+        // Use canonical path comparison to prevent spoofing via substring matching
+        let path_match = match (
+            std::fs::canonicalize(&path),
+            std::fs::canonicalize(exe_path),
+        ) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => path.to_lowercase() == exe_lower,
+        };
+        if !path_match {
             continue;
         }
 

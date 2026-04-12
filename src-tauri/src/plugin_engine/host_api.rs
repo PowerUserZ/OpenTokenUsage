@@ -1699,6 +1699,12 @@ fn collect_ccusage_runners() -> Vec<(CcusageRunnerKind, String)> {
     collect_ccusage_runners_with(resolve_ccusage_runner_binary)
 }
 
+/// Validate a date string is strictly YYYYMMDD (8 ASCII digits).
+/// Prevents injection of arbitrary CLI flags or paths via date parameters.
+fn is_valid_date_param(s: &str) -> bool {
+    s.len() == 8 && s.bytes().all(|b| b.is_ascii_digit())
+}
+
 fn append_ccusage_common_args(args: &mut Vec<String>, opts: &CcusageQueryOpts) {
     args.extend([
         "daily".to_string(),
@@ -1713,8 +1719,12 @@ fn append_ccusage_common_args(args: &mut Vec<String>, opts: &CcusageQueryOpts) {
         .map(str::trim)
         .filter(|s| !s.is_empty())
     {
-        args.push("--since".to_string());
-        args.push(since.to_string());
+        if is_valid_date_param(since) {
+            args.push("--since".to_string());
+            args.push(since.to_string());
+        } else {
+            log::warn!("Rejected invalid ccusage --since param: {:?}", since);
+        }
     }
 
     if let Some(until) = opts
@@ -1723,8 +1733,12 @@ fn append_ccusage_common_args(args: &mut Vec<String>, opts: &CcusageQueryOpts) {
         .map(str::trim)
         .filter(|s| !s.is_empty())
     {
-        args.push("--until".to_string());
-        args.push(until.to_string());
+        if is_valid_date_param(until) {
+            args.push("--until".to_string());
+            args.push(until.to_string());
+        } else {
+            log::warn!("Rejected invalid ccusage --until param: {:?}", until);
+        }
     }
 }
 
@@ -2361,17 +2375,29 @@ fn iso_now() -> String {
 }
 
 fn expand_path(path: &str) -> String {
-    if path == "~" {
-        if let Some(home) = dirs::home_dir() {
+    let expanded = if path == "~" {
+        match dirs::home_dir() {
+            Some(home) => home,
+            None => return path.to_string(),
+        }
+    } else if path.starts_with("~/") {
+        match dirs::home_dir() {
+            Some(home) => home.join(&path[2..]),
+            None => return path.to_string(),
+        }
+    } else {
+        return path.to_string();
+    };
+
+    // Reject path traversal (e.g. "~/../../../etc/passwd")
+    let result = expanded.to_string_lossy().to_string();
+    if let (Ok(canonical), Some(home)) = (expanded.canonicalize(), dirs::home_dir()) {
+        if !canonical.starts_with(&home) {
+            log::warn!("Rejected path traversal attempt: {:?}", path);
             return home.to_string_lossy().to_string();
         }
     }
-    if path.starts_with("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(&path[2..]).to_string_lossy().to_string();
-        }
-    }
-    path.to_string()
+    result
 }
 
 #[cfg(test)]
