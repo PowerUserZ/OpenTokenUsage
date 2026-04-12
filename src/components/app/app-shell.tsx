@@ -71,7 +71,11 @@ export function AppShell({
   const { updateStatus, triggerInstall } = useAppUpdate()
 
   return (
-    <div ref={containerRef} className={`flex flex-col items-center bg-transparent ${IS_MACOS ? "p-6 pt-1.5" : "p-0"}`}>
+    <div
+      ref={containerRef}
+      tabIndex={-1}
+      className={`flex flex-col items-center bg-transparent outline-none ${IS_MACOS ? "p-6 pt-1.5" : "p-0"}`}
+    >
       {IS_MACOS && <div className="tray-arrow" />}
       <div
         className={`relative bg-card overflow-hidden select-none w-full flex flex-col ${IS_MACOS ? "rounded-xl border shadow-lg" : ""}`}

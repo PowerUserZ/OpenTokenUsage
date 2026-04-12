@@ -1,5 +1,46 @@
 # Changelog
 
+## v0.6.14
+
+### New Features
+- Clickable provider rows + session/weekly labels by @robinebers
+- Integrate PromoClock peak/off-peak status ([#364](https://github.com/robinebers/openusage/pull/364)) by @validatedev
+- Add cmd-arrow tab navigation by @robinebers
+
+### Bug Fixes
+- Session expired ([#363](https://github.com/robinebers/openusage/pull/363)) by @yhunko
+- Prefer userTier.name over legacy planInfo.planName by @n3wr1ch
+- Show panel before tray reposition by @robinebers
+- Correct tray monitor positioning by @robinebers
+- Position panel under tray icon on all entry paths without flicker by @robinebers
+
+### Refactor
+- Apply Copilot review — add typeof/trim guards, remove duplicate assertion by @n3wr1ch
+- Dedupe panel focus helper by @robinebers
+
+### Chores
+- Bump tauri-plugin-updater in /src-tauri by @dependabot[bot]
+- Bump tokio from 1.51.0 to 1.51.1 in /src-tauri by @dependabot[bot]
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.13...v0.6.14](https://github.com/robinebers/openusage/compare/v0.6.13...v0.6.14)
+
+- [57cc5bd](https://github.com/robinebers/openusage/commit/57cc5bd36bd1a2c189b1f00f3598f6695e1071d7) fix(settings,opencode): clickable provider rows + session/weekly labels by @robinebers
+- [60cc426](https://github.com/robinebers/openusage/commit/60cc426f31f60c845ecb5fa9ba58703a18609314) fix(gemini): session expired (#363) by @yhunko
+- [83551c1](https://github.com/robinebers/openusage/commit/83551c1cadb95ced4596ae846b07dfa51916de03) feat(claude): integrate PromoClock peak/off-peak status (#364) by @validatedev
+- [cb63b20](https://github.com/robinebers/openusage/commit/cb63b20fa59152a4432220d95942c9a610b4e039) refactor: apply Copilot review — add typeof/trim guards, remove duplicate assertion by @n3wr1ch
+- [996c7fe](https://github.com/robinebers/openusage/commit/996c7fee5aed915f50ffce8b498b92e883d87ebd) chore(deps): bump tauri-plugin-updater in /src-tauri by @dependabot[bot]
+- [9479e34](https://github.com/robinebers/openusage/commit/9479e3476755a4ae08d59261ac341b7efd641de1) chore(deps): bump tokio from 1.51.0 to 1.51.1 in /src-tauri by @dependabot[bot]
+- [d7cb0fc](https://github.com/robinebers/openusage/commit/d7cb0fc59885fcddf910b52d34b0d4d8136b02ab) fix(antigravity): prefer userTier.name over legacy planInfo.planName by @n3wr1ch
+- [995a7fd](https://github.com/robinebers/openusage/commit/995a7fd2fbc05963869f6df6cc0079af7259c366) fix(panel): show before tray reposition by @robinebers
+- [ae43e80](https://github.com/robinebers/openusage/commit/ae43e80e9896b833ce3c41b4341d221e09ead9a6) fix(panel): correct tray monitor positioning by @robinebers
+- [d114de5](https://github.com/robinebers/openusage/commit/d114de5a68752f7f6b9a05452c46651a2d7461ed) fix(panel): position panel under tray icon on all entry paths without flicker by @robinebers
+- [0d6e0ed](https://github.com/robinebers/openusage/commit/0d6e0ed70d776bfa3437872e2c40203f14401d6f) refactor: dedupe panel focus helper by @robinebers
+- [8cfe6a9](https://github.com/robinebers/openusage/commit/8cfe6a919d23f3ec8542aa5e52203fa7da3d8ab8) feat: add cmd-arrow tab navigation by @robinebers
+
 ## v0.6.13
 
 ### New Features
