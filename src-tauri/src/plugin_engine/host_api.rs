@@ -2389,12 +2389,16 @@ fn expand_path(path: &str) -> String {
         return path.to_string();
     };
 
-    // Reject path traversal (e.g. "~/../../../etc/passwd")
+    // Reject path traversal (e.g. "~/../../../etc/passwd").
+    // Canonicalize both paths so the prefix check works on Windows
+    // where canonicalize() returns UNC paths (\\?\C:\...).
     let result = expanded.to_string_lossy().to_string();
-    if let (Ok(canonical), Some(home)) = (expanded.canonicalize(), dirs::home_dir()) {
-        if !canonical.starts_with(&home) {
-            log::warn!("Rejected path traversal attempt: {:?}", path);
-            return home.to_string_lossy().to_string();
+    if let (Some(home), Ok(canonical)) = (dirs::home_dir(), expanded.canonicalize()) {
+        if let Ok(home_canonical) = home.canonicalize() {
+            if !canonical.starts_with(&home_canonical) {
+                log::warn!("Rejected path traversal attempt: {:?}", path);
+                return home.to_string_lossy().to_string();
+            }
         }
     }
     result
