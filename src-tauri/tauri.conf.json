@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OpenUsage",
+  "productName": "OpenTokenUsage",
   "version": "0.6.13",
   "identifier": "com.sunstory.openusage",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "OpenUsage",
+        "title": "OpenTokenUsage",
         "width": 400,
         "height": 500,
         "resizable": true,
