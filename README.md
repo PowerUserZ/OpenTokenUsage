@@ -18,6 +18,12 @@ The app auto-updates. Install once and you're set.
 - **Themed tray icon.** White icon for dark taskbar, proper dynamic icon rendering on Windows.
 - **No CMD flash.** Subprocess calls use `CREATE_NO_WINDOW` so no console windows pop up.
 - **Auto-promote tray icon.** Icon appears in the visible tray area (next to clock) on first launch.
+<<<<<<< HEAD
+=======
+- **Defaults tuned.** Dark theme, "Used" mode, autostart enabled, plugin order: Claude > Codex > Gemini.
+- **Codex credits fix.** No longer hardcoded to 1000 — reads actual limit from API.
+- **Z.ai renamed.** Shown as "Z.ai (GLM)" for clarity.
+>>>>>>> origin/main
 
 ## What It Does
 
