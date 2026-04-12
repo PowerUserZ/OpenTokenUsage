@@ -342,6 +342,8 @@ export async function renderTrayBarsIcon(args: {
 
 export function getTrayIconSizePx(devicePixelRatio: number | undefined): number {
   const dpr = typeof devicePixelRatio === "number" && devicePixelRatio > 0 ? devicePixelRatio : 1
-  // 18pt-ish slot -> render at 18px * dpr for crispness (36px on Retina).
-  return Math.max(18, Math.round(18 * dpr))
+  // macOS: 18pt menu bar slot. Windows: 32pt for legible text in the tray.
+  const isMacOS = navigator.userAgent.includes("Macintosh")
+  const base = isMacOS ? 18 : 32
+  return Math.max(base, Math.round(base * dpr))
 }
