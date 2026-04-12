@@ -68,7 +68,7 @@ export function AppShell({
   })
 
   const appVersion = useAppVersion()
-  const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
+  const { updateStatus, triggerInstall } = useAppUpdate()
 
   return (
     <div ref={containerRef} className={`flex flex-col items-center bg-transparent ${IS_MACOS ? "p-6 pt-1.5" : "p-0"}`}>
@@ -121,7 +121,6 @@ export function AppShell({
               autoUpdateNextAt={autoUpdateNextAt}
               updateStatus={updateStatus}
               onUpdateInstall={triggerInstall}
-              onUpdateCheck={checkForUpdates}
               onRefreshAll={onRefreshAll}
               showAbout={showAbout}
               onShowAbout={() => setShowAbout(true)}

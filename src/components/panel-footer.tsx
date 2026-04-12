@@ -1,15 +1,17 @@
 import { useMemo } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button } from "@/components/ui/button";
 import { AboutDialog } from "@/components/about-dialog";
 import type { UpdateStatus } from "@/hooks/use-app-update";
 import { useNowTicker } from "@/hooks/use-now-ticker";
+
+const RELEASES_URL = "https://github.com/PowerUserZ/OpenTokenUsage/releases";
 
 interface PanelFooterProps {
   version: string;
   autoUpdateNextAt: number | null;
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
-  onUpdateCheck: () => void;
   onRefreshAll?: () => void;
   showAbout: boolean;
   onShowAbout: () => void;
@@ -20,13 +22,11 @@ function VersionDisplay({
   version,
   updateStatus,
   onUpdateInstall,
-  onUpdateCheck,
   onVersionClick,
 }: {
   version: string;
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
-  onUpdateCheck: () => void;
   onVersionClick: () => void;
 }) {
   switch (updateStatus.status) {
@@ -54,22 +54,15 @@ function VersionDisplay({
         <span className="text-xs text-muted-foreground">Installing...</span>
       );
     case "error":
-      if (updateStatus.message === "Update check failed") {
-        return (
-          <button
-            type="button"
-            onClick={onUpdateCheck}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            title={updateStatus.message}
-          >
-            Updates soon
-          </button>
-        );
-      }
       return (
-        <span className="text-xs text-destructive" title={updateStatus.message}>
-          Update failed
-        </span>
+        <button
+          type="button"
+          onClick={() => openUrl(RELEASES_URL).catch(console.error)}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          title="Open releases page"
+        >
+          v{version}
+        </button>
       );
     default:
       return (
@@ -89,7 +82,6 @@ export function PanelFooter({
   autoUpdateNextAt,
   updateStatus,
   onUpdateInstall,
-  onUpdateCheck,
   onRefreshAll,
   showAbout,
   onShowAbout,
@@ -118,7 +110,6 @@ export function PanelFooter({
           version={version}
           updateStatus={updateStatus}
           onUpdateInstall={onUpdateInstall}
-          onUpdateCheck={onUpdateCheck}
           onVersionClick={onShowAbout}
         />
         {autoUpdateNextAt !== null && onRefreshAll ? (
