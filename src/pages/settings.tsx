@@ -207,6 +207,8 @@ interface SettingsPageProps {
   onTrayProviderChange: (value: string) => void;
   trayMetric: string;
   onTrayMetricChange: (value: string) => void;
+  trayPercentColor: string;
+  onTrayPercentColorChange: (value: string) => void;
   traySettingsPreview: TraySettingsPreview;
   globalShortcut: GlobalShortcut;
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
@@ -232,6 +234,8 @@ export function SettingsPage({
   onTrayProviderChange,
   trayMetric,
   onTrayMetricChange,
+  trayPercentColor,
+  onTrayPercentColorChange,
   traySettingsPreview,
   globalShortcut,
   onGlobalShortcutChange,
@@ -411,6 +415,18 @@ export function SettingsPage({
                 <option value="Weekly">Weekly</option>
               </select>
             </div>
+            {menubarIconStyle === "percent" && (
+              <div className="w-16">
+                <label className="text-xs text-muted-foreground mb-1 block">Color</label>
+                <input
+                  type="color"
+                  value={trayPercentColor}
+                  onChange={(e) => onTrayPercentColorChange(e.target.value)}
+                  className="w-full h-8 rounded-md border bg-background cursor-pointer"
+                  title="Tray percent text color"
+                />
+              </div>
+            )}
           </div>
         )}
       </section>

@@ -19,6 +19,7 @@ type UseTrayIconArgs = {
   menubarIconStyle: MenubarIconStyle
   trayProvider: string
   trayMetric: string
+  trayPercentColor: string
   activeView: string
 }
 
@@ -59,6 +60,7 @@ export function useTrayIcon({
   menubarIconStyle,
   trayProvider,
   trayMetric,
+  trayPercentColor,
   activeView,
 }: UseTrayIconArgs) {
   const trayRef = useRef<TrayIcon | null>(null)
@@ -78,6 +80,7 @@ export function useTrayIcon({
   const menubarIconStyleRef = useRef(menubarIconStyle)
   const trayProviderRef = useRef(trayProvider)
   const trayMetricRef = useRef(trayMetric)
+  const trayPercentColorRef = useRef(trayPercentColor)
   const activeViewRef = useRef(activeView)
   const lastTrayProviderIdRef = useRef<string | null>(null)
 
@@ -108,6 +111,10 @@ export function useTrayIcon({
   useEffect(() => {
     trayMetricRef.current = trayMetric
   }, [trayMetric])
+
+  useEffect(() => {
+    trayPercentColorRef.current = trayPercentColor
+  }, [trayPercentColor])
 
   useEffect(() => {
     activeViewRef.current = activeView
@@ -306,6 +313,7 @@ export function useTrayIcon({
         sizePx,
         style: "percent",
         percentText: percentNumber,
+        textColor: trayPercentColorRef.current,
       })
         .then(async (img) => {
           await tray.setIcon(img)

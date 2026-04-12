@@ -6,12 +6,14 @@ import {
   saveResetTimerDisplayMode,
   saveThemeMode,
   saveTrayMetric,
+  saveTrayPercentColor,
   saveTrayProvider,
   type DisplayMode,
   type MenubarIconStyle,
   type ResetTimerDisplayMode,
   type ThemeMode,
   type TrayMetric,
+  type TrayPercentColor,
   type TrayProvider,
 } from "@/lib/settings"
 
@@ -25,6 +27,7 @@ type UseSettingsDisplayActionsArgs = {
   setMenubarIconStyle: (value: MenubarIconStyle) => void
   setTrayProvider: (value: TrayProvider) => void
   setTrayMetric: (value: TrayMetric) => void
+  setTrayPercentColor: (value: TrayPercentColor) => void
   scheduleTrayIconUpdate: ScheduleTrayIconUpdate
 }
 
@@ -36,6 +39,7 @@ export function useSettingsDisplayActions({
   setMenubarIconStyle,
   setTrayProvider,
   setTrayMetric,
+  setTrayPercentColor,
   scheduleTrayIconUpdate,
 }: UseSettingsDisplayActionsArgs) {
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
@@ -95,6 +99,15 @@ export function useSettingsDisplayActions({
     })
   }, [scheduleTrayIconUpdate, setTrayMetric])
 
+  const handleTrayPercentColorChange = useCallback((color: TrayPercentColor) => {
+    track("setting_changed", { setting: "tray_percent_color", value: color })
+    setTrayPercentColor(color)
+    scheduleTrayIconUpdate("settings", 0)
+    void saveTrayPercentColor(color).catch((error) => {
+      console.error("Failed to save tray percent color:", error)
+    })
+  }, [scheduleTrayIconUpdate, setTrayPercentColor])
+
   return {
     handleThemeModeChange,
     handleDisplayModeChange,
@@ -103,5 +116,6 @@ export function useSettingsDisplayActions({
     handleMenubarIconStyleChange,
     handleTrayProviderChange,
     handleTrayMetricChange,
+    handleTrayPercentColorChange,
   }
 }

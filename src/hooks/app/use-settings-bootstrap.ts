@@ -21,6 +21,7 @@ import {
   loadGlobalShortcut,
   loadMenubarIconStyle,
   loadTrayMetric,
+  loadTrayPercentColor,
   loadTrayProvider,
   migrateLegacyTraySettings,
   loadPluginSettings,
@@ -37,6 +38,7 @@ import {
   type ResetTimerDisplayMode,
   type ThemeMode,
   type TrayMetric,
+  type TrayPercentColor,
   type TrayProvider,
 } from "@/lib/settings"
 
@@ -52,6 +54,7 @@ type UseSettingsBootstrapArgs = {
   setMenubarIconStyle: (value: MenubarIconStyle) => void
   setTrayProvider: (value: TrayProvider) => void
   setTrayMetric: (value: TrayMetric) => void
+  setTrayPercentColor: (value: TrayPercentColor) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -69,6 +72,7 @@ export function useSettingsBootstrap({
   setMenubarIconStyle,
   setTrayProvider,
   setTrayMetric,
+  setTrayPercentColor,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -163,9 +167,11 @@ export function useSettingsBootstrap({
 
         let storedTrayProvider = "auto"
         let storedTrayMetric = "auto"
+        let storedTrayPercentColor = "#ffffff"
         try {
           storedTrayProvider = await loadTrayProvider()
           storedTrayMetric = await loadTrayMetric()
+          storedTrayPercentColor = await loadTrayPercentColor()
         } catch (error) {
           console.error("Failed to load tray provider/metric:", error)
         }
@@ -181,6 +187,7 @@ export function useSettingsBootstrap({
           setMenubarIconStyle(storedMenubarIconStyle)
           setTrayProvider(storedTrayProvider)
           setTrayMetric(storedTrayMetric)
+          setTrayPercentColor(storedTrayPercentColor)
 
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
@@ -213,6 +220,7 @@ export function useSettingsBootstrap({
     setMenubarIconStyle,
     setTrayProvider,
     setTrayMetric,
+    setTrayPercentColor,
     migrateLegacyTraySettings,
     setPluginSettings,
     setPluginsMeta,

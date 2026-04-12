@@ -183,8 +183,10 @@ export function makeTrayBarsSvg(args: {
   style?: MenubarIconStyle
   percentText?: string
   providerIconUrl?: string
+  textColor?: string
 }): string {
-  const { bars, sizePx, style = "bars", percentText } = args
+  const { bars, sizePx, style = "bars", percentText, textColor } = args
+  const iconColor = (style === "percent" && textColor) ? textColor : TRAY_ICON_COLOR
   const barsForStyle = style === "bars" ? bars : bars.slice(0, 1)
   // Intentionally render a single empty track when bars mode has no data yet
   // so the tray icon keeps a stable shape during loading/initialization.
@@ -274,7 +276,7 @@ export function makeTrayBarsSvg(args: {
   if (text) {
     const textAnchor = style === "percent" ? ' text-anchor="middle"' : ""
     parts.push(
-      `<text x="${layout.textX}" y="${layout.textY}" fill="${TRAY_ICON_COLOR}" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif" font-size="${layout.fontSize}" font-weight="700" dominant-baseline="middle"${textAnchor}>${escapeXmlText(text)}</text>`
+      `<text x="${layout.textX}" y="${layout.textY}" fill="${iconColor}" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif" font-size="${layout.fontSize}" font-weight="700" dominant-baseline="middle"${textAnchor}>${escapeXmlText(text)}</text>`
     )
   }
 
@@ -321,14 +323,16 @@ export async function renderTrayBarsIcon(args: {
   style?: MenubarIconStyle
   percentText?: string
   providerIconUrl?: string
+  textColor?: string
 }): Promise<Image> {
-  const { bars, sizePx, style = "bars", percentText } = args
+  const { bars, sizePx, style = "bars", percentText, textColor } = args
   const text = normalizePercentText(percentText)
   const svg = makeTrayBarsSvg({
     bars,
     sizePx,
     style,
     percentText: text,
+    textColor,
   })
   const layout = getSvgLayout({
     sizePx,

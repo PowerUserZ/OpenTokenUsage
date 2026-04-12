@@ -23,6 +23,8 @@ export type MenubarIconStyle = "icon" | "percent" | "bars";
 export type TrayProvider = "auto" | string;
 export type TrayMetric = "auto" | string;
 
+export type TrayPercentColor = string;
+
 export type GlobalShortcut = string | null;
 
 const SETTINGS_STORE_PATH = "settings.json";
@@ -36,6 +38,7 @@ const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const TRAY_PROVIDER_KEY = "trayProvider";
 const TRAY_METRIC_KEY = "trayMetric";
+const TRAY_PERCENT_COLOR_KEY = "trayPercentColor";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
 
@@ -46,6 +49,7 @@ export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative
 export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "icon";
 export const DEFAULT_TRAY_PROVIDER: TrayProvider = "auto";
 export const DEFAULT_TRAY_METRIC: TrayMetric = "auto";
+export const DEFAULT_TRAY_PERCENT_COLOR: TrayPercentColor = "#ffffff";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = true;
 
@@ -272,6 +276,16 @@ export async function loadTrayMetric(): Promise<TrayMetric> {
 
 export async function saveTrayMetric(value: TrayMetric): Promise<void> {
   await store.set(TRAY_METRIC_KEY, value);
+  await store.save();
+}
+
+export async function loadTrayPercentColor(): Promise<TrayPercentColor> {
+  const stored = await store.get<unknown>(TRAY_PERCENT_COLOR_KEY);
+  return typeof stored === "string" && stored.length > 0 ? stored : DEFAULT_TRAY_PERCENT_COLOR;
+}
+
+export async function saveTrayPercentColor(value: TrayPercentColor): Promise<void> {
+  await store.set(TRAY_PERCENT_COLOR_KEY, value);
   await store.save();
 }
 

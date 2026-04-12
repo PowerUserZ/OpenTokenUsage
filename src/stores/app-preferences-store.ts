@@ -8,6 +8,7 @@ import {
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
   DEFAULT_TRAY_METRIC,
+  DEFAULT_TRAY_PERCENT_COLOR,
   DEFAULT_TRAY_PROVIDER,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
@@ -16,6 +17,7 @@ import {
   type ResetTimerDisplayMode,
   type ThemeMode,
   type TrayMetric,
+  type TrayPercentColor,
   type TrayProvider,
 } from "@/lib/settings"
 
@@ -29,6 +31,7 @@ type AppPreferencesStore = {
   menubarIconStyle: MenubarIconStyle
   trayProvider: TrayProvider
   trayMetric: TrayMetric
+  trayPercentColor: TrayPercentColor
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
@@ -38,6 +41,7 @@ type AppPreferencesStore = {
   setMenubarIconStyle: (value: MenubarIconStyle) => void
   setTrayProvider: (value: TrayProvider) => void
   setTrayMetric: (value: TrayMetric) => void
+  setTrayPercentColor: (value: TrayPercentColor) => void
   resetState: () => void
 }
 
@@ -51,6 +55,7 @@ const initialState = {
   menubarIconStyle: DEFAULT_MENUBAR_ICON_STYLE,
   trayProvider: DEFAULT_TRAY_PROVIDER,
   trayMetric: DEFAULT_TRAY_METRIC,
+  trayPercentColor: DEFAULT_TRAY_PERCENT_COLOR,
 }
 
 export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
@@ -64,5 +69,6 @@ export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
   setMenubarIconStyle: (value) => set({ menubarIconStyle: value }),
   setTrayProvider: (value) => set({ trayProvider: value }),
   setTrayMetric: (value) => set({ trayMetric: value }),
+  setTrayPercentColor: (value) => set({ trayPercentColor: value }),
   resetState: () => set(initialState),
 }))
