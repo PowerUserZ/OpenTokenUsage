@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button } from "@/components/ui/button";
 import { AboutDialog } from "@/components/about-dialog";
@@ -102,6 +102,16 @@ export function PanelFooter({
   onCloseAbout,
 }: PanelFooterProps) {
   const versionCheck = useVersionCheck(version);
+  const [refreshCooldown, setRefreshCooldown] = useState(false);
+  const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleRefresh = () => {
+    if (refreshCooldown || !onRefreshAll) return;
+    onRefreshAll();
+    setRefreshCooldown(true);
+    if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+    cooldownTimerRef.current = setTimeout(() => setRefreshCooldown(false), 60_000);
+  };
 
   const now = useNowTicker({
     enabled: Boolean(autoUpdateNextAt),
@@ -132,12 +142,13 @@ export function PanelFooter({
         {autoUpdateNextAt !== null && onRefreshAll ? (
           <button
             type="button"
+            disabled={refreshCooldown}
             onClick={(event) => {
               event.currentTarget.blur()
-              onRefreshAll()
+              handleRefresh()
             }}
-            className="text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors cursor-pointer"
-            title="Refresh now"
+            className={`text-xs tabular-nums transition-colors ${refreshCooldown ? "text-muted-foreground/50 cursor-not-allowed" : "text-muted-foreground hover:text-foreground cursor-pointer"}`}
+            title={refreshCooldown ? "Wait before refreshing again" : "Refresh now"}
           >
             {countdownLabel}
           </button>
