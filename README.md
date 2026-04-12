@@ -1,18 +1,27 @@
-# Track all your AI coding subscriptions in one place
+# OpenTokenUsage
 
-See your usage at a glance from your menu bar. No digging through dashboards.
+Track all your AI coding subscriptions in one place — now on **Windows** too.
 
-![OpenUsage Screenshot](screenshot.png)
+See your usage at a glance from your system tray. No digging through dashboards.
+
+> **Fork of [OpenUsage](https://github.com/robinebers/openusage) by Robin Ebers.** This fork adds full Windows support while preserving macOS functionality.
 
 ## Download
 
-[**Download the latest release**](https://github.com/robinebers/openusage/releases/latest) (macOS, Apple Silicon & Intel)
+[**Download the latest release**](https://github.com/PowerUserZ/OpenTokenUsage/releases/latest) (Windows & macOS)
 
 The app auto-updates. Install once and you're set.
 
+## What's Different in This Fork
+
+- **Windows support.** Full cross-platform: tray icon, drag-to-move, resize, minimize-to-tray, auto-positioning near taskbar.
+- **Themed tray icon.** White icon for dark taskbar, proper dynamic icon rendering on Windows.
+- **No CMD flash.** Subprocess calls use `CREATE_NO_WINDOW` so no console windows pop up.
+- **Auto-promote tray icon.** Icon appears in the visible tray area (next to clock) on first launch.
+
 ## What It Does
 
-OpenUsage lives in your menu bar and shows you how much of your AI coding subscriptions you've used. Progress bars, badges, and clear labels. No mental math required.
+OpenTokenUsage lives in your system tray and shows you how much of your AI coding subscriptions you've used. Progress bars, badges, and clear labels. No mental math required.
 
 - **One glance.** All your AI tools, one panel.
 - **Always up-to-date.** Refreshes automatically on a schedule you pick.
@@ -38,48 +47,19 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**MiniMax**](docs/providers/minimax.md) / coding plan session
 - [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly spend limits
 - [**Windsurf**](docs/providers/windsurf.md) / prompt credits, flex credits
-- [**Z.ai**](docs/providers/zai.md) / session, weekly, web searches
+- [**Z.ai (GLM)**](docs/providers/zai.md) / session, weekly, web searches
 
-### Maybe Soon
-
-- [Vercel AI Gateway](https://github.com/robinebers/openusage/issues/18)
-
-Community contributions welcome.
-Want a provider that's not listed? [Open an issue.](https://github.com/robinebers/openusage/issues/new)
-
-## Open Source, Community Driven
-
-OpenUsage is built by its users. Hundreds of people use it daily, and the project grows through community contributions: new providers, bug fixes, and ideas.
-
-I maintain the project as a guide and quality gatekeeper, but this is your app as much as mine. If something is missing or broken, the best way to get it fixed is to contribute by opening an issue, or submitting a PR.
-
-Plugins are currently bundled as we build our the API, but soon will be made flexible so you can build and load their own.
-
-### How to Contribute
+## Contributing
 
 - **Add a provider.** Each one is just a plugin. See the [Plugin API](docs/plugins/api.md).
 - **Fix a bug.** PRs welcome. Provide before/after screenshots.
-- **Request a feature.** [Open an issue](https://github.com/robinebers/openusage/issues/new) and make your case.
-
-Keep it simple. No feature creep, no AI-generated commit messages, test your changes.
-
-## Built Entirely with AI
-
-Not a single line of code in this project was read or written by hand. 100% AI-generated, AI-reviewed, AI-shipped — using [Cursor](https://cursor.com), [Claude Code](https://docs.anthropic.com/en/docs/claude-code), and [Codex CLI](https://github.com/openai/codex).
-
-OpenUsage is a real-world example of what I teach in the [AI Builder's Blueprint](https://itsbyrob.in/EBDqgJ6) — a proven process for building and shipping software with AI, no coding background required.
-
-## Sponsors
-
-OpenUsage is supported by our sponsors. Become a sponsor to get your logo here and on [openusage.ai](https://openusage.ai).
-
-[Become a Sponsor](https://github.com/sponsors/robinebers)
-
-<!-- Add sponsor logos here -->
+- **Request a feature.** [Open an issue](https://github.com/PowerUserZ/OpenTokenUsage/issues/new) and make your case.
 
 ## Credits
 
-Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [@steipete](https://github.com/steipete). Same idea, very different approach.
+- Original project: [OpenUsage](https://github.com/robinebers/openusage) by [Robin Ebers](https://itsbyrob.in/x)
+- Windows port: [PowerUserZ](https://github.com/PowerUserZ)
+- Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [@steipete](https://github.com/steipete)
 
 ## License
 
@@ -90,8 +70,21 @@ Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [@steipete](http
 <details>
 <summary><strong>Build from source</strong></summary>
 
-> **Warning**: The `main` branch may not be stable. It is merged directly without staging, so users are advised to use tagged versions for stable builds. Tagged versions are fully tested while `main` may contain unreleased features.
+### Prerequisites
 
-### Stack
+- [Rust](https://www.rust-lang.org/tools/install)
+- [Bun](https://bun.sh)
+- [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/)
 
-...
+### Steps
+
+```bash
+git clone https://github.com/PowerUserZ/OpenTokenUsage.git
+cd OpenTokenUsage
+bun install
+bun tauri build
+```
+
+The built app will be in `src-tauri/target/release/bundle/`.
+
+</details>
