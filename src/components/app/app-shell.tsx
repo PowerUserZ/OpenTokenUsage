@@ -80,8 +80,10 @@ export function AppShell({
         {!IS_MACOS && (
           <div
             data-tauri-drag-region
-            className="titlebar flex items-center justify-end h-7 px-1 shrink-0"
+            className="titlebar flex items-center h-7 px-2 shrink-0"
           >
+            <span className="titlebar text-xs font-medium text-muted-foreground select-none pointer-events-none">OpenTokenUsage</span>
+            <span className="flex-1" />
             <button
               onClick={() => invoke("hide_panel")}
               className="titlebar-button inline-flex items-center justify-center w-6 h-5 rounded hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
