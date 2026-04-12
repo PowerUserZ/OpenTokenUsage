@@ -673,8 +673,9 @@ pub fn run() {
                 });
             }
 
-            app.handle()
-                .plugin(tauri_plugin_updater::Builder::new().build())?;
+            // Auto-updater disabled for this fork
+            // app.handle()
+            //     .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             // Register global shortcut from stored settings
             #[cfg(desktop)]
