@@ -592,14 +592,25 @@
       const creditsRemaining = creditsHeader ?? creditsData
       if (creditsRemaining !== null) {
         const remaining = creditsRemaining
-        const limit = 1000
-        const used = Math.max(0, Math.min(limit, limit - remaining))
-        lines.push(ctx.line.progress({
-          label: "Credits",
-          used: used,
-          limit: limit,
-          format: { kind: "count", suffix: "credits" },
-        }))
+        var creditsLimit = data.credits ? readNumber(data.credits.limit) : null
+        if (creditsLimit === null) {
+          var limitHeader = resp.headers["x-codex-credits-limit"]
+          creditsLimit = readNumber(limitHeader)
+        }
+        if (creditsLimit !== null && creditsLimit > 0) {
+          var used = Math.max(0, Math.min(creditsLimit, creditsLimit - remaining))
+          lines.push(ctx.line.progress({
+            label: "Credits",
+            used: used,
+            limit: creditsLimit,
+            format: { kind: "count", suffix: "credits" },
+          }))
+        } else {
+          lines.push(ctx.line.text({
+            label: "Credits",
+            value: remaining + " credits remaining",
+          }))
+        }
       }
 
       let plan = null

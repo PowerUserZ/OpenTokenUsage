@@ -140,6 +140,16 @@
   }
 }
 
+/* Window drag region for custom titlebar (Windows) */
+.titlebar {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.titlebar-button {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 /* Panel-specific styles for transparent Tauri window */
 html,
 body,
@@ -150,7 +160,26 @@ body,
   padding: 0;
 }
 
-/* Hide scrollbar track globally */
+/* Themed scrollbar (Windows) */
+::-webkit-scrollbar {
+  width: 18px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--muted-foreground);
+  border-radius: 9px;
+  border: 6px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--foreground);
+  border: 6px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Hide scrollbar (macOS) */
 .scrollbar-none {
   scrollbar-width: none;          /* Firefox */
 }

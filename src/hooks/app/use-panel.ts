@@ -119,20 +119,23 @@ export function usePanel({
       const height = Math.ceil(Math.min(desiredHeightPhysical, maxHeightPhysical!))
 
       try {
-        const currentWindow = getCurrentWindow()
-        await currentWindow.setSize(new PhysicalSize(width, height))
+        const win = getCurrentWindow()
+        await win.setSize(new PhysicalSize(width, height))
+
+        // On Windows, re-anchor the window so its bottom edge stays
+        // near the taskbar after every resize.
+        if (!navigator.userAgent.includes("Macintosh")) {
+          await invoke("reanchor_window")
+        }
       } catch (e) {
         console.error("Failed to resize window:", e)
       }
     }
 
+    // Auto-resize window to fit content (capped at 80% of screen).
     resizeWindow()
-
-    const observer = new ResizeObserver(() => {
-      resizeWindow()
-    })
+    const observer = new ResizeObserver(() => resizeWindow())
     observer.observe(container)
-
     return () => observer.disconnect()
   }, [activeView, displayPlugins])
 

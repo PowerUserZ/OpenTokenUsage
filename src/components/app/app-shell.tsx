@@ -1,4 +1,6 @@
 import { useShallow } from "zustand/react/shallow"
+import { Minus } from "lucide-react"
+import { invoke } from "@tauri-apps/api/core"
 import { AppContent, type AppContentActionProps } from "@/components/app/app-content"
 import { PanelFooter } from "@/components/panel-footer"
 import { SideNav, type NavPlugin, type PluginContextAction } from "@/components/side-nav"
@@ -8,6 +10,8 @@ import { useAppVersion } from "@/hooks/app/use-app-version"
 import { usePanel } from "@/hooks/app/use-panel"
 import { useAppUpdate } from "@/hooks/use-app-update"
 import { useAppUiStore } from "@/stores/app-ui-store"
+
+const IS_MACOS = navigator.userAgent.includes("Macintosh")
 
 const ARROW_OVERHEAD_PX = 37
 
@@ -67,12 +71,26 @@ export function AppShell({
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
 
   return (
-    <div ref={containerRef} className="flex flex-col items-center p-6 pt-1.5 bg-transparent">
-      <div className="tray-arrow" />
+    <div ref={containerRef} className={`flex flex-col items-center bg-transparent ${IS_MACOS ? "p-6 pt-1.5" : "p-0"}`}>
+      {IS_MACOS && <div className="tray-arrow" />}
       <div
-        className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg flex flex-col"
-        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
+        className={`relative bg-card overflow-hidden select-none w-full flex flex-col ${IS_MACOS ? "rounded-xl border shadow-lg" : ""}`}
+        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - (IS_MACOS ? ARROW_OVERHEAD_PX : 0)}px` } : undefined}
       >
+        {!IS_MACOS && (
+          <div
+            data-tauri-drag-region
+            className="titlebar flex items-center justify-end h-7 px-1 shrink-0"
+          >
+            <button
+              onClick={() => invoke("hide_panel")}
+              className="titlebar-button inline-flex items-center justify-center w-6 h-5 rounded hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
+              title="Minimize to tray"
+            >
+              <Minus size={14} strokeWidth={2} />
+            </button>
+          </div>
+        )}
         <div className="flex flex-1 min-h-0 flex-row">
           <SideNav
             activeView={activeView}
@@ -84,7 +102,7 @@ export function AppShell({
           />
           <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
             <div className="relative flex-1 min-h-0">
-              <div ref={scrollRef} className="h-full overflow-y-auto scrollbar-none">
+              <div ref={scrollRef} className={`h-full overflow-y-auto ${IS_MACOS ? "scrollbar-none" : ""}`}>
                 <AppContent
                   {...appContentProps}
                   displayPlugins={displayPlugins}

@@ -35,12 +35,12 @@ const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
-export const DEFAULT_THEME_MODE: ThemeMode = "system";
-export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
+export const DEFAULT_THEME_MODE: ThemeMode = "dark";
+export const DEFAULT_DISPLAY_MODE: DisplayMode = "used";
 export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative";
 export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "provider";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
-export const DEFAULT_START_ON_LOGIN = false;
+export const DEFAULT_START_ON_LOGIN = true;
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -78,11 +78,13 @@ export const RESET_TIMER_DISPLAY_OPTIONS: { value: ResetTimerDisplayMode; label:
 
 const store = new LazyStore(SETTINGS_STORE_PATH);
 
-const DEFAULT_ENABLED_PLUGINS = new Set(["claude", "codex", "cursor"]);
+const DEFAULT_ENABLED_PLUGINS = new Set(["claude", "codex"]);
+
+const PREFERRED_ORDER = ["claude", "codex", "gemini"];
 
 export const DEFAULT_PLUGIN_SETTINGS: PluginSettings = {
   order: [],
-  disabled: [],
+  disabled: ["gemini"],
 };
 
 export async function loadPluginSettings(): Promise<PluginSettings> {
@@ -128,7 +130,18 @@ export function normalizePluginSettings(
 
   const order: string[] = [];
   const seen = new Set<string>();
-  for (const id of settings.order) {
+
+  // If no saved order yet, apply preferred order + alphabetical rest
+  const sourceOrder = settings.order.length > 0
+    ? settings.order
+    : [
+        ...PREFERRED_ORDER.filter((id) => knownSet.has(id)),
+        ...knownIds
+          .filter((id) => !PREFERRED_ORDER.includes(id))
+          .sort((a, b) => a.localeCompare(b)),
+      ];
+
+  for (const id of sourceOrder) {
     if (!knownSet.has(id) || seen.has(id)) continue;
     seen.add(id);
     order.push(id);

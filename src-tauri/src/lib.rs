@@ -195,10 +195,53 @@ fn init_panel(app_handle: tauri::AppHandle) {
 
 #[tauri::command]
 fn hide_panel(app_handle: tauri::AppHandle) {
-    use tauri_nspanel::ManagerExt;
-    if let Ok(panel) = app_handle.get_webview_panel("main") {
-        panel.hide();
-    }
+    panel::hide_panel(&app_handle);
+}
+
+/// Re-anchor the window so its bottom edge aligns with the bottom of the
+/// available work area (just above the taskbar).  Called from the frontend
+/// after every auto-resize on Windows.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn reanchor_window(app_handle: tauri::AppHandle) {
+    use tauri::Manager;
+    let Some(window) = app_handle.get_webview_window("main") else {
+        return;
+    };
+    let Ok(current_pos) = window.outer_position() else {
+        return;
+    };
+    let Ok(current_size) = window.outer_size() else {
+        return;
+    };
+    // Use available_monitors + primary to find the work-area height.
+    // Tauri reports monitor size = full resolution. The tray icon Y that
+    // was used for initial positioning reflects the real work area.
+    // We saved the bottom edge on the last tray-click positioning:
+    // just keep the window's current X and push it so its bottom sits at
+    // the same Y as the screen bottom minus a small taskbar offset.
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let panel_h = current_size.height as f64;
+
+    // screen.availHeight from JS might be unreliable. Instead, use the
+    // monitor height and subtract a standard taskbar estimate (48 logical px).
+    let monitor_h = window
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.size().height as f64)
+        .unwrap_or(1080.0);
+    let taskbar_h = 48.0 * scale;
+    let work_bottom = monitor_h - taskbar_h;
+
+    let new_y = (work_bottom - panel_h).max(0.0) as i32;
+    let _ = window.set_position(tauri::PhysicalPosition::new(current_pos.x, new_y));
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn reanchor_window(_app_handle: tauri::AppHandle) {
+    // No-op on macOS — the panel anchors to the menu bar.
 }
 
 #[tauri::command]
@@ -346,10 +389,11 @@ async fn start_probe_batch(
 
 #[tauri::command]
 fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
-    // macOS log directory: ~/Library/Logs/{bundleIdentifier}
-    let home = dirs::home_dir().ok_or("no home dir")?;
-    let bundle_id = app_handle.config().identifier.clone();
-    let log_dir = home.join("Library").join("Logs").join(&bundle_id);
+    use tauri::Manager;
+    let log_dir = app_handle
+        .path()
+        .app_log_dir()
+        .map_err(|e| format!("failed to resolve log directory: {}", e))?;
     let log_file = log_dir.join(format!("{}.log", app_handle.package_info().name));
     Ok(log_file.to_string_lossy().to_string())
 }
@@ -465,6 +509,16 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
         .collect()
 }
 
+#[cfg(target_os = "macos")]
+fn nspanel_plugin() -> impl tauri::plugin::Plugin<tauri::Wry> {
+    panel::init_nspanel_plugin()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn nspanel_plugin() -> impl tauri::plugin::Plugin<tauri::Wry> {
+    tauri::plugin::Builder::<tauri::Wry>::new("nspanel-noop").build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
@@ -474,7 +528,7 @@ pub fn run() {
         .plugin(tauri_plugin_aptabase::Builder::new("A-US-6435241436").build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_nspanel::init())
+        .plugin(nspanel_plugin())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -495,6 +549,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             init_panel,
             hide_panel,
+            reanchor_window,
             open_devtools,
             start_probe_batch,
             list_plugins,
@@ -512,6 +567,15 @@ pub fn run() {
             }
 
             use tauri::Manager;
+
+            // On Windows, disable the window shadow to avoid a visible border
+            // around the transparent window.
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_shadow(false);
+                }
+            }
 
             let version = app.package_info().version.to_string();
             log::info!("OpenUsage v{} starting", version);

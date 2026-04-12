@@ -11,6 +11,18 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
+/// Create a `Command` that won't flash a console window on Windows.
+fn silent_command(program: &str) -> Command {
+    let mut cmd = Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 const WHITELISTED_ENV_VARS: [&str; 16] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
@@ -49,7 +61,7 @@ fn read_env_from_process(name: &str) -> Option<String> {
 }
 
 fn read_env_value_via_command(program: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(program).args(args).output().ok()?;
+    let output = silent_command(program).args(args).output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -1172,7 +1184,7 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     opts.markers
                 );
 
-                let ps_output = match std::process::Command::new("/bin/ps")
+                let ps_output = match silent_command("/bin/ps")
                     .args(["-ax", "-o", "pid=,command="])
                     .output()
                 {
@@ -1289,7 +1301,7 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     .copied();
 
                 let ports = if let Some(lsof) = lsof_path {
-                    match std::process::Command::new(lsof)
+                    match silent_command(lsof)
                         .args([
                             "-nP",
                             "-iTCP",
@@ -1634,7 +1646,7 @@ fn ccusage_enriched_path() -> Option<OsString> {
 }
 
 fn ccusage_runner_available(candidate: &str, enriched_path: Option<&OsStr>) -> bool {
-    let mut command = std::process::Command::new(candidate);
+    let mut command = silent_command(candidate);
     command.arg("--version");
     if let Some(path) = enriched_path {
         command.env("PATH", path);
@@ -1800,7 +1812,7 @@ fn run_ccusage_with_runner(
 ) -> Option<String> {
     let args = ccusage_runner_args(kind, opts, provider);
     let enriched_path = ccusage_enriched_path();
-    let mut command = std::process::Command::new(program);
+    let mut command = silent_command(program);
     configure_ccusage_command(&mut command, &args, enriched_path.as_deref());
 
     if let Some(home_path) = ccusage_home_override(opts, provider) {
@@ -2012,7 +2024,7 @@ fn inject_keychain<'js>(
                     ));
                 }
                 log::info!("[plugin:{}] keychain read: service={}", pid_read, service);
-                let output = std::process::Command::new("security")
+                let output = silent_command("security")
                     .args(keychain_find_generic_password_args(&service))
                     .output()
                     .map_err(|e| {
@@ -2068,7 +2080,7 @@ fn inject_keychain<'js>(
                     service,
                     redacted_account
                 );
-                let output = std::process::Command::new("security")
+                let output = silent_command("security")
                     .args(&args)
                     .output()
                     .map_err(|e| {
@@ -2120,7 +2132,7 @@ fn inject_keychain<'js>(
                 log::info!("[plugin:{}] keychain write: service={}", pid_write, service);
 
                 let mut account_arg: Option<String> = None;
-                let find_output = std::process::Command::new("security")
+                let find_output = silent_command("security")
                     .args(["find-generic-password", "-s", &service])
                     .output();
 
@@ -2140,13 +2152,13 @@ fn inject_keychain<'js>(
                 }
 
                 let output = if let Some(ref acct) = account_arg {
-                    std::process::Command::new("security")
+                    silent_command("security")
                         .args(keychain_add_generic_password_args_for_account(
                             &service, acct, &value,
                         ))
                         .output()
                 } else {
-                    std::process::Command::new("security")
+                    silent_command("security")
                         .args(keychain_add_generic_password_args(&service, &value))
                         .output()
                 }
@@ -2201,7 +2213,7 @@ fn inject_keychain<'js>(
                     service,
                     redacted_account
                 );
-                let output = std::process::Command::new("security")
+                let output = silent_command("security")
                     .args(&args)
                     .output()
                     .map_err(|e| {
@@ -2260,7 +2272,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
 
                 // Prefer a normal read-only open so WAL contents are visible (common for app state DBs).
                 // Fall back to immutable=1 to bypass WAL/SHM lock issues after macOS sleep.
-                let primary = std::process::Command::new("sqlite3")
+                let primary = silent_command("sqlite3")
                     .args(["-readonly", "-json", &expanded, &sql])
                     .output()
                     .map_err(|e| {
@@ -2278,7 +2290,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .replace('#', "%23")
                     .replace('?', "%3F");
                 let uri_path = format!("file:{}?immutable=1", encoded);
-                let fallback = std::process::Command::new("sqlite3")
+                let fallback = silent_command("sqlite3")
                     .args(["-readonly", "-json", &uri_path, &sql])
                     .output()
                     .map_err(|e| {
@@ -2315,7 +2327,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     ));
                 }
                 let expanded = expand_path(&db_path);
-                let output = std::process::Command::new("sqlite3")
+                let output = silent_command("sqlite3")
                     .args([&expanded, &sql])
                     .output()
                     .map_err(|e| {
@@ -3286,7 +3298,7 @@ mod tests {
 
     #[test]
     fn configure_ccusage_command_sets_path_override() {
-        let mut command = std::process::Command::new("echo");
+        let mut command = silent_command("echo");
         let args = vec!["daily".to_string(), "--json".to_string()];
         let path = std::env::join_paths([
             std::path::PathBuf::from("/tmp/bin"),
@@ -3311,7 +3323,7 @@ mod tests {
 
     #[test]
     fn configure_ccusage_command_skips_path_override_when_absent() {
-        let mut command = std::process::Command::new("echo");
+        let mut command = silent_command("echo");
         let args = vec!["daily".to_string()];
 
         configure_ccusage_command(&mut command, &args, None);

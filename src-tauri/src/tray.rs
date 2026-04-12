@@ -3,10 +3,11 @@ use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::path::BaseDirectory;
 use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_nspanel::ManagerExt;
 use tauri_plugin_store::StoreExt;
 
-use crate::panel::{get_or_init_panel, position_panel_at_tray_icon, show_panel};
+#[cfg(target_os = "macos")]
+use crate::panel::{get_or_init_panel, position_panel_at_tray_icon};
+use crate::panel::show_panel;
 
 const LOG_LEVEL_STORE_KEY: &str = "logLevel";
 
@@ -187,24 +188,117 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
             } = event
             {
                 if button_state == MouseButtonState::Up {
-                    let Some(panel) = get_or_init_panel!(app_handle) else {
-                        return;
-                    };
+                    #[cfg(target_os = "macos")]
+                    {
+                        let Some(panel) = get_or_init_panel!(app_handle) else {
+                            return;
+                        };
 
-                    if panel.is_visible() {
-                        log::debug!("tray click: hiding panel");
-                        panel.hide();
-                        return;
+                        if panel.is_visible() {
+                            log::debug!("tray click: hiding panel");
+                            panel.hide();
+                            return;
+                        }
+                        log::debug!("tray click: showing panel");
+
+                        // macOS quirk: must show window before positioning to another monitor
+                        panel.show_and_make_key();
+                        position_panel_at_tray_icon(app_handle, rect.position, rect.size);
                     }
-                    log::debug!("tray click: showing panel");
 
-                    // macOS quirk: must show window before positioning to another monitor
-                    panel.show_and_make_key();
-                    position_panel_at_tray_icon(app_handle, rect.position, rect.size);
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            match window.is_visible() {
+                                Ok(true) => {
+                                    log::debug!("tray click: hiding window");
+                                    let _ = window.hide();
+                                }
+                                _ => {
+                                    log::debug!("tray click: showing window");
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                    position_window_at_tray_icon(&window, rect.position, rect.size);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         })
         .build(app_handle)?;
 
     Ok(())
+}
+
+/// Position the window above the tray icon, centered horizontally.
+/// The window's bottom edge sits just above the tray icon / taskbar.
+#[cfg(not(target_os = "macos"))]
+fn position_window_at_tray_icon(
+    window: &tauri::WebviewWindow,
+    icon_position: tauri::Position,
+    icon_size: tauri::Size,
+) {
+    let scale = window.scale_factor().unwrap_or(1.0);
+
+    let (icon_x, icon_y) = match &icon_position {
+        tauri::Position::Physical(p) => (p.x as f64 / scale, p.y as f64 / scale),
+        tauri::Position::Logical(p) => (p.x, p.y),
+    };
+    let (icon_w, _icon_h) = match &icon_size {
+        tauri::Size::Physical(s) => (s.width as f64 / scale, s.height as f64 / scale),
+        tauri::Size::Logical(s) => (s.width, s.height),
+    };
+
+    let panel_width = window
+        .outer_size()
+        .ok()
+        .map(|s| s.width as f64 / scale)
+        .unwrap_or(400.0);
+    let panel_height = window
+        .outer_size()
+        .ok()
+        .map(|s| s.height as f64 / scale)
+        .unwrap_or(500.0);
+
+    // Center horizontally on the tray icon
+    let icon_center_x = icon_x + icon_w / 2.0;
+    let mut x = icon_center_x - panel_width / 2.0;
+
+    // Bottom edge of window sits just above the tray icon
+    let mut y = icon_y - panel_height;
+
+    // Clamp to the work area (screen minus taskbar)
+    let work_x;
+    let work_y;
+    let work_w;
+    let work_h;
+
+    if let Ok(Some(monitor)) = window.primary_monitor() {
+        let mon_pos = monitor.position();
+        work_x = mon_pos.x as f64 / scale;
+        work_y = mon_pos.y as f64 / scale;
+        work_w = monitor.size().width as f64 / scale;
+        work_h = monitor.size().height as f64 / scale;
+    } else {
+        return;
+    }
+
+    // Horizontal clamping
+    if x < work_x {
+        x = work_x;
+    }
+    if x + panel_width > work_x + work_w {
+        x = work_x + work_w - panel_width;
+    }
+
+    // Vertical clamping — keep window fully on screen
+    if y < work_y {
+        y = work_y;
+    }
+    if y + panel_height > work_y + work_h {
+        y = work_y + work_h - panel_height;
+    }
+
+    let _ = window.set_position(tauri::LogicalPosition::new(x, y));
 }
