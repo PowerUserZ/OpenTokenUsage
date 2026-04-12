@@ -20,6 +20,8 @@ import {
   loadDisplayMode,
   loadGlobalShortcut,
   loadMenubarIconStyle,
+  loadTrayMetric,
+  loadTrayProvider,
   migrateLegacyTraySettings,
   loadPluginSettings,
   loadResetTimerDisplayMode,
@@ -34,6 +36,8 @@ import {
   type PluginSettings,
   type ResetTimerDisplayMode,
   type ThemeMode,
+  type TrayMetric,
+  type TrayProvider,
 } from "@/lib/settings"
 
 type UseSettingsBootstrapArgs = {
@@ -46,6 +50,8 @@ type UseSettingsBootstrapArgs = {
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setTrayProvider: (value: TrayProvider) => void
+  setTrayMetric: (value: TrayMetric) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -61,6 +67,8 @@ export function useSettingsBootstrap({
   setGlobalShortcut,
   setStartOnLogin,
   setMenubarIconStyle,
+  setTrayProvider,
+  setTrayMetric,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -153,6 +161,15 @@ export function useSettingsBootstrap({
           console.error("Failed to load menubar icon style:", error)
         }
 
+        let storedTrayProvider = "auto"
+        let storedTrayMetric = "auto"
+        try {
+          storedTrayProvider = await loadTrayProvider()
+          storedTrayMetric = await loadTrayMetric()
+        } catch (error) {
+          console.error("Failed to load tray provider/metric:", error)
+        }
+
         if (isMounted) {
           setPluginSettings(normalized)
           setAutoUpdateInterval(storedInterval)
@@ -162,6 +179,8 @@ export function useSettingsBootstrap({
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
           setMenubarIconStyle(storedMenubarIconStyle)
+          setTrayProvider(storedTrayProvider)
+          setTrayMetric(storedTrayMetric)
 
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
@@ -192,6 +211,8 @@ export function useSettingsBootstrap({
     setGlobalShortcut,
     setLoadingForPlugins,
     setMenubarIconStyle,
+    setTrayProvider,
+    setTrayMetric,
     migrateLegacyTraySettings,
     setPluginSettings,
     setPluginsMeta,

@@ -17,6 +17,8 @@ type UseTrayIconArgs = {
   pluginStates: Record<string, PluginState>
   displayMode: DisplayMode
   menubarIconStyle: MenubarIconStyle
+  trayProvider: string
+  trayMetric: string
   activeView: string
 }
 
@@ -55,6 +57,8 @@ export function useTrayIcon({
   pluginStates,
   displayMode,
   menubarIconStyle,
+  trayProvider,
+  trayMetric,
   activeView,
 }: UseTrayIconArgs) {
   const trayRef = useRef<TrayIcon | null>(null)
@@ -72,6 +76,8 @@ export function useTrayIcon({
   const pluginStatesRef = useRef(pluginStates)
   const displayModeRef = useRef(displayMode)
   const menubarIconStyleRef = useRef(menubarIconStyle)
+  const trayProviderRef = useRef(trayProvider)
+  const trayMetricRef = useRef(trayMetric)
   const activeViewRef = useRef(activeView)
   const lastTrayProviderIdRef = useRef<string | null>(null)
 
@@ -94,6 +100,14 @@ export function useTrayIcon({
   useEffect(() => {
     menubarIconStyleRef.current = menubarIconStyle
   }, [menubarIconStyle])
+
+  useEffect(() => {
+    trayProviderRef.current = trayProvider
+  }, [trayProvider])
+
+  useEffect(() => {
+    trayMetricRef.current = trayMetric
+  }, [trayMetric])
 
   useEffect(() => {
     activeViewRef.current = activeView
@@ -189,8 +203,13 @@ export function useTrayIcon({
       const activeProviderId =
         nextActiveView !== "home" && nextActiveView !== "settings" ? nextActiveView : null
 
+      const trayProviderSetting = trayProviderRef.current
+      const trayMetricSetting = trayMetricRef.current
+
       let trayProviderId: string | null = null
-      if (activeProviderId && enabledPluginIds.includes(activeProviderId)) {
+      if (trayProviderSetting !== "auto" && enabledPluginIds.includes(trayProviderSetting)) {
+        trayProviderId = trayProviderSetting
+      } else if (activeProviderId && enabledPluginIds.includes(activeProviderId)) {
         trayProviderId = activeProviderId
       } else if (
         lastTrayProviderIdRef.current &&
@@ -200,6 +219,8 @@ export function useTrayIcon({
       } else {
         trayProviderId = enabledPluginIds[0] ?? null
       }
+
+      const preferredMetric = trayMetricSetting !== "auto" ? trayMetricSetting : undefined
 
       const barsForPreview = getTrayPrimaryBars({
         pluginsMeta: pluginsMetaRef.current,
@@ -217,6 +238,7 @@ export function useTrayIcon({
             maxBars: 1,
             displayMode: displayModeRef.current,
             pluginId: trayProviderId,
+            preferredMetric,
           })
         : []
 

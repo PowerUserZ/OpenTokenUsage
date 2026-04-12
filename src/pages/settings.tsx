@@ -203,6 +203,10 @@ interface SettingsPageProps {
   onResetTimerDisplayModeChange: (value: ResetTimerDisplayMode) => void;
   menubarIconStyle: MenubarIconStyle;
   onMenubarIconStyleChange: (value: MenubarIconStyle) => void;
+  trayProvider: string;
+  onTrayProviderChange: (value: string) => void;
+  trayMetric: string;
+  onTrayMetricChange: (value: string) => void;
   traySettingsPreview: TraySettingsPreview;
   globalShortcut: GlobalShortcut;
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
@@ -224,6 +228,10 @@ export function SettingsPage({
   onResetTimerDisplayModeChange,
   menubarIconStyle,
   onMenubarIconStyleChange,
+  trayProvider,
+  onTrayProviderChange,
+  trayMetric,
+  onTrayMetricChange,
   traySettingsPreview,
   globalShortcut,
   onGlobalShortcutChange,
@@ -376,6 +384,35 @@ export function SettingsPage({
             })}
           </div>
         </div>
+        {menubarIconStyle !== "icon" && (
+          <div className="flex gap-2 mt-2">
+            <div className="flex-1">
+              <label className="text-xs text-muted-foreground mb-1 block">Provider</label>
+              <select
+                value={trayProvider}
+                onChange={(e) => onTrayProviderChange(e.target.value)}
+                className="w-full h-8 rounded-md border bg-background px-2 text-sm"
+              >
+                <option value="auto">Auto</option>
+                {plugins.filter((p) => p.enabled).map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="text-xs text-muted-foreground mb-1 block">Metric</label>
+              <select
+                value={trayMetric}
+                onChange={(e) => onTrayMetricChange(e.target.value)}
+                className="w-full h-8 rounded-md border bg-background px-2 text-sm"
+              >
+                <option value="auto">Auto</option>
+                <option value="Session">Session</option>
+                <option value="Weekly">Weekly</option>
+              </select>
+            </div>
+          </div>
+        )}
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">App Theme</h3>

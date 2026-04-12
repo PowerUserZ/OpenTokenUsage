@@ -30,6 +30,7 @@ export function getTrayPrimaryBars(args: {
   maxBars?: number
   displayMode?: DisplayMode
   pluginId?: string
+  preferredMetric?: string
 }): TrayPrimaryBar[] {
   const {
     pluginsMeta,
@@ -38,6 +39,7 @@ export function getTrayPrimaryBars(args: {
     maxBars = 4,
     displayMode = DEFAULT_DISPLAY_MODE,
     pluginId,
+    preferredMetric,
   } = args
   if (!pluginSettings) return []
 
@@ -61,10 +63,15 @@ export function getTrayPrimaryBars(args: {
 
     let fraction: number | undefined
     if (data) {
-      // Find first candidate that exists in runtime data
-      const primaryLabel = meta.primaryCandidates.find((label) =>
-        data.lines.some((line) => isProgressLine(line) && line.label === label)
+      // If a preferred metric is set and exists, use it; otherwise auto-select
+      const hasPreferred = preferredMetric && data.lines.some(
+        (line) => isProgressLine(line) && line.label === preferredMetric
       )
+      const primaryLabel = hasPreferred
+        ? preferredMetric
+        : meta.primaryCandidates.find((label) =>
+            data.lines.some((line) => isProgressLine(line) && line.label === label)
+          )
       if (primaryLabel) {
         const primaryLine = data.lines.find(
           (line): line is ProgressLine =>

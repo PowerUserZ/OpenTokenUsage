@@ -20,6 +20,9 @@ export type ResetTimerDisplayMode = "relative" | "absolute";
 
 export type MenubarIconStyle = "icon" | "percent" | "bars";
 
+export type TrayProvider = "auto" | string;
+export type TrayMetric = "auto" | string;
+
 export type GlobalShortcut = string | null;
 
 const SETTINGS_STORE_PATH = "settings.json";
@@ -31,6 +34,8 @@ const RESET_TIMER_DISPLAY_MODE_KEY = "resetTimerDisplayMode";
 const MENUBAR_ICON_STYLE_KEY = "menubarIconStyle";
 const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
+const TRAY_PROVIDER_KEY = "trayProvider";
+const TRAY_METRIC_KEY = "trayMetric";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
 
@@ -39,6 +44,8 @@ export const DEFAULT_THEME_MODE: ThemeMode = "dark";
 export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
 export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative";
 export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "icon";
+export const DEFAULT_TRAY_PROVIDER: TrayProvider = "auto";
+export const DEFAULT_TRAY_METRIC: TrayMetric = "auto";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = true;
 
@@ -245,6 +252,26 @@ export async function loadMenubarIconStyle(): Promise<MenubarIconStyle> {
 
 export async function saveMenubarIconStyle(style: MenubarIconStyle): Promise<void> {
   await store.set(MENUBAR_ICON_STYLE_KEY, style);
+  await store.save();
+}
+
+export async function loadTrayProvider(): Promise<TrayProvider> {
+  const stored = await store.get<unknown>(TRAY_PROVIDER_KEY);
+  return typeof stored === "string" && stored.length > 0 ? stored : DEFAULT_TRAY_PROVIDER;
+}
+
+export async function saveTrayProvider(value: TrayProvider): Promise<void> {
+  await store.set(TRAY_PROVIDER_KEY, value);
+  await store.save();
+}
+
+export async function loadTrayMetric(): Promise<TrayMetric> {
+  const stored = await store.get<unknown>(TRAY_METRIC_KEY);
+  return typeof stored === "string" && stored.length > 0 ? stored : DEFAULT_TRAY_METRIC;
+}
+
+export async function saveTrayMetric(value: TrayMetric): Promise<void> {
+  await store.set(TRAY_METRIC_KEY, value);
   await store.save();
 }
 

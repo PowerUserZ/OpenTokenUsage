@@ -5,10 +5,14 @@ import {
   saveMenubarIconStyle,
   saveResetTimerDisplayMode,
   saveThemeMode,
+  saveTrayMetric,
+  saveTrayProvider,
   type DisplayMode,
   type MenubarIconStyle,
   type ResetTimerDisplayMode,
   type ThemeMode,
+  type TrayMetric,
+  type TrayProvider,
 } from "@/lib/settings"
 
 type ScheduleTrayIconUpdate = (reason: "probe" | "settings" | "init", delayMs?: number) => void
@@ -19,6 +23,8 @@ type UseSettingsDisplayActionsArgs = {
   resetTimerDisplayMode: ResetTimerDisplayMode
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setTrayProvider: (value: TrayProvider) => void
+  setTrayMetric: (value: TrayMetric) => void
   scheduleTrayIconUpdate: ScheduleTrayIconUpdate
 }
 
@@ -28,6 +34,8 @@ export function useSettingsDisplayActions({
   resetTimerDisplayMode,
   setResetTimerDisplayMode,
   setMenubarIconStyle,
+  setTrayProvider,
+  setTrayMetric,
   scheduleTrayIconUpdate,
 }: UseSettingsDisplayActionsArgs) {
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
@@ -69,11 +77,31 @@ export function useSettingsDisplayActions({
     })
   }, [scheduleTrayIconUpdate, setMenubarIconStyle])
 
+  const handleTrayProviderChange = useCallback((provider: TrayProvider) => {
+    track("setting_changed", { setting: "tray_provider", value: provider })
+    setTrayProvider(provider)
+    scheduleTrayIconUpdate("settings", 0)
+    void saveTrayProvider(provider).catch((error) => {
+      console.error("Failed to save tray provider:", error)
+    })
+  }, [scheduleTrayIconUpdate, setTrayProvider])
+
+  const handleTrayMetricChange = useCallback((metric: TrayMetric) => {
+    track("setting_changed", { setting: "tray_metric", value: metric })
+    setTrayMetric(metric)
+    scheduleTrayIconUpdate("settings", 0)
+    void saveTrayMetric(metric).catch((error) => {
+      console.error("Failed to save tray metric:", error)
+    })
+  }, [scheduleTrayIconUpdate, setTrayMetric])
+
   return {
     handleThemeModeChange,
     handleDisplayModeChange,
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
+    handleTrayProviderChange,
+    handleTrayMetricChange,
   }
 }
