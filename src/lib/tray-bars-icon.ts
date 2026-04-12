@@ -130,19 +130,20 @@ function getSvgLayout(args: {
   const textY = Math.round(sizePx / 2) + 1 + verticalNudgePx
 
   if (style === "percent") {
-    // Just text, no icon — width based on text
-    const textGap = pad
-    const textAreaWidth = Math.max(20, Math.round(sizePx * 1.5), textWidth + pad)
+    // Just text, no icon — use a larger font for better tray visibility
+    const bigFontSize = Math.max(12, Math.round(sizePx * 0.92))
+    const bigTextWidth = hasPercentText ? estimateTextWidthPx(percentText, bigFontSize) : 0
+    const textAreaWidth = Math.max(24, bigTextWidth + pad * 2)
     return {
-      width: textAreaWidth + textGap,
+      width: textAreaWidth,
       height,
       pad,
       gap,
       barsX,
       barsWidth,
-      textX: textGap,
+      textX: Math.round(textAreaWidth / 2),
       textY,
-      fontSize,
+      fontSize: bigFontSize,
     }
   }
 
@@ -272,8 +273,9 @@ export function makeTrayBarsSvg(args: {
   }
 
   if (text) {
+    const textAnchor = style === "percent" ? ' text-anchor="middle"' : ""
     parts.push(
-      `<text x="${layout.textX}" y="${layout.textY}" fill="${TRAY_ICON_COLOR}" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif" font-size="${layout.fontSize}" font-weight="700" dominant-baseline="middle">${escapeXmlText(text)}</text>`
+      `<text x="${layout.textX}" y="${layout.textY}" fill="${TRAY_ICON_COLOR}" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif" font-size="${layout.fontSize}" font-weight="700" dominant-baseline="middle"${textAnchor}>${escapeXmlText(text)}</text>`
     )
   }
 

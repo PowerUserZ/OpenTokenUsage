@@ -312,7 +312,10 @@ export function useTrayIcon({
         trayInitializedRef.current = true
 
         try {
-          trayGaugeIconPathRef.current = await resolveResource("icons/tray-icon.png")
+          const gaugeIconName = navigator.userAgent.includes("Macintosh")
+            ? "icons/tray-icon.png"
+            : "icons/tray-icon-light.png"
+          trayGaugeIconPathRef.current = await resolveResource(gaugeIconName)
         } catch (e) {
           console.error("Failed to resolve tray gauge icon resource:", e)
         }
