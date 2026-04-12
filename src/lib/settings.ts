@@ -43,7 +43,7 @@ const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
-export const DEFAULT_THEME_MODE: ThemeMode = "dark";
+export const DEFAULT_THEME_MODE: ThemeMode = "system";
 export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
 export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative";
 export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "icon";
@@ -95,7 +95,7 @@ const PREFERRED_ORDER = ["claude", "codex", "gemini"];
 
 export const DEFAULT_PLUGIN_SETTINGS: PluginSettings = {
   order: [],
-  disabled: ["gemini"],
+  disabled: [],
 };
 
 export async function loadPluginSettings(): Promise<PluginSettings> {
@@ -138,19 +138,15 @@ export function normalizePluginSettings(
 ): PluginSettings {
   const knownIds = plugins.map((plugin) => plugin.id);
   const knownSet = new Set(knownIds);
+  const hasSavedOrder = settings.order.length > 0;
 
   const order: string[] = [];
   const seen = new Set<string>();
 
-  // If no saved order yet, apply preferred order + alphabetical rest
-  const sourceOrder = settings.order.length > 0
+  // If no saved order yet, seed with preferred IDs and append the rest below.
+  const sourceOrder = hasSavedOrder
     ? settings.order
-    : [
-        ...PREFERRED_ORDER.filter((id) => knownSet.has(id)),
-        ...knownIds
-          .filter((id) => !PREFERRED_ORDER.includes(id))
-          .sort((a, b) => a.localeCompare(b)),
-      ];
+    : PREFERRED_ORDER.filter((id) => knownSet.has(id));
 
   for (const id of sourceOrder) {
     if (!knownSet.has(id) || seen.has(id)) continue;
@@ -158,7 +154,13 @@ export function normalizePluginSettings(
     order.push(id);
   }
   const newlyAdded: string[] = [];
-  for (const id of knownIds) {
+  const tailIds = hasSavedOrder
+    ? knownIds
+    : knownIds
+        .filter((id) => !PREFERRED_ORDER.includes(id))
+        .sort((a, b) => a.localeCompare(b));
+
+  for (const id of tailIds) {
     if (!seen.has(id)) {
       seen.add(id);
       order.push(id);
@@ -167,7 +169,8 @@ export function normalizePluginSettings(
   }
 
   const disabled = settings.disabled.filter((id) => knownSet.has(id));
-  for (const id of newlyAdded) {
+  const defaultDisabledIds = hasSavedOrder ? newlyAdded : order;
+  for (const id of defaultDisabledIds) {
     if (!DEFAULT_ENABLED_PLUGINS.has(id) && !disabled.includes(id)) {
       disabled.push(id);
     }
@@ -318,7 +321,7 @@ export async function migrateLegacyTraySettings(): Promise<void> {
     if (legacyTrayStyle === "bars") {
       await store.set(MENUBAR_ICON_STYLE_KEY, "bars");
     } else if (legacyTrayStyle === "circle") {
-      await store.set(MENUBAR_ICON_STYLE_KEY, "donut");
+      await store.set(MENUBAR_ICON_STYLE_KEY, "percent");
     }
   }
 

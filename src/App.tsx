@@ -116,6 +116,7 @@ function App() {
     trayProvider,
     trayMetric,
     trayPercentColor,
+    themeMode,
     activeView,
   })
 

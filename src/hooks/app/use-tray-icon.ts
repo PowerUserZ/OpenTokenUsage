@@ -20,6 +20,7 @@ type UseTrayIconArgs = {
   trayProvider: string
   trayMetric: string
   trayPercentColor: string
+  themeMode: string
   activeView: string
 }
 
@@ -61,6 +62,7 @@ export function useTrayIcon({
   trayProvider,
   trayMetric,
   trayPercentColor,
+  themeMode,
   activeView,
 }: UseTrayIconArgs) {
   const trayRef = useRef<TrayIcon | null>(null)
@@ -81,6 +83,7 @@ export function useTrayIcon({
   const trayProviderRef = useRef(trayProvider)
   const trayMetricRef = useRef(trayMetric)
   const trayPercentColorRef = useRef(trayPercentColor)
+  const themeModeRef = useRef(themeMode)
   const activeViewRef = useRef(activeView)
   const lastTrayProviderIdRef = useRef<string | null>(null)
 
@@ -115,6 +118,10 @@ export function useTrayIcon({
   useEffect(() => {
     trayPercentColorRef.current = trayPercentColor
   }, [trayPercentColor])
+
+  useEffect(() => {
+    themeModeRef.current = themeMode
+  }, [themeMode])
 
   useEffect(() => {
     activeViewRef.current = activeView
@@ -204,6 +211,12 @@ export function useTrayIcon({
         return
       }
 
+      // Compute tray icon color based on theme
+      const currentTheme = themeModeRef.current
+      const isDarkTheme = currentTheme === "dark" ||
+        (currentTheme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
+      const trayIconColor = isDarkTheme ? "white" : "black"
+
       const style = menubarIconStyleRef.current
       const sizePx = getTrayIconSizePx(window.devicePixelRatio)
       const nextActiveView = activeViewRef.current
@@ -275,7 +288,13 @@ export function useTrayIcon({
       const updateTooltip = () => setTrayTooltip(tooltip)
 
       if (style === "icon") {
-        restoreGaugeIcon()
+        // Use theme-appropriate gauge icon
+        const gaugeName = isDarkTheme ? "icons/tray-icon-light.png" : "icons/tray-icon.png"
+        resolveResource(gaugeName).then(async (path) => {
+          await tray.setIcon(path)
+          await tray.setIconAsTemplate(true)
+        }).catch(() => restoreGaugeIcon())
+        finalizeUpdate()
         return
       }
 
@@ -284,6 +303,7 @@ export function useTrayIcon({
           bars: barsForPreview,
           sizePx,
           style: "bars",
+          iconColor: trayIconColor,
         })
           .then(async (img) => {
             await tray.setIcon(img)
@@ -313,6 +333,7 @@ export function useTrayIcon({
         sizePx,
         style: "percent",
         percentText: percentNumber,
+        iconColor: trayIconColor,
         textColor: trayPercentColorRef.current,
       })
         .then(async (img) => {

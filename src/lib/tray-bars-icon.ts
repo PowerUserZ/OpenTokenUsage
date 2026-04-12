@@ -2,7 +2,7 @@ import { Image } from "@tauri-apps/api/image"
 import type { MenubarIconStyle } from "@/lib/settings"
 import type { TrayPrimaryBar } from "@/lib/tray-primary-progress"
 
-const TRAY_ICON_COLOR = navigator.userAgent.includes("Macintosh") ? "black" : "white"
+const DEFAULT_TRAY_ICON_COLOR = "white"
 const BARS_TRACK_OPACITY = 0.16
 const BARS_REMAINDER_OPACITY = 0.24
 const BARS_FILL_OPACITY = 1
@@ -184,9 +184,10 @@ export function makeTrayBarsSvg(args: {
   percentText?: string
   providerIconUrl?: string
   textColor?: string
+  iconColor?: string
 }): string {
-  const { bars, sizePx, style = "bars", percentText, textColor } = args
-  const iconColor = (style === "percent" && textColor) ? textColor : TRAY_ICON_COLOR
+  const { bars, sizePx, style = "bars", percentText, textColor, iconColor: baseColor = DEFAULT_TRAY_ICON_COLOR } = args
+  const iconColor = (style === "percent" && textColor) ? textColor : baseColor
   const barsForStyle = style === "bars" ? bars : bars.slice(0, 1)
   // Intentionally render a single empty track when bars mode has no data yet
   // so the tray icon keeps a stable shape during loading/initialization.
@@ -232,7 +233,7 @@ export function makeTrayBarsSvg(args: {
       const x = layout.barsX
 
       parts.push(
-        `<rect x="${x}" y="${y}" width="${trackW}" height="${trackH}" rx="${rx}" fill="${TRAY_ICON_COLOR}" opacity="${trackOpacity}" />`
+        `<rect x="${x}" y="${y}" width="${trackW}" height="${trackH}" rx="${rx}" fill="${iconColor}" opacity="${trackOpacity}" />`
       )
 
       const fraction = bar?.fraction
@@ -242,7 +243,7 @@ export function makeTrayBarsSvg(args: {
           const movingEdgeRadius = Math.max(0, Math.floor(rx * 0.35))
           if (fillW >= trackW) {
             parts.push(
-              `<rect x="${x}" y="${y}" width="${fillW}" height="${trackH}" rx="${rx}" fill="${TRAY_ICON_COLOR}" opacity="${fillOpacity}" />`
+              `<rect x="${x}" y="${y}" width="${fillW}" height="${trackH}" rx="${rx}" fill="${iconColor}" opacity="${fillOpacity}" />`
             )
           } else {
             const fillPath = makeRoundedBarPath({
@@ -253,7 +254,7 @@ export function makeTrayBarsSvg(args: {
               leftRadius: rx,
               rightRadius: movingEdgeRadius,
             })
-            parts.push(`<path d="${fillPath}" fill="${TRAY_ICON_COLOR}" opacity="${fillOpacity}" />`)
+            parts.push(`<path d="${fillPath}" fill="${iconColor}" opacity="${fillOpacity}" />`)
           }
         }
 
@@ -267,7 +268,7 @@ export function makeTrayBarsSvg(args: {
             leftRadius: Math.max(0, Math.floor(rx * 0.2)),
             rightRadius: rx,
           })
-          parts.push(`<path d="${remainderPath}" fill="${TRAY_ICON_COLOR}" opacity="${remainderOpacity}" />`)
+          parts.push(`<path d="${remainderPath}" fill="${iconColor}" opacity="${remainderOpacity}" />`)
         }
       }
     }
@@ -324,8 +325,9 @@ export async function renderTrayBarsIcon(args: {
   percentText?: string
   providerIconUrl?: string
   textColor?: string
+  iconColor?: string
 }): Promise<Image> {
-  const { bars, sizePx, style = "bars", percentText, textColor } = args
+  const { bars, sizePx, style = "bars", percentText, textColor, iconColor } = args
   const text = normalizePercentText(percentText)
   const svg = makeTrayBarsSvg({
     bars,
@@ -333,6 +335,7 @@ export async function renderTrayBarsIcon(args: {
     style,
     percentText: text,
     textColor,
+    iconColor,
   })
   const layout = getSvgLayout({
     sizePx,
