@@ -519,6 +519,51 @@ fn nspanel_plugin() -> impl tauri::plugin::Plugin<tauri::Wry> {
     tauri::plugin::Builder::<tauri::Wry>::new("nspanel-noop").build()
 }
 
+/// On Windows 11, newly added tray icons go into the overflow area by default.
+/// This function searches the registry for our icon entry and sets IsPromoted=1
+/// so it appears in the visible part of the taskbar (next to the clock).
+/// Only promotes once — if the user later hides it, Windows remembers that choice.
+#[cfg(target_os = "windows")]
+fn promote_tray_icon(exe_path: &str) {
+    let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
+    let base = match hkcu.open_subkey("Control Panel\\NotifyIconSettings") {
+        Ok(k) => k,
+        Err(_) => return,
+    };
+
+    let exe_lower = exe_path.to_lowercase();
+
+    for subkey_name in base.enum_keys().filter_map(|r| r.ok()) {
+        let subkey = match base.open_subkey_with_flags(
+            &subkey_name,
+            winreg::enums::KEY_READ | winreg::enums::KEY_WRITE,
+        ) {
+            Ok(k) => k,
+            Err(_) => continue,
+        };
+
+        let path: String = match subkey.get_value("ExecutablePath") {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+
+        if !path.to_lowercase().contains(&exe_lower)
+            && !exe_lower.contains(&path.to_lowercase())
+        {
+            continue;
+        }
+
+        // Found our icon entry — check if already promoted
+        let promoted: u32 = subkey.get_value("IsPromoted").unwrap_or(0);
+        if promoted == 0 {
+            let _ = subkey.set_value("IsPromoted", &1u32);
+            log::info!("Tray icon promoted to visible area");
+        }
+        return;
+    }
+    log::debug!("Tray icon registry entry not found yet (first launch)");
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
@@ -614,6 +659,19 @@ pub fn run() {
             local_http_api::start_server();
 
             tray::create(app.handle())?;
+
+            // On Windows, try to promote the tray icon to the visible area
+            // (not hidden in the overflow) on first launch.
+            #[cfg(target_os = "windows")]
+            {
+                let exe = std::env::current_exe().unwrap_or_default();
+                let exe_str = exe.to_string_lossy().to_string();
+                std::thread::spawn(move || {
+                    // Give Explorer a moment to register the icon
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    promote_tray_icon(&exe_str);
+                });
+            }
 
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
