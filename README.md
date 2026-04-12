@@ -8,7 +8,7 @@ See your usage at a glance from your system tray. No digging through dashboards.
 
 ## Download
 
-[**Download the latest release**](https://github.com/PowerUserZ/OpenTokenUsage/releases/latest) (Windows & macOS)
+[**Download the latest release**](https://github.com/PowerUserZ/OpenTokenUsage/releases/latest) (Windows)
 
 The app auto-updates. Install once and you're set.
 
