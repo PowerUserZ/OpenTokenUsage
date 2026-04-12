@@ -54,43 +54,7 @@ function getPreviewBarLayout(fraction: number): { fillPercent: number; remainder
   };
 }
 
-function ProviderIconMask({
-  iconUrl,
-  isActive,
-  sizePx,
-}: {
-  iconUrl?: string;
-  isActive: boolean;
-  sizePx: number;
-}) {
-  const colorClass = isActive ? "bg-primary-foreground" : "bg-foreground";
-  if (iconUrl) {
-    return (
-      <div
-        aria-hidden
-        className={cn("shrink-0", colorClass)}
-        style={{
-          width: `${sizePx}px`,
-          height: `${sizePx}px`,
-          WebkitMaskImage: `url(${iconUrl})`,
-          WebkitMaskSize: "contain",
-          WebkitMaskRepeat: "no-repeat",
-          WebkitMaskPosition: "center",
-          maskImage: `url(${iconUrl})`,
-          maskSize: "contain",
-          maskRepeat: "no-repeat",
-          maskPosition: "center",
-        }}
-      />
-    );
-  }
-  const textClass = isActive ? "text-primary-foreground" : "text-foreground";
-  return (
-    <svg aria-hidden viewBox="0 0 26 26" className={cn("shrink-0", textClass)} style={{ width: `${sizePx}px`, height: `${sizePx}px` }}>
-      <circle cx="13" cy="13" r="9" fill="none" stroke="currentColor" strokeWidth="3.5" opacity={0.3} />
-    </svg>
-  );
-}
+
 
 function MenubarIconStylePreview({
   style,
@@ -103,17 +67,12 @@ function MenubarIconStylePreview({
 }) {
   const textClass = isActive ? "text-primary-foreground" : "text-foreground";
 
-  if (style === "provider") {
+  if (style === "icon") {
     return (
-      <div className="inline-flex items-center gap-0.5">
-        <ProviderIconMask
-          iconUrl={traySettingsPreview.providerIconUrl}
-          isActive={isActive}
-          sizePx={TRAY_PREVIEW_SIZE_PX}
-        />
-        <span className={cn("text-[12px] font-semibold tabular-nums leading-none", textClass)}>
-          {traySettingsPreview.providerPercentText}
-        </span>
+      <div className="inline-flex items-center justify-center">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={cn("shrink-0", textClass)} style={{ width: `${TRAY_PREVIEW_SIZE_PX}px`, height: `${TRAY_PREVIEW_SIZE_PX}px` }}>
+          <path d="M12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2ZM12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4ZM15.8329 7.33748C16.0697 7.17128 16.3916 7.19926 16.5962 7.40381C16.8002 7.60784 16.8267 7.92955 16.6587 8.16418C14.479 11.2095 13.2796 12.8417 13.0607 13.0607C12.4749 13.6464 11.5251 13.6464 10.9393 13.0607C10.3536 12.4749 10.3536 11.5251 10.9393 10.9393C11.3126 10.5661 12.9438 9.36549 15.8329 7.33748Z" />
+        </svg>
       </div>
     );
   }
@@ -159,33 +118,12 @@ function MenubarIconStylePreview({
     );
   }
 
-  if (style === "donut") {
-    const fraction = traySettingsPreview.providerBars[0]?.fraction ?? 0;
-    const clamped = Math.max(0, Math.min(1, fraction));
+  if (style === "percent") {
     return (
-      <div className="inline-flex items-center gap-1">
-        <ProviderIconMask
-          iconUrl={traySettingsPreview.providerIconUrl}
-          isActive={isActive}
-          sizePx={TRAY_PREVIEW_SIZE_PX}
-        />
-        <svg aria-hidden viewBox="0 0 26 26" className={cn("shrink-0", textClass)} style={{ width: `${TRAY_PREVIEW_SIZE_PX}px`, height: `${TRAY_PREVIEW_SIZE_PX}px` }}>
-          <circle
-            cx="13" cy="13" r="9"
-            fill="none" stroke="currentColor" strokeWidth="4"
-            opacity={isActive ? 0.2 : 0.15}
-          />
-          {clamped > 0 && (
-            <circle
-              cx="13" cy="13" r="9"
-              fill="none" stroke="currentColor" strokeWidth="4"
-              strokeLinecap="butt"
-              pathLength="100"
-              strokeDasharray={`${Math.round(clamped * 100)} 100`}
-              transform="rotate(-90 13 13)"
-            />
-          )}
-        </svg>
+      <div className="inline-flex items-center justify-center">
+        <span className={cn("text-[13px] font-bold tabular-nums leading-none", textClass)}>
+          {traySettingsPreview.providerPercentText || "0%"}
+        </span>
       </div>
     );
   }

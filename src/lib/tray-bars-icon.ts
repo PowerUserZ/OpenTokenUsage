@@ -3,8 +3,6 @@ import type { MenubarIconStyle } from "@/lib/settings"
 import type { TrayPrimaryBar } from "@/lib/tray-primary-progress"
 
 const TRAY_ICON_COLOR = navigator.userAgent.includes("Macintosh") ? "black" : "white"
-const PROVIDER_ICON_SHRINK_PX = 1
-const PROVIDER_ICON_VERTICAL_NUDGE_PX = 0
 const BARS_TRACK_OPACITY = 0.16
 const BARS_REMAINDER_OPACITY = 0.24
 const BARS_FILL_OPACITY = 1
@@ -131,16 +129,18 @@ function getSvgLayout(args: {
   // Optical correction + global nudge down to align with the tray slot center.
   const textY = Math.round(sizePx / 2) + 1 + verticalNudgePx
 
-  if (style === "donut") {
-    const donutGap = Math.max(1, Math.round(sizePx * 0.06))
+  if (style === "percent") {
+    // Just text, no icon — width based on text
+    const textGap = pad
+    const textAreaWidth = Math.max(20, Math.round(sizePx * 1.5), textWidth + pad)
     return {
-      width: sizePx + donutGap + sizePx,
+      width: textAreaWidth + textGap,
       height,
       pad,
       gap,
       barsX,
       barsWidth,
-      textX: 0,
+      textX: textGap,
       textY,
       fontSize,
     }
@@ -184,7 +184,7 @@ export function makeTrayBarsSvg(args: {
   percentText?: string
   providerIconUrl?: string
 }): string {
-  const { bars, sizePx, style = "provider", percentText, providerIconUrl } = args
+  const { bars, sizePx, style = "bars", percentText } = args
   const barsForStyle = style === "bars" ? bars : bars.slice(0, 1)
   // Intentionally render a single empty track when bars mode has no data yet
   // so the tray icon keeps a stable shape during loading/initialization.
@@ -205,69 +205,8 @@ export function makeTrayBarsSvg(args: {
     `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">`
   )
 
-  if (style === "provider") {
-    const hasText = typeof text === "string" && text.length > 0
-    const iconSize = Math.max(6, Math.round(sizePx - 2 * layout.pad * 0.5) - (hasText ? PROVIDER_ICON_SHRINK_PX : 0))
-    const x = layout.barsX
-    const y = Math.round((height - iconSize) / 2) + (hasText ? PROVIDER_ICON_VERTICAL_NUDGE_PX : 0)
-    const href = typeof providerIconUrl === "string" ? providerIconUrl.trim() : ""
-
-    if (href.length > 0) {
-      parts.push(
-        `<image x="${x}" y="${y}" width="${iconSize}" height="${iconSize}" href="${escapeXmlText(href)}" preserveAspectRatio="xMidYMid meet" />`
-      )
-    } else {
-      const cx = x + iconSize / 2
-      const cy = y + iconSize / 2
-      const radius = Math.max(2, iconSize / 2 - 1.5)
-      const strokeW = Math.max(1.5, Math.round(iconSize * 0.14))
-      parts.push(
-        `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${TRAY_ICON_COLOR}" stroke-width="${strokeW}" opacity="1" shape-rendering="geometricPrecision" />`
-      )
-    }
-  } else if (style === "donut") {
-    const iconSize = Math.max(6, Math.round(sizePx - 2 * layout.pad * 0.5))
-    const iconX = layout.barsX
-    const iconY = Math.round((height - iconSize) / 2)
-    const href = typeof providerIconUrl === "string" ? providerIconUrl.trim() : ""
-
-    if (href.length > 0) {
-      parts.push(
-        `<image x="${iconX}" y="${iconY}" width="${iconSize}" height="${iconSize}" href="${escapeXmlText(href)}" preserveAspectRatio="xMidYMid meet" />`
-      )
-    } else {
-      const fcx = iconX + iconSize / 2
-      const fcy = iconY + iconSize / 2
-      const fallbackR = Math.max(2, iconSize / 2 - 1.5)
-      const fallbackSW = Math.max(1.5, Math.round(iconSize * 0.14))
-      parts.push(
-        `<circle cx="${fcx}" cy="${fcy}" r="${fallbackR}" fill="none" stroke="${TRAY_ICON_COLOR}" stroke-width="${fallbackSW}" opacity="1" shape-rendering="geometricPrecision" />`
-      )
-    }
-
-    const donutGap = Math.max(1, Math.round(sizePx * 0.06))
-    const donutAreaX = sizePx + donutGap
-    const chartSize = Math.max(6, sizePx - 2 * layout.pad)
-    const cx = donutAreaX + layout.pad + chartSize / 2
-    const cy = height / 2 + 1
-    const strokeW = Math.max(2, Math.round(chartSize * 0.16))
-    const radius = Math.max(1, Math.floor(chartSize / 2 - strokeW / 2) + 0.5)
-
-    parts.push(
-      `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${TRAY_ICON_COLOR}" stroke-width="${strokeW}" opacity="${BARS_TRACK_OPACITY}" shape-rendering="geometricPrecision" />`
-    )
-
-    const fraction = barsForStyle[0]?.fraction
-    if (typeof fraction === "number" && Number.isFinite(fraction) && fraction >= 0) {
-      const clamped = Math.max(0, Math.min(1, fraction))
-      if (clamped > 0) {
-        const circumference = 2 * Math.PI * radius
-        const dash = circumference * clamped
-        parts.push(
-          `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${TRAY_ICON_COLOR}" stroke-width="${strokeW}" stroke-linecap="butt" stroke-dasharray="${dash} ${circumference}" transform="rotate(-90 ${cx} ${cy})" opacity="${BARS_FILL_OPACITY}" shape-rendering="geometricPrecision" />`
-        )
-      }
-    }
+  if (style === "percent") {
+    // Just percentage text, no icon — handled by the text section below
   } else {
     // style === "bars"
     const trackOpacity = BARS_TRACK_OPACITY
@@ -382,14 +321,13 @@ export async function renderTrayBarsIcon(args: {
   percentText?: string
   providerIconUrl?: string
 }): Promise<Image> {
-  const { bars, sizePx, style = "provider", percentText, providerIconUrl } = args
+  const { bars, sizePx, style = "bars", percentText } = args
   const text = normalizePercentText(percentText)
   const svg = makeTrayBarsSvg({
     bars,
     sizePx,
     style,
     percentText: text,
-    providerIconUrl,
   })
   const layout = getSvgLayout({
     sizePx,

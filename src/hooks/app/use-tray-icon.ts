@@ -132,7 +132,6 @@ export function useTrayIcon({
       const maybeSetTitle = (tray as TrayIcon & { setTitle?: (value: string) => Promise<void> }).setTitle
       const setTitleFn =
         typeof maybeSetTitle === "function" ? (value: string) => maybeSetTitle.call(tray, value) : null
-      const supportsNativeTrayTitle = setTitleFn !== null
       const setTrayTitle = (title: string) => {
         if (setTitleFn) {
           return setTitleFn(title)
@@ -246,6 +245,11 @@ export function useTrayIcon({
       const tooltip = formatTrayTooltip(tooltipBars, pluginsMetaRef.current)
       const updateTooltip = () => setTrayTooltip(tooltip)
 
+      if (style === "icon") {
+        restoreGaugeIcon()
+        return
+      }
+
       if (style === "bars") {
         renderTrayBarsIcon({
           bars: barsForPreview,
@@ -273,39 +277,17 @@ export function useTrayIcon({
       }
       lastTrayProviderIdRef.current = trayProviderId
 
-      if (style === "donut") {
-        renderTrayBarsIcon({
-          bars: providerBars,
-          sizePx,
-          style: "donut",
-          providerIconUrl,
-        })
-          .then(async (img) => {
-            await tray.setIcon(img)
-            await tray.setIconAsTemplate(true)
-            await setTrayTitle("")
-            await updateTooltip()
-          })
-          .catch((e) => {
-            console.error("Failed to update tray icon:", e)
-          })
-          .finally(() => {
-            finalizeUpdate()
-          })
-        return
-      }
-
+      // "percent" style: just percentage text, no icon
       renderTrayBarsIcon({
         bars: providerBars,
         sizePx,
-        style: "provider",
-        percentText: supportsNativeTrayTitle ? undefined : providerPercentText,
-        providerIconUrl,
+        style: "percent",
+        percentText: providerPercentText,
       })
         .then(async (img) => {
           await tray.setIcon(img)
           await tray.setIconAsTemplate(true)
-          await setTrayTitle(providerPercentText)
+          await setTrayTitle("")
           await updateTooltip()
         })
         .catch((e) => {

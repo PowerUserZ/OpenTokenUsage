@@ -18,7 +18,7 @@ export type DisplayMode = "used" | "left";
 
 export type ResetTimerDisplayMode = "relative" | "absolute";
 
-export type MenubarIconStyle = "provider" | "bars" | "donut";
+export type MenubarIconStyle = "icon" | "percent" | "bars";
 
 export type GlobalShortcut = string | null;
 
@@ -38,7 +38,7 @@ export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "dark";
 export const DEFAULT_DISPLAY_MODE: DisplayMode = "used";
 export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative";
-export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "provider";
+export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "icon";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = true;
 
@@ -46,11 +46,11 @@ const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
-const MENUBAR_ICON_STYLES: MenubarIconStyle[] = ["provider", "donut", "bars"];
+const MENUBAR_ICON_STYLES: MenubarIconStyle[] = ["icon", "percent", "bars"];
 
 export const MENUBAR_ICON_STYLE_OPTIONS: { value: MenubarIconStyle; label: string }[] = [
-  { value: "provider", label: "Plugin" },
-  { value: "donut", label: "Donut" },
+  { value: "icon", label: "Icon" },
+  { value: "percent", label: "Percent" },
   { value: "bars", label: "Bars" },
 ];
 
@@ -236,6 +236,9 @@ function isMenubarIconStyle(value: unknown): value is MenubarIconStyle {
 
 export async function loadMenubarIconStyle(): Promise<MenubarIconStyle> {
   const stored = await store.get<unknown>(MENUBAR_ICON_STYLE_KEY);
+  // Migrate legacy values
+  if (stored === "provider") return "icon";
+  if (stored === "donut") return "percent";
   if (isMenubarIconStyle(stored)) return stored;
   return DEFAULT_MENUBAR_ICON_STYLE;
 }
