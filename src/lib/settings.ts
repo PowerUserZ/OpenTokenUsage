@@ -36,7 +36,7 @@ const START_ON_LOGIN_KEY = "startOnLogin";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "dark";
-export const DEFAULT_DISPLAY_MODE: DisplayMode = "used";
+export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
 export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative";
 export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "icon";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
