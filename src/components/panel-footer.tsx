@@ -4,8 +4,7 @@ import { Button } from "@/components/ui/button";
 import { AboutDialog } from "@/components/about-dialog";
 import type { UpdateStatus } from "@/hooks/use-app-update";
 import { useNowTicker } from "@/hooks/use-now-ticker";
-
-const RELEASES_URL = "https://github.com/PowerUserZ/OpenTokenUsage/releases";
+import { useVersionCheck } from "@/hooks/use-version-check";
 
 interface PanelFooterProps {
   version: string;
@@ -23,12 +22,27 @@ function VersionDisplay({
   updateStatus,
   onUpdateInstall,
   onVersionClick,
+  versionCheck,
 }: {
   version: string;
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
   onVersionClick: () => void;
+  versionCheck: { hasUpdate: boolean; latestVersion: string | null; releaseUrl: string | null };
 }) {
+  // Show update available banner regardless of updater status
+  if (versionCheck.hasUpdate && versionCheck.releaseUrl) {
+    return (
+      <button
+        type="button"
+        onClick={() => openUrl(versionCheck.releaseUrl!).catch(console.error)}
+        className="text-xs text-green-500 hover:text-green-400 font-medium transition-colors cursor-pointer"
+        title={`Download v${versionCheck.latestVersion}`}
+      >
+        v{versionCheck.latestVersion} available
+      </button>
+    );
+  }
   switch (updateStatus.status) {
     case "downloading":
       return (
@@ -57,7 +71,7 @@ function VersionDisplay({
       return (
         <button
           type="button"
-          onClick={() => openUrl(RELEASES_URL).catch(console.error)}
+          onClick={() => openUrl("https://github.com/PowerUserZ/OpenTokenUsage/releases").catch(console.error)}
           className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           title="Open releases page"
         >
@@ -87,6 +101,8 @@ export function PanelFooter({
   onShowAbout,
   onCloseAbout,
 }: PanelFooterProps) {
+  const versionCheck = useVersionCheck(version);
+
   const now = useNowTicker({
     enabled: Boolean(autoUpdateNextAt),
     resetKey: autoUpdateNextAt,
@@ -111,6 +127,7 @@ export function PanelFooter({
           updateStatus={updateStatus}
           onUpdateInstall={onUpdateInstall}
           onVersionClick={onShowAbout}
+          versionCheck={versionCheck}
         />
         {autoUpdateNextAt !== null && onRefreshAll ? (
           <button
