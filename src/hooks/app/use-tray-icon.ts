@@ -277,12 +277,13 @@ export function useTrayIcon({
       }
       lastTrayProviderIdRef.current = trayProviderId
 
-      // "percent" style: just percentage text, no icon
+      // "percent" style: just number in a square icon (no "%" — doesn't fit)
+      const percentNumber = providerPercentText.replace(/%$/, "")
       renderTrayBarsIcon({
         bars: providerBars,
         sizePx,
         style: "percent",
-        percentText: providerPercentText,
+        percentText: percentNumber,
       })
         .then(async (img) => {
           await tray.setIcon(img)

@@ -122,7 +122,7 @@ function MenubarIconStylePreview({
     return (
       <div className="inline-flex items-center justify-center">
         <span className={cn("text-[13px] font-bold tabular-nums leading-none", textClass)}>
-          {traySettingsPreview.providerPercentText || "0%"}
+          {(traySettingsPreview.providerPercentText || "0%").replace(/%$/, "")}
         </span>
       </div>
     );

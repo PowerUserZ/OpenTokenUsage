@@ -130,18 +130,17 @@ function getSvgLayout(args: {
   const textY = Math.round(sizePx / 2) + 1 + verticalNudgePx
 
   if (style === "percent") {
-    // Just text, no icon — use a larger font for better tray visibility
-    const bigFontSize = Math.max(12, Math.round(sizePx * 0.92))
-    const bigTextWidth = hasPercentText ? estimateTextWidthPx(percentText, bigFontSize) : 0
-    const textAreaWidth = Math.max(24, bigTextWidth + pad * 2)
+    // Square icon with large centered number — Windows squishes non-square
+    // icons into a square tray slot, so we MUST be square.
+    const bigFontSize = Math.max(10, Math.round(sizePx * 0.55))
     return {
-      width: textAreaWidth,
+      width: sizePx,
       height,
-      pad,
-      gap,
+      pad: 0,
+      gap: 0,
       barsX,
       barsWidth,
-      textX: Math.round(textAreaWidth / 2),
+      textX: Math.round(sizePx / 2),
       textY,
       fontSize: bigFontSize,
     }
