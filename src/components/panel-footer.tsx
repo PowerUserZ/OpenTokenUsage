@@ -110,7 +110,7 @@ export function PanelFooter({
     onRefreshAll();
     setRefreshCooldown(true);
     if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
-    cooldownTimerRef.current = setTimeout(() => setRefreshCooldown(false), 60_000);
+    cooldownTimerRef.current = setTimeout(() => setRefreshCooldown(false), 30_000);
   };
 
   const now = useNowTicker({
