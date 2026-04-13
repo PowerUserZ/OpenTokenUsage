@@ -14,13 +14,6 @@ See your usage at a glance from your system tray. No digging through dashboards.
 
 The app checks for new releases in-app and links you to the latest download.
 
-## What's Different in This Fork
-
-- **Windows support.** Full cross-platform: tray icon, drag-to-move, resize, minimize-to-tray, auto-positioning near taskbar.
-- **Themed tray icon.** White icon for dark taskbar, proper dynamic icon rendering on Windows.
-- **No CMD flash.** Subprocess calls use `CREATE_NO_WINDOW` so no console windows pop up.
-- **Auto-promote tray icon.** Icon appears in the visible tray area (next to clock) on first launch.
-
 ## What It Does
 
 OpenTokenUsage lives in your system tray and shows you how much of your AI coding subscriptions you've used. Progress bars, badges, and clear labels. No mental math required.
