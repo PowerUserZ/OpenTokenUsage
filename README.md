@@ -2,9 +2,9 @@
 
 Track all your AI coding subscriptions in one place — now on **Windows** too.
 
-See your usage at a glance from your system tray. No digging through dashboards.
+See your usage at a glance from your system tray. No digging through dashboards. OpenTokenUsage Screenshot
 
-<img width="1143" height="600" alt="OpenTokenUsage Screenshot" src="https://github.com/user-attachments/assets/3e2986a2-2976-490a-87dd-62d5f8d31306" />
+<img width="1160" height="602" alt="OpenTokenUsage Screenshot" src="https://github.com/user-attachments/assets/0181ab9f-cc08-43a6-ac0a-5a05c3a32631" />
 
 > **Fork of [OpenUsage](https://github.com/robinebers/openusage) by Robin Ebers.** This fork adds full Windows support while preserving macOS functionality.
 
