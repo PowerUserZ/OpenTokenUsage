@@ -169,7 +169,7 @@ describe("codex plugin", () => {
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
-    expect(credits.used).toBe(900)
+    expect(credits.value).toBe("100 credits remaining")
   })
 
   it("refreshes keychain auth and writes back to keychain", async () => {
@@ -598,7 +598,7 @@ describe("codex plugin", () => {
     expect(result.lines.find((line) => line.label === "Reviews")).toBeTruthy()
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
-    expect(credits.used).toBe(500)
+    expect(credits.value).toBe("500 credits remaining")
   })
 
   it("omits resetsAt when window lacks reset info", async () => {

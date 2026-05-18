@@ -22,6 +22,12 @@ const state = vi.hoisted(() => ({
   saveResetTimerDisplayModeMock: vi.fn(),
   loadMenubarIconStyleMock: vi.fn(),
   saveMenubarIconStyleMock: vi.fn(),
+  loadTrayProviderMock: vi.fn(),
+  saveTrayProviderMock: vi.fn(),
+  loadTrayMetricMock: vi.fn(),
+  saveTrayMetricMock: vi.fn(),
+  loadTrayPercentColorMock: vi.fn(),
+  saveTrayPercentColorMock: vi.fn(),
   migrateLegacyTraySettingsMock: vi.fn(),
   loadGlobalShortcutMock: vi.fn(),
   saveGlobalShortcutMock: vi.fn(),
@@ -218,6 +224,10 @@ vi.mock("@/hooks/use-probe-events", () => ({
   },
 }))
 
+vi.mock("@/hooks/use-version-check", () => ({
+  useVersionCheck: () => ({ hasUpdate: false, latestVersion: null, releaseUrl: null }),
+}))
+
 vi.mock("@/lib/settings", async () => {
   const actual = await vi.importActual<typeof import("@/lib/settings")>("@/lib/settings")
   return {
@@ -234,6 +244,12 @@ vi.mock("@/lib/settings", async () => {
     saveResetTimerDisplayMode: state.saveResetTimerDisplayModeMock,
     loadMenubarIconStyle: state.loadMenubarIconStyleMock,
     saveMenubarIconStyle: state.saveMenubarIconStyleMock,
+    loadTrayProvider: state.loadTrayProviderMock,
+    saveTrayProvider: state.saveTrayProviderMock,
+    loadTrayMetric: state.loadTrayMetricMock,
+    saveTrayMetric: state.saveTrayMetricMock,
+    loadTrayPercentColor: state.loadTrayPercentColorMock,
+    saveTrayPercentColor: state.saveTrayPercentColorMock,
     migrateLegacyTraySettings: state.migrateLegacyTraySettingsMock,
     loadGlobalShortcut: state.loadGlobalShortcutMock,
     saveGlobalShortcut: state.saveGlobalShortcutMock,
@@ -273,6 +289,12 @@ describe("App", () => {
     state.saveResetTimerDisplayModeMock.mockReset()
     state.loadMenubarIconStyleMock.mockReset()
     state.saveMenubarIconStyleMock.mockReset()
+    state.loadTrayProviderMock.mockReset()
+    state.saveTrayProviderMock.mockReset()
+    state.loadTrayMetricMock.mockReset()
+    state.saveTrayMetricMock.mockReset()
+    state.loadTrayPercentColorMock.mockReset()
+    state.saveTrayPercentColorMock.mockReset()
     state.migrateLegacyTraySettingsMock.mockReset()
     state.loadGlobalShortcutMock.mockReset()
     state.saveGlobalShortcutMock.mockReset()
@@ -309,8 +331,14 @@ describe("App", () => {
     state.saveDisplayModeMock.mockResolvedValue(undefined)
     state.loadResetTimerDisplayModeMock.mockResolvedValue("relative")
     state.saveResetTimerDisplayModeMock.mockResolvedValue(undefined)
-    state.loadMenubarIconStyleMock.mockResolvedValue("provider")
+    state.loadMenubarIconStyleMock.mockResolvedValue("percent")
     state.saveMenubarIconStyleMock.mockResolvedValue(undefined)
+    state.loadTrayProviderMock.mockResolvedValue("auto")
+    state.saveTrayProviderMock.mockResolvedValue(undefined)
+    state.loadTrayMetricMock.mockResolvedValue("auto")
+    state.saveTrayMetricMock.mockResolvedValue(undefined)
+    state.loadTrayPercentColorMock.mockResolvedValue("#ffffff")
+    state.saveTrayPercentColorMock.mockResolvedValue(undefined)
     state.migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     state.loadGlobalShortcutMock.mockResolvedValue(null)
     state.saveGlobalShortcutMock.mockResolvedValue(undefined)
@@ -510,8 +538,9 @@ describe("App", () => {
 
     await waitFor(() => expect(state.renderTrayBarsIconMock).toHaveBeenCalled())
     const firstCall = state.renderTrayBarsIconMock.mock.calls[0]?.[0]
-    expect(firstCall.providerIconUrl).toBe("icon-a")
-    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("--%"))
+    expect(firstCall.style).toBe("percent")
+    expect(firstCall.percentText).toBe("--")
+    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith(""))
   })
 
   it("bars style path passed to renderTrayBarsIcon when loadMenubarIconStyle returns bars", async () => {
@@ -550,8 +579,8 @@ describe("App", () => {
     expect(firstCall.bars.length).toBeGreaterThanOrEqual(2)
   })
 
-  it("donut style path passed to renderTrayBarsIcon and clears tray title", async () => {
-    state.loadMenubarIconStyleMock.mockResolvedValue("donut")
+  it("percent style path passed to renderTrayBarsIcon and clears tray title", async () => {
+    state.loadMenubarIconStyleMock.mockResolvedValue("percent")
     state.invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_plugins") {
         return [
@@ -582,12 +611,11 @@ describe("App", () => {
     const firstCallArgs = state.renderTrayBarsIconMock.mock.calls[0]
     expect(firstCallArgs).toBeDefined()
     const firstCall = firstCallArgs![0]
-    expect(firstCall.style).toBe("donut")
-    expect(firstCall.providerIconUrl).toBe("icon-a")
-    expect(firstCall.percentText).toBeUndefined()
+    expect(firstCall.style).toBe("percent")
+    expect(firstCall.percentText).toBe("--")
+    expect(firstCall.textColor).toBe("#ffffff")
 
     await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith(""))
-    expect(state.traySetTitleMock).not.toHaveBeenCalledWith("--%")
   })
 
   it("renders percent text in tray icon when native title is unavailable", async () => {
@@ -602,7 +630,7 @@ describe("App", () => {
     await waitFor(() => expect(state.renderTrayBarsIconMock).toHaveBeenCalled())
 
     const firstCall = state.renderTrayBarsIconMock.mock.calls[0]?.[0]
-    expect(firstCall.percentText).toBe("--%")
+    expect(firstCall.percentText).toBe("--")
     expect(state.traySetTitleMock).not.toHaveBeenCalled()
   })
 
@@ -651,24 +679,25 @@ describe("App", () => {
 
     await waitFor(() => {
       const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
-      expect(latestCall.providerIconUrl).toBe("icon-b")
+      expect(latestCall.style).toBe("percent")
+      expect(latestCall.percentText).toBe("70")
+      expect(latestCall.bars[0]?.id).toBe("b")
     })
-    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("70%"))
 
     await userEvent.click(screen.getByRole("button", { name: "Home" }))
     await waitFor(() => {
       const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
-      expect(latestCall.providerIconUrl).toBe("icon-b")
+      expect(latestCall.percentText).toBe("70")
+      expect(latestCall.bars[0]?.id).toBe("b")
     })
-    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("70%"))
 
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
     await waitFor(() => {
       const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
-      expect(latestCall.providerIconUrl).toBe("icon-b")
+      expect(latestCall.percentText).toBe("70")
+      expect(latestCall.bars[0]?.id).toBe("b")
     })
-    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("70%"))
   })
 
   it("covers about open/close callbacks", async () => {
@@ -676,12 +705,12 @@ describe("App", () => {
 
     // Open about via version button in footer
     await userEvent.click(await screen.findByRole("button", { name: /OpenTokenUsage/i }))
-    await screen.findByText("Built by")
+    await screen.findByText("Open source on")
 
     // Close about via ESC key
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
     await waitFor(() => {
-      expect(screen.queryByText("Built by")).not.toBeInTheDocument()
+      expect(screen.queryByText("Open source on")).not.toBeInTheDocument()
     })
   })
 
@@ -711,20 +740,20 @@ describe("App", () => {
     })
   })
 
-  it("settings UI persists donut menubar icon style change", async () => {
+  it("settings UI persists percent menubar icon style change", async () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
 
     expect(screen.getByText("Menubar Icon")).toBeVisible()
-    const donutRadio = await screen.findByRole("radio", { name: "Donut" })
-    await userEvent.click(donutRadio)
-    expect(state.saveMenubarIconStyleMock).toHaveBeenCalledWith("donut")
+    const percentRadio = await screen.findByRole("radio", { name: "Percent" })
+    await userEvent.click(percentRadio)
+    expect(state.saveMenubarIconStyleMock).toHaveBeenCalledWith("percent")
 
     await waitFor(() => {
       const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
       expect(latestCall).toBeDefined()
-      expect(latestCall!.style).toBe("donut")
+      expect(latestCall!.style).toBe("percent")
     })
   })
 
@@ -777,12 +806,22 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
+    await screen.findByText("Plugins")
+    state.savePluginSettingsMock.mockClear()
     const checkboxes = await screen.findAllByRole("checkbox")
     const pluginCheckbox = checkboxes[checkboxes.length - 1]
     await userEvent.click(pluginCheckbox)
     expect(state.savePluginSettingsMock).toHaveBeenCalled()
-    await userEvent.click(pluginCheckbox)
-    expect(state.savePluginSettingsMock).toHaveBeenCalledTimes(2)
+    expect(state.savePluginSettingsMock.mock.lastCall?.[0]).toEqual({
+      order: ["a", "b"],
+      disabled: [],
+    })
+    const updatedCheckboxes = await screen.findAllByRole("checkbox")
+    await userEvent.click(updatedCheckboxes[updatedCheckboxes.length - 1])
+    expect(state.savePluginSettingsMock.mock.lastCall?.[0]).toEqual({
+      order: ["a", "b"],
+      disabled: ["b"],
+    })
   })
 
   it("updates auto-update interval in settings", async () => {
@@ -1816,7 +1855,7 @@ describe("App", () => {
 
     await waitFor(() => expect(state.traySetIconMock).toHaveBeenCalledWith({}))
     expect(state.traySetIconAsTemplateMock).toHaveBeenCalledWith(true)
-    expect(state.traySetTitleMock).toHaveBeenCalledWith("--%")
+    expect(state.traySetTitleMock).toHaveBeenCalledWith("")
   })
 
   it("clears pending tray timer on unmount", async () => {

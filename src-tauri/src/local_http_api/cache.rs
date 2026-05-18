@@ -6,7 +6,7 @@ use std::sync::{Mutex, OnceLock};
 
 const CACHE_FILE_NAME: &str = "usage-api-cache.json";
 const SETTINGS_FILE_NAME: &str = "settings.json";
-const DEFAULT_ENABLED_PLUGINS: &[&str] = &["claude", "codex", "cursor"];
+const DEFAULT_ENABLED_PLUGINS: &[&str] = &["claude", "codex"];
 
 // ---------------------------------------------------------------------------
 // Types
@@ -88,6 +88,13 @@ fn save_cache(app_data_dir: &Path, snapshots: &HashMap<String, CachedPluginSnaps
             }
             if let Err(e) = std::fs::rename(&tmp_path, &path) {
                 log::warn!("failed to rename cache file: {}", e);
+                if let Err(write_err) = std::fs::write(&path, json.as_bytes()) {
+                    log::warn!(
+                        "failed to overwrite cache file after rename failure: {}",
+                        write_err
+                    );
+                }
+                let _ = std::fs::remove_file(&tmp_path);
             }
         }
         Err(e) => log::warn!("failed to serialize usage cache: {}", e),
@@ -241,6 +248,32 @@ mod tests {
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded["claude"].provider_id, "claude");
         assert_eq!(loaded["claude"].fetched_at, "2026-03-26T08:15:30Z");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cache_file_overwrites_existing_snapshot() {
+        let dir = std::env::temp_dir().join(format!(
+            "openusage-test-cache-overwrite-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut first = HashMap::new();
+        first.insert("claude".to_string(), make_snapshot("claude", "Claude"));
+        save_cache(&dir, &first);
+
+        let mut second = HashMap::new();
+        second.insert("codex".to_string(), make_snapshot("codex", "Codex"));
+        save_cache(&dir, &second);
+
+        let loaded = load_cache(&dir);
+        assert!(loaded.get("claude").is_none());
+        assert_eq!(loaded["codex"].display_name, "Codex");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

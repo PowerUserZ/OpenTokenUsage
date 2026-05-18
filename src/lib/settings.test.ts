@@ -206,20 +206,20 @@ describe("settings", () => {
 
   it("does not overwrite menubarIconStyle when already set during legacy migration", async () => {
     storeState.set("trayIconStyle", "bars")
-    storeState.set("menubarIconStyle", "provider")
+    storeState.set("menubarIconStyle", "icon")
 
     await migrateLegacyTraySettings()
 
-    expect(storeState.get("menubarIconStyle")).toBe("provider")
+    expect(storeState.get("menubarIconStyle")).toBe("icon")
     expect(storeState.has("trayIconStyle")).toBe(false)
   })
 
-  it("migrates legacy trayIconStyle=circle to menubarIconStyle=donut when new key not set", async () => {
+  it("migrates legacy trayIconStyle=circle to menubarIconStyle=percent when new key not set", async () => {
     storeState.set("trayIconStyle", "circle")
 
     await migrateLegacyTraySettings()
 
-    expect(storeState.get("menubarIconStyle")).toBe("donut")
+    expect(storeState.get("menubarIconStyle")).toBe("percent")
     expect(storeState.has("trayIconStyle")).toBe(false)
   })
 
@@ -246,14 +246,14 @@ describe("settings", () => {
     await expect(loadMenubarIconStyle()).resolves.toBe("bars")
   })
 
-  it("loads stored menubar donut icon style", async () => {
-    storeState.set("menubarIconStyle", "donut")
-    await expect(loadMenubarIconStyle()).resolves.toBe("donut")
+  it("loads stored menubar percent icon style", async () => {
+    storeState.set("menubarIconStyle", "percent")
+    await expect(loadMenubarIconStyle()).resolves.toBe("percent")
   })
 
-  it("saves menubar donut icon style", async () => {
-    await saveMenubarIconStyle("donut")
-    await expect(loadMenubarIconStyle()).resolves.toBe("donut")
+  it("saves menubar percent icon style", async () => {
+    await saveMenubarIconStyle("percent")
+    await expect(loadMenubarIconStyle()).resolves.toBe("percent")
   })
 
   it("falls back to default for invalid menubar icon style", async () => {

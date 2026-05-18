@@ -4,6 +4,8 @@ use tauri::path::BaseDirectory;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
+#[cfg(not(target_os = "macos"))]
+use std::sync::{Mutex, OnceLock};
 
 #[cfg(target_os = "macos")]
 use crate::panel::{get_or_init_panel, position_panel_at_tray_icon};
@@ -239,31 +241,73 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
 /// Position the window above the tray icon, centered horizontally.
 /// The window's bottom edge sits just above the tray icon / taskbar.
 #[cfg(not(target_os = "macos"))]
+fn last_anchor_bottom_slot() -> &'static Mutex<Option<i32>> {
+    static SLOT: OnceLock<Mutex<Option<i32>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn last_anchor_bottom_physical_y() -> Option<i32> {
+    last_anchor_bottom_slot().lock().ok().and_then(|slot| *slot)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_last_anchor_bottom_physical_y(value: i32) {
+    if let Ok(mut slot) = last_anchor_bottom_slot().lock() {
+        *slot = Some(value);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn position_to_physical(position: &tauri::Position, scale: f64) -> (f64, f64) {
+    match position {
+        tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
+        tauri::Position::Logical(p) => (p.x * scale, p.y * scale),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn size_to_physical(size: &tauri::Size, scale: f64) -> (f64, f64) {
+    match size {
+        tauri::Size::Physical(s) => (s.width as f64, s.height as f64),
+        tauri::Size::Logical(s) => (s.width * scale, s.height * scale),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn monitor_contains_physical_point(
+    origin_x: f64,
+    origin_y: f64,
+    width: f64,
+    height: f64,
+    point_x: f64,
+    point_y: f64,
+) -> bool {
+    point_x >= origin_x
+        && point_x < origin_x + width
+        && point_y >= origin_y
+        && point_y < origin_y + height
+}
+
+#[cfg(not(target_os = "macos"))]
 fn position_window_at_tray_icon(
     window: &tauri::WebviewWindow,
     icon_position: tauri::Position,
     icon_size: tauri::Size,
 ) {
     let scale = window.scale_factor().unwrap_or(1.0);
-
-    let (icon_x, icon_y) = match &icon_position {
-        tauri::Position::Physical(p) => (p.x as f64 / scale, p.y as f64 / scale),
-        tauri::Position::Logical(p) => (p.x, p.y),
-    };
-    let (icon_w, _icon_h) = match &icon_size {
-        tauri::Size::Physical(s) => (s.width as f64 / scale, s.height as f64 / scale),
-        tauri::Size::Logical(s) => (s.width, s.height),
-    };
+    let (icon_x, icon_y) = position_to_physical(&icon_position, scale);
+    let (icon_w, _icon_h) = size_to_physical(&icon_size, scale);
 
     let panel_width = window
         .outer_size()
         .ok()
-        .map(|s| s.width as f64 / scale)
+        .map(|s| s.width as f64)
         .unwrap_or(400.0);
     let panel_height = window
         .outer_size()
         .ok()
-        .map(|s| s.height as f64 / scale)
+        .map(|s| s.height as f64)
         .unwrap_or(500.0);
 
     // Center horizontally on the tray icon
@@ -279,12 +323,38 @@ fn position_window_at_tray_icon(
     let work_w;
     let work_h;
 
-    if let Ok(Some(monitor)) = window.primary_monitor() {
+    if let Ok(monitors) = window.available_monitors() {
+        let target_monitor = monitors
+            .into_iter()
+            .find(|monitor| {
+                let origin = monitor.position();
+                let size = monitor.size();
+                monitor_contains_physical_point(
+                    origin.x as f64,
+                    origin.y as f64,
+                    size.width as f64,
+                    size.height as f64,
+                    icon_center_x,
+                    icon_y,
+                )
+            })
+            .or_else(|| window.primary_monitor().ok().flatten());
+
+        if let Some(monitor) = target_monitor {
+            let mon_pos = monitor.position();
+            work_x = mon_pos.x as f64;
+            work_y = mon_pos.y as f64;
+            work_w = monitor.size().width as f64;
+            work_h = monitor.size().height as f64;
+        } else {
+            return;
+        }
+    } else if let Ok(Some(monitor)) = window.primary_monitor() {
         let mon_pos = monitor.position();
-        work_x = mon_pos.x as f64 / scale;
-        work_y = mon_pos.y as f64 / scale;
-        work_w = monitor.size().width as f64 / scale;
-        work_h = monitor.size().height as f64 / scale;
+        work_x = mon_pos.x as f64;
+        work_y = mon_pos.y as f64;
+        work_w = monitor.size().width as f64;
+        work_h = monitor.size().height as f64;
     } else {
         return;
     }
@@ -305,5 +375,9 @@ fn position_window_at_tray_icon(
         y = work_y + work_h - panel_height;
     }
 
-    let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+    set_last_anchor_bottom_physical_y(icon_y.round() as i32);
+    let _ = window.set_position(tauri::PhysicalPosition::new(
+        x.round() as i32,
+        y.round() as i32,
+    ));
 }

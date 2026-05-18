@@ -27,46 +27,56 @@ export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOpti
   const unlisteners = useRef<UnlistenFn[]>([])
   const listenersReadyRef = useRef<Promise<void> | null>(null)
   const listenersReadyResolveRef = useRef<(() => void) | null>(null)
+  const listenersReadyErrorRef = useRef<Error | null>(null)
 
   useEffect(() => {
     let cancelled = false
 
     // Create the promise that will resolve when listeners are ready
+    listenersReadyErrorRef.current = null
     listenersReadyRef.current = new Promise<void>((resolve) => {
       listenersReadyResolveRef.current = resolve
     })
 
     const setup = async () => {
-      const resultUnlisten = await listen<ProbeResult>("probe:result", (event) => {
-        if (activeBatchIds.current.has(event.payload.batchId)) {
-          onResult(event.payload.output)
-        }
-      })
-
-      if (cancelled) {
-        resultUnlisten()
-        return
-      }
-
-      const completeUnlisten = await listen<ProbeBatchComplete>(
-        "probe:batch-complete",
-        (event) => {
-          if (activeBatchIds.current.delete(event.payload.batchId)) {
-            onBatchComplete()
+      try {
+        const resultUnlisten = await listen<ProbeResult>("probe:result", (event) => {
+          if (activeBatchIds.current.has(event.payload.batchId)) {
+            onResult(event.payload.output)
           }
+        })
+
+        if (cancelled) {
+          resultUnlisten()
+          listenersReadyResolveRef.current?.()
+          return
         }
-      )
 
-      if (cancelled) {
-        resultUnlisten()
-        completeUnlisten()
-        return
+        const completeUnlisten = await listen<ProbeBatchComplete>(
+          "probe:batch-complete",
+          (event) => {
+            if (activeBatchIds.current.delete(event.payload.batchId)) {
+              onBatchComplete()
+            }
+          }
+        )
+
+        if (cancelled) {
+          resultUnlisten()
+          completeUnlisten()
+          listenersReadyResolveRef.current?.()
+          return
+        }
+
+        unlisteners.current.push(resultUnlisten, completeUnlisten)
+
+        // Signal that listeners are ready
+        listenersReadyResolveRef.current?.()
+      } catch (error) {
+        listenersReadyErrorRef.current =
+          error instanceof Error ? error : new Error(String(error))
+        listenersReadyResolveRef.current?.()
       }
-
-      unlisteners.current.push(resultUnlisten, completeUnlisten)
-
-      // Signal that listeners are ready
-      listenersReadyResolveRef.current?.()
     }
 
     void setup()
@@ -75,6 +85,7 @@ export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOpti
       cancelled = true
       unlisteners.current.forEach((unlisten) => unlisten())
       unlisteners.current = []
+      listenersReadyErrorRef.current = null
       listenersReadyRef.current = null
       listenersReadyResolveRef.current = null
     }
@@ -84,6 +95,9 @@ export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOpti
     // Wait for listeners to be ready before starting the batch
     if (listenersReadyRef.current) {
       await listenersReadyRef.current
+    }
+    if (listenersReadyErrorRef.current) {
+      throw listenersReadyErrorRef.current
     }
 
     const batchId =

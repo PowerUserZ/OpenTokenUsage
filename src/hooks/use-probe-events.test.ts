@@ -164,6 +164,16 @@ describe("useProbeEvents", () => {
     await expect(result.current.startBatch(["a"])).rejects.toThrow("boom")
   })
 
+  it("rejects when event listeners fail to initialize", async () => {
+    listenMock.mockRejectedValueOnce(new Error("listen boom"))
+    const { result } = renderHook(() =>
+      useProbeEvents({ onResult: vi.fn(), onBatchComplete: vi.fn() })
+    )
+
+    await expect(result.current.startBatch(["a"])).rejects.toThrow("listen boom")
+    expect(invokeMock).not.toHaveBeenCalled()
+  })
+
   it("cancels before listeners are ready", async () => {
     const unlisten = vi.fn()
     const ref: { resolve: ((val: () => void) => void) | null } = { resolve: null }

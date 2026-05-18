@@ -55,8 +55,14 @@ const defaultProps = {
   onDisplayModeChange: vi.fn(),
   resetTimerDisplayMode: "relative" as const,
   onResetTimerDisplayModeChange: vi.fn(),
-  menubarIconStyle: "provider" as const,
+  menubarIconStyle: "icon" as const,
   onMenubarIconStyleChange: vi.fn(),
+  trayProvider: "auto",
+  onTrayProviderChange: vi.fn(),
+  trayMetric: "auto",
+  onTrayMetricChange: vi.fn(),
+  trayPercentColor: "#ffffff",
+  onTrayPercentColorChange: vi.fn(),
   traySettingsPreview: {
     bars: [{ id: "a", fraction: 0.7 }],
     providerBars: [{ id: "a", fraction: 0.7 }],
@@ -209,7 +215,7 @@ describe("SettingsPage", () => {
     expect(onMenubarIconStyleChange).toHaveBeenCalledWith("bars")
   })
 
-  it("clicking Donut triggers onMenubarIconStyleChange(\"donut\")", async () => {
+  it("clicking Percent triggers onMenubarIconStyleChange(\"percent\")", async () => {
     const onMenubarIconStyleChange = vi.fn()
     render(
       <SettingsPage
@@ -217,8 +223,8 @@ describe("SettingsPage", () => {
         onMenubarIconStyleChange={onMenubarIconStyleChange}
       />
     )
-    await userEvent.click(screen.getByRole("radio", { name: "Donut" }))
-    expect(onMenubarIconStyleChange).toHaveBeenCalledWith("donut")
+    await userEvent.click(screen.getByRole("radio", { name: "Percent" }))
+    expect(onMenubarIconStyleChange).toHaveBeenCalledWith("percent")
   })
 
   it("does not render removed bar icon controls", () => {

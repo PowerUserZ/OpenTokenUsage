@@ -162,6 +162,14 @@ describe("useAppUpdate", () => {
     expect(result.current.updateStatus).toEqual({ status: "error", message: "Update check failed" })
   })
 
+  it("stays idle when the native updater plugin is unavailable", async () => {
+    checkMock.mockRejectedValue(new Error("updater plugin not initialized"))
+    const { result } = renderHook(() => useAppUpdate())
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+    expect(result.current.updateStatus).toEqual({ status: "idle" })
+  })
+
   it("reports indeterminate progress when content length is unknown", async () => {
     let resolveDownload: (() => void) | null = null
     const downloadMock = vi.fn((onEvent: (event: any) => void) => {

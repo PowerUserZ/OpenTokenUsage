@@ -9,30 +9,19 @@ vi.mock("@tauri-apps/api/image", () => ({
 import { getTrayIconSizePx, makeTrayBarsSvg, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
 
 describe("tray-bars-icon", () => {
-  it("getTrayIconSizePx renders 18px at 1x and 36px at 2x", () => {
-    expect(getTrayIconSizePx(1)).toBe(18)
-    expect(getTrayIconSizePx(2)).toBe(36)
+  it("getTrayIconSizePx scales from the platform base size", () => {
+    const base = navigator.userAgent.includes("Macintosh") ? 18 : 32
+    expect(getTrayIconSizePx(1)).toBe(base)
+    expect(getTrayIconSizePx(2)).toBe(base * 2)
   })
 
-  it("default style is provider", () => {
+  it("default style is bars", () => {
     const svg = makeTrayBarsSvg({
       bars: [],
       sizePx: 36,
     })
-    expect(svg).toContain("<circle ")
-    expect(svg).not.toContain("<rect ")
-  })
-
-  it("style=provider renders image and no bars", () => {
-    const svg = makeTrayBarsSvg({
-      bars: [],
-      sizePx: 36,
-      style: "provider",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
-    })
-    expect(svg).toContain("<image ")
-    expect(svg).not.toContain("<rect ")
-    expect(svg).not.toContain("<path ")
+    expect(svg).toContain("<rect ")
+    expect(svg).not.toContain("<image ")
   })
 
   it("style=bars renders bar SVG elements and no image", () => {
@@ -68,54 +57,28 @@ describe("tray-bars-icon", () => {
     expect(svg).not.toContain("<image ")
   })
 
-  it("style=donut renders ring arc and centered provider icon", () => {
+  it("style=percent renders centered text and no bars", () => {
     const svg = makeTrayBarsSvg({
       bars: [{ id: "a", fraction: 0.42 }],
       sizePx: 36,
-      style: "donut",
-      providerIconUrl: "data:image/svg+xml;base64,ABC",
+      style: "percent",
+      percentText: "42",
     })
-    expect(svg).toContain('stroke-dasharray="')
-    expect(svg).toContain("<image ")
+    expect(svg).toContain("<text ")
+    expect(svg).toContain(">42</text>")
     expect(svg).not.toContain("<rect ")
-  })
-
-  it("style=donut falls back to center glyph when provider icon is missing", () => {
-    const svg = makeTrayBarsSvg({
-      bars: [{ id: "a", fraction: 0.42 }],
-      sizePx: 36,
-      style: "donut",
-    })
-    expect(svg).toContain("<circle ")
     expect(svg).not.toContain("<image ")
-    expect(svg).not.toContain("<rect ")
   })
 
-  it("renders provider icon", () => {
+  it("ignores providerIconUrl in the current icon renderer", () => {
     const svg = makeTrayBarsSvg({
       bars: [],
       sizePx: 36,
       providerIconUrl: "data:image/svg+xml;base64,ABC",
     })
 
-    expect(svg).toContain("<image ")
-    expect(svg).toContain('href="data:image/svg+xml;base64,ABC"')
-    const viewBox = svg.match(/viewBox="0 0 (\d+) (\d+)"/)
-    expect(viewBox).toBeTruthy()
-    if (viewBox) {
-      const width = Number(viewBox[1])
-      const height = Number(viewBox[2])
-      expect(width).toBe(height)
-    }
-  })
-
-  it("falls back to circle glyph when provider icon is missing", () => {
-    const svg = makeTrayBarsSvg({
-      bars: [],
-      sizePx: 36,
-    })
     expect(svg).not.toContain("<image ")
-    expect(svg).toContain("<circle ")
+    expect(svg).toContain("<rect ")
   })
 
   it("never renders svg text", () => {
@@ -130,9 +93,9 @@ describe("tray-bars-icon", () => {
     const svg = makeTrayBarsSvg({
       bars: [],
       sizePx: 18,
-      percentText: "70%",
+      percentText: "70",
     })
-    expect(svg).toContain(">70%</text>")
+    expect(svg).toContain(">70</text>")
   })
 
   it("renderTrayBarsIcon rasterizes SVG to an Image using canvas", async () => {

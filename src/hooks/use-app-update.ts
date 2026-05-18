@@ -19,11 +19,27 @@ interface UseAppUpdateReturn {
   checkForUpdates: () => void
 }
 
+function isNativeUpdaterUnavailableError(error: unknown): boolean {
+  const message = String(error).toLowerCase()
+  return (
+    message.includes("updater") &&
+    (
+      message.includes("plugin") ||
+      message.includes("not initialized") ||
+      message.includes("not available") ||
+      message.includes("not registered") ||
+      message.includes("not found") ||
+      message.includes("unknown")
+    )
+  )
+}
+
 export function useAppUpdate(): UseAppUpdateReturn {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ status: "idle" })
   const statusRef = useRef<UpdateStatus>({ status: "idle" })
   const updateRef = useRef<Update | null>(null)
   const mountedRef = useRef(true)
+  const nativeUpdaterAvailableRef = useRef(true)
   const inFlightRef = useRef({ checking: false, downloading: false, installing: false })
   const upToDateTimeoutRef = useRef<number | null>(null)
 
@@ -35,6 +51,7 @@ export function useAppUpdate(): UseAppUpdateReturn {
 
   const checkForUpdates = useCallback(async () => {
     if (!isTauri()) return
+    if (!nativeUpdaterAvailableRef.current) return
     if (inFlightRef.current.checking || inFlightRef.current.downloading || inFlightRef.current.installing) return
     if (statusRef.current.status === "ready") return
 
@@ -96,6 +113,11 @@ export function useAppUpdate(): UseAppUpdateReturn {
     } catch (err) {
       inFlightRef.current.checking = false
       if (!mountedRef.current) return
+      if (isNativeUpdaterUnavailableError(err)) {
+        nativeUpdaterAvailableRef.current = false
+        setStatus({ status: "idle" })
+        return
+      }
       console.error("Update check failed:", err)
       setStatus({ status: "error", message: "Update check failed" })
     }
