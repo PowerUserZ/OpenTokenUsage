@@ -96,3 +96,24 @@ jobs:
 
           printf '%s\n' "$ASSETS" | grep -Eq '\.exe$' || { echo "Missing NSIS installer (.exe)"; exit 1; }
           printf '%s\n' "$ASSETS" | grep -Eq '\.msi$' || { echo "Missing MSI installer (.msi)"; exit 1; }
+
+  # Auto-submit a winget-pkgs update PR for each release. No-ops unless the
+  # WINGET_TOKEN secret (a classic PAT with public_repo) is configured.
+  # Requires the package to already exist in winget-pkgs — the initial
+  # PowerUserZ.OpenTokenUsage manifest was submitted manually for v0.6.23;
+  # this keeps subsequent versions in sync automatically.
+  winget:
+    name: Submit to WinGet
+    needs: publish
+    runs-on: ubuntu-latest
+    env:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+    steps:
+      - name: Publish to WinGet Community Repo
+        if: ${{ env.WINGET_TOKEN != '' }}
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: PowerUserZ.OpenTokenUsage
+          installers-regex: 'OpenTokenUsage_.*_x64_en-US\.msi$'
+          release-tag: ${{ github.ref_name }}
+          token: ${{ env.WINGET_TOKEN }}
