@@ -77,7 +77,6 @@ export function useSettingsDisplayActions({
   }, [scheduleTrayIconUpdate, setMenubarIconStyle])
 
   const handleTrayProviderChange = useCallback((provider: TrayProvider) => {
-    track("setting_changed", { setting: "tray_provider", value: provider })
     setTrayProvider(provider)
     scheduleTrayIconUpdate("settings", 0)
     void saveTrayProvider(provider).catch((error) => {
@@ -86,7 +85,6 @@ export function useSettingsDisplayActions({
   }, [scheduleTrayIconUpdate, setTrayProvider])
 
   const handleTrayMetricChange = useCallback((metric: TrayMetric) => {
-    track("setting_changed", { setting: "tray_metric", value: metric })
     setTrayMetric(metric)
     scheduleTrayIconUpdate("settings", 0)
     void saveTrayMetric(metric).catch((error) => {
@@ -95,7 +93,6 @@ export function useSettingsDisplayActions({
   }, [scheduleTrayIconUpdate, setTrayMetric])
 
   const handleTrayPercentColorChange = useCallback((color: TrayPercentColor) => {
-    track("setting_changed", { setting: "tray_percent_color", value: color })
     setTrayPercentColor(color)
     scheduleTrayIconUpdate("settings", 0)
     void saveTrayPercentColor(color).catch((error) => {

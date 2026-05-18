@@ -220,7 +220,7 @@ describe("codex plugin", () => {
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
-    expect(credits.used).toBe(900)
+    expect(credits.value).toBe("100 credits remaining")
   })
 
   it("maps prolite plan to Pro 5x", async () => {
