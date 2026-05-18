@@ -6,12 +6,16 @@
   const PROD_REFRESH_URL = "https://platform.claude.com/v1/oauth/token"
   const PROD_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
   const NON_PROD_CLIENT_ID = "22422756-60c9-4084-8eb7-27705fd5cf9a"
-  const PROMOCLOCK_STATUS_URL = "https://promoclock.co/api/status"
-  const PROMOCLOCK_PEAK_COLOR = "#ef4444"
-  const PROMOCLOCK_OFF_PEAK_COLOR = "#22c55e"
   const SCOPES =
     "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
+
+  // Rate-limit state persisted across probe() calls (module scope survives re-invocations).
+  const MIN_USAGE_FETCH_INTERVAL_MS = 5 * 60 * 1000  // never poll more than once per 5 min
+  const DEFAULT_RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000 // fallback when no Retry-After header
+  let rateLimitedUntilMs = 0  // epoch ms; 0 = not rate-limited
+  let lastUsageFetchMs = 0    // epoch ms of the most-recent API attempt
+  let cachedUsageData = null  // last successful API response body (parsed JSON)
 
   function utf8DecodeBytes(bytes) {
     // Prefer native TextDecoder when available (QuickJS may not expose it).
@@ -199,8 +203,38 @@
     }
   }
 
-  function getClaudeKeychainService(ctx) {
+  function buildClaudeBaseKeychainService(ctx) {
     return KEYCHAIN_SERVICE_PREFIX + getOauthConfig(ctx).oauthFileSuffix + "-credentials"
+  }
+
+  function computeKeychainHashSuffix(ctx) {
+    // Mirrors upstream Claude Code (decompiled from the binary):
+    //   const suffix = !process.env.CLAUDE_CONFIG_DIR
+    //     ? ""
+    //     : "-" + sha256(CLAUDE_CONFIG_DIR.normalize("NFC")).slice(0, 8)
+    // The hash is ONLY appended when CLAUDE_CONFIG_DIR is explicitly set;
+    // when unset, upstream uses the legacy unhashed service name.
+    const explicitConfigDir = readEnvText(ctx, "CLAUDE_CONFIG_DIR")
+    if (!explicitConfigDir) return null
+    const sha256Hex = ctx.host && ctx.host.crypto && ctx.host.crypto.sha256Hex
+    if (typeof sha256Hex !== "function") return null
+    // Match upstream's `.normalize("NFC")` exactly.
+    const normalized =
+      typeof explicitConfigDir.normalize === "function"
+        ? explicitConfigDir.normalize("NFC")
+        : explicitConfigDir
+    const digest = sha256Hex(normalized)
+    if (typeof digest !== "string" || digest.length < 8) return null
+    return digest.slice(0, 8)
+  }
+
+  function getClaudeKeychainServiceCandidates(ctx) {
+    const base = buildClaudeBaseKeychainService(ctx)
+    const candidates = []
+    const hash = computeKeychainHashSuffix(ctx)
+    if (hash) candidates.push(base + "-" + hash)  // hashed (CLAUDE_CONFIG_DIR set)
+    candidates.push(base)                          // legacy / default
+    return candidates
   }
 
   function readKeychainCredentialText(ctx, service) {
@@ -252,18 +286,21 @@
       }
     }
 
-    // Try keychain fallback
-    const keychainResult = readKeychainCredentialText(ctx, getClaudeKeychainService(ctx))
-    if (keychainResult && keychainResult.value) {
-      const parsed = tryParseCredentialJSON(ctx, keychainResult.value)
-      if (parsed) {
-        const oauth = parsed.claudeAiOauth
-        if (oauth && oauth.accessToken) {
-          ctx.host.log.info("credentials loaded from keychain")
-          return { oauth, source: keychainResult.source, fullData: parsed }
+    // Try keychain fallback — iterate hashed-then-legacy service names.
+    for (const service of getClaudeKeychainServiceCandidates(ctx)) {
+      const keychainResult = readKeychainCredentialText(ctx, service)
+      if (keychainResult && keychainResult.value) {
+        const parsed = tryParseCredentialJSON(ctx, keychainResult.value)
+        if (parsed) {
+          const oauth = parsed.claudeAiOauth
+          if (oauth && oauth.accessToken) {
+            ctx.host.log.info("credentials loaded from keychain (service=" + service + ")")
+            return { oauth, source: keychainResult.source, serviceName: service, fullData: parsed }
+          }
         }
+        ctx.host.log.warn("keychain has data for " + service + " but no valid oauth")
+        // Continue: a stale legacy entry shouldn't shadow a valid hashed one.
       }
-      ctx.host.log.warn("keychain has data but no valid oauth")
     }
 
     if (!suppressMissingWarn) {
@@ -284,6 +321,7 @@
     return {
       oauth: oauth,
       source: stored ? stored.source : null,
+      serviceName: stored ? stored.serviceName : null,
       fullData: stored ? stored.fullData : null,
       inferenceOnly: true,
     }
@@ -300,7 +338,7 @@
     return true
   }
 
-  function saveCredentials(ctx, source, fullData) {
+  function saveCredentials(ctx, source, serviceName, fullData) {
     // MUST use minified JSON - macOS `security -w` hex-encodes values with newlines,
     // which Claude Code can't read back, causing it to invalidate the session.
     const text = JSON.stringify(fullData)
@@ -310,19 +348,25 @@
       } catch (e) {
         ctx.host.log.error("Failed to write Claude credentials file: " + String(e))
       }
-    } else if (source === "keychain-current-user") {
+      return
+    }
+    if (!serviceName) {
+      ctx.host.log.error("Refusing keychain write: missing service name (source=" + source + ")")
+      return
+    }
+    if (source === "keychain-current-user") {
       try {
         if (typeof ctx.host.keychain.writeGenericPasswordForCurrentUser === "function") {
-          ctx.host.keychain.writeGenericPasswordForCurrentUser(getClaudeKeychainService(ctx), text)
+          ctx.host.keychain.writeGenericPasswordForCurrentUser(serviceName, text)
         } else {
-          ctx.host.keychain.writeGenericPassword(getClaudeKeychainService(ctx), text)
+          ctx.host.keychain.writeGenericPassword(serviceName, text)
         }
       } catch (e) {
         ctx.host.log.error("Failed to write Claude credentials keychain: " + String(e))
       }
     } else if (source === "keychain-legacy" || source === "keychain") {
       try {
-        ctx.host.keychain.writeGenericPassword(getClaudeKeychainService(ctx), text)
+        ctx.host.keychain.writeGenericPassword(serviceName, text)
       } catch (e) {
         ctx.host.log.error("Failed to write Claude credentials keychain: " + String(e))
       }
@@ -393,9 +437,9 @@
         oauth.expiresAt = Date.now() + body.expires_in * 1000
       }
 
-      // Persist updated credentials
+      // Persist updated credentials back to the same source we read from.
       fullData.claudeAiOauth = oauth
-      saveCredentials(ctx, source, fullData)
+      saveCredentials(ctx, source, creds.serviceName, fullData)
 
       ctx.host.log.info("refresh succeeded, new token expires in " + (body.expires_in || "unknown") + "s")
       return newAccessToken
@@ -420,6 +464,30 @@
       },
       timeoutMs: 10000,
     })
+  }
+
+  function parseRetryAfterSeconds(headers) {
+    if (!headers) return null
+    const raw = headers["retry-after"] ?? headers["Retry-After"]
+    if (raw === undefined || raw === null) return null
+    const str = String(raw).trim()
+    if (!str) return null
+    // Retry-After can be a delay-seconds or HTTP-date (RFC 7231).
+    // 0 means "retry immediately" — return 0 as a valid value.
+    const seconds = parseInt(str, 10)
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds
+    const dateMs = Date.parse(str)
+    if (Number.isFinite(dateMs)) {
+      const delay = Math.ceil((dateMs - Date.now()) / 1000)
+      return delay > 0 ? delay : 0
+    }
+    return null
+  }
+
+  function fmtRateLimitMinutes(seconds) {
+    if (seconds <= 0) return "now"
+    const mins = Math.ceil(seconds / 60)
+    return mins + "m"
   }
 
   function queryTokenUsage(ctx, homePath) {
@@ -545,66 +613,6 @@
     }))
   }
 
-  function getPromoClockBadgeText(data) {
-    if (!data || typeof data !== "object") return null
-    if (data.isPeak === true) return "Peak"
-    if (data.isOffPeak === true || data.isWeekend === true) return "Off-Peak"
-
-    const status = typeof data.status === "string" ? data.status.trim().toLowerCase() : ""
-    if (status === "peak") return "Peak"
-    if (status === "off_peak" || status === "off-peak" || status === "weekend") return "Off-Peak"
-    return null
-  }
-
-  function getPromoClockColor(badgeText) {
-    if (badgeText === "Peak") return PROMOCLOCK_PEAK_COLOR
-    if (badgeText === "Off-Peak") return PROMOCLOCK_OFF_PEAK_COLOR
-    return null
-  }
-
-  function fetchPromoClockLine(ctx) {
-    let resp
-    let json
-    try {
-      const result = ctx.util.requestJson({
-        method: "GET",
-        url: PROMOCLOCK_STATUS_URL,
-        headers: {
-          Accept: "application/json",
-        },
-        timeoutMs: 2000,
-      })
-      resp = result.resp
-      json = result.json
-    } catch (e) {
-      ctx.host.log.warn("promoclock request failed: " + String(e))
-      return null
-    }
-
-    if (!resp || resp.status < 200 || resp.status >= 300) {
-      ctx.host.log.warn("promoclock returned unexpected status: " + String(resp && resp.status))
-      return null
-    }
-
-    if (!json || typeof json !== "object") {
-      ctx.host.log.warn("promoclock response invalid")
-      return null
-    }
-
-    const badgeText = getPromoClockBadgeText(json)
-
-    if (!badgeText) {
-      ctx.host.log.warn("promoclock response missing expected fields")
-      return null
-    }
-
-    return ctx.line.badge({
-      label: "Peak Hours",
-      text: badgeText,
-      color: getPromoClockColor(badgeText),
-    })
-  }
-
   function probe(ctx) {
     const creds = loadCredentials(ctx)
     if (!creds || !creds.oauth || !creds.oauth.accessToken || !creds.oauth.accessToken.trim()) {
@@ -619,60 +627,101 @@
 
     let data = null
     let lines = []
+    let rateLimited = false
+    let retryAfterSeconds = null
     if (canFetchLiveUsage) {
-      // Proactively refresh if token is expired or about to expire
-      if (needsRefresh(ctx, creds.oauth, nowMs)) {
-        ctx.host.log.info("token needs refresh (expired or expiring soon)")
-        const refreshed = refreshToken(ctx, creds)
-        if (refreshed) {
-          accessToken = refreshed
+      if (nowMs < rateLimitedUntilMs) {
+        // Still within a rate-limit window from a previous probe call — skip the
+        // API request entirely and surface the remaining wait time to the user.
+        rateLimited = true
+        retryAfterSeconds = Math.ceil((rateLimitedUntilMs - nowMs) / 1000)
+        data = cachedUsageData
+        ctx.host.log.info("usage fetch skipped: rate-limited for " + retryAfterSeconds + "s more")
+      } else {
+        // Rate-limit window has expired (or was never set).  Check whether we were
+        // previously rate-limited so we can bypass the min-interval guard: a short
+        // Retry-After (< 5 min) must not be swallowed by the normal poll throttle.
+        const wasRateLimited = rateLimitedUntilMs > 0
+        rateLimitedUntilMs = 0
+
+        if (!wasRateLimited && nowMs - lastUsageFetchMs < MIN_USAGE_FETCH_INTERVAL_MS) {
+          // Polled too recently in normal operation — reuse last cached response.
+          data = cachedUsageData
+          ctx.host.log.info(
+            "usage fetch skipped: last fetch was " +
+            Math.round((nowMs - lastUsageFetchMs) / 1000) + "s ago (min interval " +
+            MIN_USAGE_FETCH_INTERVAL_MS / 1000 + "s)"
+          )
         } else {
-          ctx.host.log.warn("proactive refresh failed, trying with existing token")
+        // Proactively refresh if token is expired or about to expire
+        if (needsRefresh(ctx, creds.oauth, nowMs)) {
+          ctx.host.log.info("token needs refresh (expired or expiring soon)")
+          const refreshed = refreshToken(ctx, creds)
+          if (refreshed) {
+            accessToken = refreshed
+          } else {
+            ctx.host.log.warn("proactive refresh failed, trying with existing token")
+          }
         }
-      }
 
-      let resp
-      let didRefresh = false
-      try {
-        resp = ctx.util.retryOnceOnAuth({
-          request: (token) => {
-            try {
-              return fetchUsage(ctx, token || accessToken)
-            } catch (e) {
-              ctx.host.log.error("usage request exception: " + String(e))
-              if (didRefresh) {
-                throw "Usage request failed after refresh. Try again."
+        lastUsageFetchMs = nowMs
+        let resp
+        let didRefresh = false
+        try {
+          resp = ctx.util.retryOnceOnAuth({
+            request: (token) => {
+              try {
+                return fetchUsage(ctx, token || accessToken)
+              } catch (e) {
+                ctx.host.log.error("usage request exception: " + String(e))
+                if (didRefresh) {
+                  throw "Usage request failed after refresh. Try again."
+                }
+                throw "Usage request failed. Check your connection."
               }
-              throw "Usage request failed. Check your connection."
-            }
-          },
-          refresh: () => {
-            ctx.host.log.info("usage returned 401, attempting refresh")
-            didRefresh = true
-            return refreshToken(ctx, creds)
-          },
-        })
-      } catch (e) {
-        if (typeof e === "string") throw e
-        ctx.host.log.error("usage request failed: " + String(e))
-        throw "Usage request failed. Check your connection."
-      }
+            },
+            refresh: () => {
+              ctx.host.log.info("usage returned 401, attempting refresh")
+              didRefresh = true
+              return refreshToken(ctx, creds)
+            },
+          })
+        } catch (e) {
+          if (typeof e === "string") throw e
+          ctx.host.log.error("usage request failed: " + String(e))
+          throw "Usage request failed. Check your connection."
+        }
 
-      if (ctx.util.isAuthStatus(resp.status)) {
-        ctx.host.log.error("usage returned auth error after all retries: status=" + resp.status)
-        throw "Token expired. Run `claude` to log in again."
-      }
+        if (ctx.util.isAuthStatus(resp.status)) {
+          ctx.host.log.error("usage returned auth error after all retries: status=" + resp.status)
+          throw "Token expired. Run `claude` to log in again."
+        }
 
-      if (resp.status < 200 || resp.status >= 300) {
-        ctx.host.log.error("usage returned error: status=" + resp.status)
-        throw "Usage request failed (HTTP " + String(resp.status) + "). Try again later."
-      }
-
-      ctx.host.log.info("usage fetch succeeded")
-
-      data = ctx.util.tryParseJson(resp.bodyText)
-      if (data === null) {
-        throw "Usage response invalid. Try again later."
+        if (resp.status === 429) {
+          rateLimited = true
+          retryAfterSeconds = parseRetryAfterSeconds(resp.headers)
+          const backoffMs = retryAfterSeconds !== null
+            ? retryAfterSeconds * 1000
+            : DEFAULT_RATE_LIMIT_BACKOFF_MS
+          rateLimitedUntilMs = nowMs + backoffMs
+          data = cachedUsageData
+          ctx.host.log.warn(
+            "usage rate limited (429), backing off for " +
+            Math.round(backoffMs / 1000) + "s"
+          )
+        } else if (resp.status < 200 || resp.status >= 300) {
+          ctx.host.log.error("usage returned error: status=" + resp.status)
+          throw "Usage request failed (HTTP " + String(resp.status) + "). Try again later."
+        } else {
+          ctx.host.log.info("usage fetch succeeded")
+          data = ctx.util.tryParseJson(resp.bodyText)
+          if (data === null) {
+            throw "Usage response invalid. Try again later."
+          }
+          cachedUsageData = data
+          rateLimitedUntilMs = 0
+        }
+        } // end fetch else-branch
       }
     } else {
       ctx.host.log.info("skipping live usage fetch for inference-only token")
@@ -720,6 +769,16 @@
           limit: 100,
           format: { kind: "percent" },
           resetsAt: ctx.util.toIso(data.seven_day_sonnet.resets_at),
+          periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
+        }))
+      }
+      if (data.seven_day_omelette && typeof data.seven_day_omelette.utilization === "number") {
+        lines.push(ctx.line.progress({
+          label: "Claude Design",
+          used: data.seven_day_omelette.utilization,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: ctx.util.toIso(data.seven_day_omelette.resets_at),
           periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
         }))
       }
@@ -788,16 +847,32 @@
       }
     }
 
-    const promoClockLine = fetchPromoClockLine(ctx)
-
-    if (lines.length === 0) {
+    if (rateLimited) {
+      const retryText = retryAfterSeconds !== null
+        ? fmtRateLimitMinutes(retryAfterSeconds)
+        : null
+      const waitText = retryText
+        ? "Rate limited, retry in ~" + retryText
+        : "Rate limited, try again later"
+      lines.unshift(ctx.line.badge({ label: "Status", text: waitText, color: "#f59e0b" }))
+      const noteText = retryText
+        ? "Live usage rate limited — retry in ~" + retryText
+        : "Live usage rate limited — data may be stale"
+      lines.push(ctx.line.text({ label: "Note", value: noteText }))
+    } else if (lines.length === 0) {
       lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
     }
-
-    if (promoClockLine) lines.push(promoClockLine)
 
     return { plan: plan, lines: lines }
   }
 
-  globalThis.__openusage_plugin = { id: "claude", probe }
+  // _resetState is a testing hook — resets module-scope rate-limit state between tests.
+  // The production host never calls this.
+  function _resetState() {
+    rateLimitedUntilMs = 0
+    lastUsageFetchMs = 0
+    cachedUsageData = null
+  }
+
+  globalThis.__openusage_plugin = { id: "claude", probe, _resetState }
 })()
