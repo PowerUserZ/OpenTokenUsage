@@ -4,6 +4,7 @@ import {
   saveMenubarIconStyle,
   saveResetTimerDisplayMode,
   saveThemeMode,
+  saveTimeFormatMode,
   saveTrayMetric,
   saveTrayPercentColor,
   saveTrayProvider,
@@ -11,6 +12,7 @@ import {
   type MenubarIconStyle,
   type ResetTimerDisplayMode,
   type ThemeMode,
+  type TimeFormatMode,
   type TrayMetric,
   type TrayPercentColor,
   type TrayProvider,
@@ -23,6 +25,7 @@ type UseSettingsDisplayActionsArgs = {
   setDisplayMode: (value: DisplayMode) => void
   resetTimerDisplayMode: ResetTimerDisplayMode
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
+  setTimeFormatMode: (value: TimeFormatMode) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
   setTrayProvider: (value: TrayProvider) => void
   setTrayMetric: (value: TrayMetric) => void
@@ -35,6 +38,7 @@ export function useSettingsDisplayActions({
   setDisplayMode,
   resetTimerDisplayMode,
   setResetTimerDisplayMode,
+  setTimeFormatMode,
   setMenubarIconStyle,
   setTrayProvider,
   setTrayMetric,
@@ -67,6 +71,13 @@ export function useSettingsDisplayActions({
     const next = resetTimerDisplayMode === "relative" ? "absolute" : "relative"
     handleResetTimerDisplayModeChange(next)
   }, [handleResetTimerDisplayModeChange, resetTimerDisplayMode])
+
+  const handleTimeFormatModeChange = useCallback((mode: TimeFormatMode) => {
+    setTimeFormatMode(mode)
+    void saveTimeFormatMode(mode).catch((error) => {
+      console.error("Failed to save time format mode:", error)
+    })
+  }, [setTimeFormatMode])
 
   const handleMenubarIconStyleChange = useCallback((style: MenubarIconStyle) => {
     setMenubarIconStyle(style)
@@ -105,6 +116,7 @@ export function useSettingsDisplayActions({
     handleDisplayModeChange,
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
+    handleTimeFormatModeChange,
     handleMenubarIconStyleChange,
     handleTrayProviderChange,
     handleTrayMetricChange,

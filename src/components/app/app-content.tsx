@@ -14,6 +14,7 @@ import type {
   MenubarIconStyle,
   ResetTimerDisplayMode,
   ThemeMode,
+  TimeFormatMode,
 } from "@/lib/settings"
 
 type AppContentDerivedProps = {
@@ -31,6 +32,7 @@ export type AppContentActionProps = {
   onDisplayModeChange: (mode: DisplayMode) => void
   onResetTimerDisplayModeChange: (mode: ResetTimerDisplayMode) => void
   onResetTimerDisplayModeToggle: () => void
+  onTimeFormatModeChange: (mode: TimeFormatMode) => void
   onMenubarIconStyleChange: (value: MenubarIconStyle) => void
   onTrayProviderChange: (value: string) => void
   onTrayMetricChange: (value: string) => void
@@ -54,6 +56,7 @@ export function AppContent({
   onDisplayModeChange,
   onResetTimerDisplayModeChange,
   onResetTimerDisplayModeToggle,
+  onTimeFormatModeChange,
   onMenubarIconStyleChange,
   onTrayProviderChange,
   onTrayMetricChange,
@@ -71,6 +74,7 @@ export function AppContent({
   const {
     displayMode,
     resetTimerDisplayMode,
+    timeFormatMode,
     menubarIconStyle,
     trayProvider,
     trayMetric,
@@ -83,6 +87,7 @@ export function AppContent({
     useShallow((state) => ({
       displayMode: state.displayMode,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
+      timeFormatMode: state.timeFormatMode,
       menubarIconStyle: state.menubarIconStyle,
       trayProvider: state.trayProvider,
       trayMetric: state.trayMetric,
@@ -101,6 +106,7 @@ export function AppContent({
         onRetryPlugin={onRetryPlugin}
         displayMode={displayMode}
         resetTimerDisplayMode={resetTimerDisplayMode}
+        timeFormatMode={timeFormatMode}
         onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
       />
     )
@@ -120,6 +126,8 @@ export function AppContent({
         onDisplayModeChange={onDisplayModeChange}
         resetTimerDisplayMode={resetTimerDisplayMode}
         onResetTimerDisplayModeChange={onResetTimerDisplayModeChange}
+        timeFormatMode={timeFormatMode}
+        onTimeFormatModeChange={onTimeFormatModeChange}
         menubarIconStyle={menubarIconStyle}
         onMenubarIconStyleChange={onMenubarIconStyleChange}
         trayProvider={trayProvider}
@@ -147,6 +155,7 @@ export function AppContent({
       onRetry={handleRetry}
       displayMode={displayMode}
       resetTimerDisplayMode={resetTimerDisplayMode}
+      timeFormatMode={timeFormatMode}
       onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
     />
   )
