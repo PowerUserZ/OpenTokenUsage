@@ -1693,11 +1693,28 @@ fn ccusage_runner_candidates(kind: CcusageRunnerKind) -> Vec<String> {
     unique
 }
 
+/// Validate an nvm node version token as plain `v?MAJOR.MINOR.PATCH` (ASCII
+/// digits and dots only). The version is read from `~/.nvm/alias/default`,
+/// which is user-writable; rejecting anything else stops a traversal component
+/// (e.g. `../../...`) or path separator from steering the PATH entry built
+/// below toward an attacker-chosen `bunx`/`npx`/`node`.
+fn is_valid_node_version(version: &str) -> bool {
+    let core = version.strip_prefix('v').unwrap_or(version);
+    let mut parts = 0;
+    for part in core.split('.') {
+        if part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()) {
+            return false;
+        }
+        parts += 1;
+    }
+    parts == 3
+}
+
 fn nvm_default_bin_path(home: &Path) -> Option<PathBuf> {
     let alias_path = home.join(".nvm/alias/default");
     let version = std::fs::read_to_string(&alias_path).ok()?;
     let version = version.trim();
-    if version.is_empty() {
+    if !is_valid_node_version(version) {
         return None;
     }
     let version = if version.starts_with('v') {
@@ -3052,6 +3069,26 @@ mod tests {
         let expected = home.join(".claude-custom").to_string_lossy().to_string();
 
         assert_eq!(expand_path("~/.claude-custom"), expected);
+    }
+
+    #[test]
+    fn is_valid_node_version_accepts_semver_and_rejects_traversal() {
+        // Valid plain versions, with or without the leading `v`.
+        assert!(is_valid_node_version("v20.11.0"));
+        assert!(is_valid_node_version("20.11.0"));
+        assert!(is_valid_node_version("v18.19.1"));
+
+        // Rejected: traversal, separators, aliases, and partial versions that
+        // would otherwise steer the constructed PATH entry off the nvm tree.
+        assert!(!is_valid_node_version("../../etc"));
+        assert!(!is_valid_node_version("v20.11.0/../../.."));
+        assert!(!is_valid_node_version("..\\..\\windows"));
+        assert!(!is_valid_node_version("lts/*"));
+        assert!(!is_valid_node_version("stable"));
+        assert!(!is_valid_node_version("20"));
+        assert!(!is_valid_node_version("20.11"));
+        assert!(!is_valid_node_version(""));
+        assert!(!is_valid_node_version("v"));
     }
 
     #[test]
