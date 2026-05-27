@@ -10,7 +10,13 @@ See your usage at a glance from your system tray. No digging through dashboards.
 
 ## Download
 
-[**Download the latest release**](https://github.com/PowerUserZ/OpenTokenUsage/releases/latest) (Windows)
+**Install with [WinGet](https://learn.microsoft.com/windows/package-manager/winget/) (recommended):**
+
+```powershell
+winget install PowerUserZ.OpenTokenUsage
+```
+
+Or [**download the latest release**](https://github.com/PowerUserZ/OpenTokenUsage/releases/latest) and run the installer directly (Windows).
 
 The app checks for new releases in-app and links you to the latest download.
 
