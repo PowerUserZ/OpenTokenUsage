@@ -1,6 +1,6 @@
 // ── macOS implementation (NSPanel) ──────────────────────────────────────
 #[cfg(target_os = "macos")]
-mod platform {
+pub(crate) mod platform {
     use tauri::{AppHandle, Manager, Position, Size};
     use tauri_nspanel::{
         CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt, tauri_panel,
@@ -277,7 +277,7 @@ mod platform {
 
 // ── Non-macOS implementation (standard Tauri window) ────────────────────
 #[cfg(not(target_os = "macos"))]
-mod platform {
+pub(crate) mod platform {
     use tauri::{AppHandle, Manager};
 
     pub fn show_panel(app_handle: &AppHandle) {

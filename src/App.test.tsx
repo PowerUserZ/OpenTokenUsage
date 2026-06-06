@@ -221,10 +221,6 @@ vi.mock("@/hooks/use-probe-events", () => ({
   },
 }))
 
-vi.mock("@/hooks/use-version-check", () => ({
-  useVersionCheck: () => ({ hasUpdate: false, latestVersion: null, releaseUrl: null }),
-}))
-
 vi.mock("@/lib/settings", async () => {
   const actual = await vi.importActual<typeof import("@/lib/settings")>("@/lib/settings")
   return {

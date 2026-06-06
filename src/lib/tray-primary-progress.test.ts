@@ -511,4 +511,78 @@ describe("getTrayPrimaryBars", () => {
       expect(bars).toEqual([{ id: "a", fraction: 0.2, label: "Session" }])
     })
   })
+
+  describe("preferred metric precedence", () => {
+    const metaWithWeekly = {
+      id: "a",
+      name: "A",
+      iconUrl: "",
+      primaryCandidates: ["Session"],
+      weeklyCandidate: "Weekly",
+      lines: [],
+    }
+
+    const sessionAndWeeklyData = {
+      a: {
+        data: {
+          providerId: "a",
+          displayName: "A",
+          iconUrl: "",
+          lines: [
+            {
+              type: "progress" as const,
+              label: "Session",
+              used: 20,
+              limit: 100,
+              format: { kind: "percent" as const },
+            },
+            {
+              type: "progress" as const,
+              label: "Weekly",
+              used: 60,
+              limit: 100,
+              format: { kind: "percent" as const },
+            },
+          ],
+        },
+        loading: false,
+        error: null,
+      },
+    }
+
+    it("preferredMetric wins over preferWeekly and is not flagged weekly", () => {
+      const bars = getTrayPrimaryBars({
+        displayMode: "used",
+        preferredMetric: "Session",
+        preferWeekly: true,
+        pluginsMeta: [metaWithWeekly],
+        pluginSettings: { order: ["a"], disabled: [] },
+        pluginStates: sessionAndWeeklyData,
+      })
+      expect(bars).toEqual([{ id: "a", fraction: 0.2, label: "Session" }])
+    })
+
+    it("preferredMetric can explicitly select the weekly line without the weekly flag", () => {
+      const bars = getTrayPrimaryBars({
+        displayMode: "used",
+        preferredMetric: "Weekly",
+        pluginsMeta: [metaWithWeekly],
+        pluginSettings: { order: ["a"], disabled: [] },
+        pluginStates: sessionAndWeeklyData,
+      })
+      expect(bars).toEqual([{ id: "a", fraction: 0.6, label: "Weekly" }])
+    })
+
+    it("falls back to preferWeekly when the preferred metric is absent from data", () => {
+      const bars = getTrayPrimaryBars({
+        displayMode: "used",
+        preferredMetric: "Nonexistent",
+        preferWeekly: true,
+        pluginsMeta: [metaWithWeekly],
+        pluginSettings: { order: ["a"], disabled: [] },
+        pluginStates: sessionAndWeeklyData,
+      })
+      expect(bars).toEqual([{ id: "a", fraction: 0.6, label: "Weekly", weekly: true }])
+    })
+  })
 })

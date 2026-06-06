@@ -48,6 +48,8 @@ OpenTokenUsage lives in your system tray and shows you how much of your AI codin
 - [**MiniMax**](docs/providers/minimax.md) / coding plan session
 - [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly spend limits
 - [**Devin**](docs/providers/devin.md) / weekly quota, extra usage
+- [**Perplexity**](docs/providers/perplexity.md) / session usage, balance
+- [**Synthetic**](docs/providers/synthetic.md) / requests, rolling rate limits
 - [**Z.ai**](docs/providers/zai.md) / session, weekly, web searches
 
 ## Contributing
