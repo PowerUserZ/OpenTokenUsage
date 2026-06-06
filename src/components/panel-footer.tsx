@@ -1,16 +1,15 @@
-import { useMemo, useRef, useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { AboutDialog } from "@/components/about-dialog";
 import type { UpdateStatus } from "@/hooks/use-app-update";
 import { useNowTicker } from "@/hooks/use-now-ticker";
-import { useVersionCheck } from "@/hooks/use-version-check";
 
 interface PanelFooterProps {
   version: string;
   autoUpdateNextAt: number | null;
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
+  onUpdateCheck: () => void;
   onRefreshAll?: () => void;
   showAbout: boolean;
   onShowAbout: () => void;
@@ -21,28 +20,15 @@ function VersionDisplay({
   version,
   updateStatus,
   onUpdateInstall,
+  onUpdateCheck,
   onVersionClick,
-  versionCheck,
 }: {
   version: string;
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
+  onUpdateCheck: () => void;
   onVersionClick: () => void;
-  versionCheck: { hasUpdate: boolean; latestVersion: string | null; releaseUrl: string | null };
 }) {
-  // Show update available banner regardless of updater status
-  if (versionCheck.hasUpdate && versionCheck.releaseUrl) {
-    return (
-      <button
-        type="button"
-        onClick={() => openUrl(versionCheck.releaseUrl!).catch(console.error)}
-        className="text-xs text-green-500 hover:text-green-400 font-medium transition-colors cursor-pointer"
-        title={`Download v${versionCheck.latestVersion}`}
-      >
-        v{versionCheck.latestVersion} available
-      </button>
-    );
-  }
   switch (updateStatus.status) {
     case "downloading":
       return (
@@ -68,15 +54,22 @@ function VersionDisplay({
         <span className="text-xs text-muted-foreground">Installing...</span>
       );
     case "error":
+      if (updateStatus.message === "Update check failed") {
+        return (
+          <button
+            type="button"
+            onClick={onUpdateCheck}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            title={updateStatus.message}
+          >
+            Updates soon
+          </button>
+        );
+      }
       return (
-        <button
-          type="button"
-          onClick={() => openUrl("https://github.com/PowerUserZ/OpenTokenUsage/releases").catch(console.error)}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-          title="Open releases page"
-        >
-          v{version}
-        </button>
+        <span className="text-xs text-destructive" title={updateStatus.message}>
+          Update failed
+        </span>
       );
     default:
       return (
@@ -96,23 +89,12 @@ export function PanelFooter({
   autoUpdateNextAt,
   updateStatus,
   onUpdateInstall,
+  onUpdateCheck,
   onRefreshAll,
   showAbout,
   onShowAbout,
   onCloseAbout,
 }: PanelFooterProps) {
-  const versionCheck = useVersionCheck(version);
-  const [refreshCooldown, setRefreshCooldown] = useState(false);
-  const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleRefresh = () => {
-    if (refreshCooldown || !onRefreshAll) return;
-    onRefreshAll();
-    setRefreshCooldown(true);
-    if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
-    cooldownTimerRef.current = setTimeout(() => setRefreshCooldown(false), 30_000);
-  };
-
   const now = useNowTicker({
     enabled: Boolean(autoUpdateNextAt),
     resetKey: autoUpdateNextAt,
@@ -136,19 +118,18 @@ export function PanelFooter({
           version={version}
           updateStatus={updateStatus}
           onUpdateInstall={onUpdateInstall}
+          onUpdateCheck={onUpdateCheck}
           onVersionClick={onShowAbout}
-          versionCheck={versionCheck}
         />
         {autoUpdateNextAt !== null && onRefreshAll ? (
           <button
             type="button"
-            disabled={refreshCooldown}
             onClick={(event) => {
               event.currentTarget.blur()
-              handleRefresh()
+              onRefreshAll()
             }}
-            className={`text-xs tabular-nums transition-colors ${refreshCooldown ? "text-muted-foreground/50 cursor-not-allowed" : "text-muted-foreground hover:text-foreground cursor-pointer"}`}
-            title={refreshCooldown ? "Wait before refreshing again" : "Refresh now"}
+            className="text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors cursor-pointer"
+            title="Refresh now"
           >
             {countdownLabel}
           </button>

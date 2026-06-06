@@ -5,25 +5,13 @@ import { describe, expect, it, vi } from "vitest"
 import { PanelFooter } from "@/components/panel-footer"
 import type { UpdateStatus } from "@/hooks/use-app-update"
 
-const openerState = vi.hoisted(() => ({
-  openUrlMock: vi.fn(() => Promise.resolve()),
-}))
-
-const versionCheckState = vi.hoisted(() => ({
-  result: { hasUpdate: false, latestVersion: null as string | null, releaseUrl: null as string | null },
-}))
-
 vi.mock("@tauri-apps/plugin-opener", () => ({
-  openUrl: openerState.openUrlMock,
-}))
-
-vi.mock("@/hooks/use-version-check", () => ({
-  useVersionCheck: () => versionCheckState.result,
+  openUrl: vi.fn(() => Promise.resolve()),
 }))
 
 const idle: UpdateStatus = { status: "idle" }
 const noop = () => {}
-const footerProps = { showAbout: false, onShowAbout: noop, onCloseAbout: noop }
+const footerProps = { showAbout: false, onShowAbout: noop, onCloseAbout: noop, onUpdateCheck: noop }
 
 describe("PanelFooter", () => {
   it("shows countdown in minutes when >= 60 seconds", () => {
@@ -128,21 +116,39 @@ describe("PanelFooter", () => {
     expect(onInstall).toHaveBeenCalledTimes(1)
   })
 
-  it("shows current version button for updater errors and opens releases page", async () => {
+  it("shows retryable updates soon state for update check failures", async () => {
+    const onUpdateCheck = vi.fn()
     render(
       <PanelFooter
         version="0.0.0"
         autoUpdateNextAt={null}
         updateStatus={{ status: "error", message: "Update check failed" }}
         onUpdateInstall={noop}
-        {...footerProps}
+        showAbout={false}
+        onShowAbout={noop}
+        onCloseAbout={noop}
+        onUpdateCheck={onUpdateCheck}
       />
     )
 
-    const versionButton = screen.getByRole("button", { name: "v0.0.0" })
-    expect(versionButton).toBeTruthy()
-    await userEvent.click(versionButton)
-    expect(openerState.openUrlMock).toHaveBeenCalledWith("https://github.com/PowerUserZ/OpenTokenUsage/releases")
+    const retryButton = screen.getByRole("button", { name: "Updates soon" })
+    expect(retryButton).toBeTruthy()
+    await userEvent.click(retryButton)
+    expect(onUpdateCheck).toHaveBeenCalledTimes(1)
+  })
+
+  it("shows error state for non-check failures", () => {
+    const { container } = render(
+      <PanelFooter
+        version="0.0.0"
+        autoUpdateNextAt={null}
+        updateStatus={{ status: "error", message: "Download failed" }}
+        onUpdateInstall={noop}
+        {...footerProps}
+      />
+    )
+    expect(container.textContent).toContain("Update failed")
+    expect(screen.queryByRole("button", { name: "Updates soon" })).toBeNull()
   })
 
   it("shows installing state", () => {
@@ -170,6 +176,7 @@ describe("PanelFooter", () => {
           showAbout={showAbout}
           onShowAbout={() => setShowAbout(true)}
           onCloseAbout={() => setShowAbout(false)}
+          onUpdateCheck={noop}
         />
       )
     }
@@ -181,37 +188,5 @@ describe("PanelFooter", () => {
     // Close via Escape to exercise AboutDialog onClose path.
     await userEvent.keyboard("{Escape}")
     expect(screen.queryByText("Open source on")).not.toBeInTheDocument()
-  })
-
-  it("shows latest release CTA when a newer version exists", async () => {
-    versionCheckState.result = {
-      hasUpdate: true,
-      latestVersion: "1.2.3",
-      releaseUrl: "https://github.com/PowerUserZ/OpenTokenUsage/releases/tag/v1.2.3",
-    }
-
-    try {
-      render(
-        <PanelFooter
-          version="1.0.0"
-          autoUpdateNextAt={null}
-          updateStatus={idle}
-          onUpdateInstall={noop}
-          {...footerProps}
-        />
-      )
-
-      const updateButton = screen.getByRole("button", { name: "v1.2.3 available" })
-      await userEvent.click(updateButton)
-      expect(openerState.openUrlMock).toHaveBeenCalledWith(
-        "https://github.com/PowerUserZ/OpenTokenUsage/releases/tag/v1.2.3"
-      )
-    } finally {
-      versionCheckState.result = {
-        hasUpdate: false,
-        latestVersion: null,
-        releaseUrl: null,
-      }
-    }
   })
 })

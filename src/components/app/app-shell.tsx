@@ -68,7 +68,7 @@ export function AppShell({
   })
 
   const appVersion = useAppVersion()
-  const { updateStatus, triggerInstall } = useAppUpdate()
+  const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
 
   return (
     <div
@@ -125,6 +125,7 @@ export function AppShell({
               autoUpdateNextAt={autoUpdateNextAt}
               updateStatus={updateStatus}
               onUpdateInstall={triggerInstall}
+              onUpdateCheck={checkForUpdates}
               onRefreshAll={onRefreshAll}
               showAbout={showAbout}
               onShowAbout={() => setShowAbout(true)}

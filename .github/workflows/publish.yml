@@ -1,9 +1,13 @@
 name: Publish
 
 # OpenTokenUsage is a Windows fork: this workflow builds and publishes the
-# Windows installers (NSIS .exe + MSI). The native Tauri updater is disabled
-# in this fork (tauri.conf.json `createUpdaterArtifacts: false`), so no
-# updater signing key or `latest.json`/`.sig` assets are produced.
+# Windows installers (NSIS .exe + MSI) plus the signed native-updater assets
+# (latest.json + .sig) consumed by the in-app auto-updater.
+#
+# REQUIRED updater secrets (add BEFORE tagging a release, or the build fails):
+#   TAURI_SIGNING_PRIVATE_KEY          - contents of the updater private key file
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD - key password (empty if generated w/o one)
+# The matching public key + endpoints live in src-tauri/tauri.conf.json.
 
 on:
   push:
@@ -81,12 +85,14 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ env.RELEASE_TAG }}
           releaseName: ${{ env.RELEASE_TAG }}
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: false
+          includeUpdaterJson: true
 
       - name: Verify Windows installers uploaded
         env:
@@ -96,6 +102,8 @@ jobs:
 
           printf '%s\n' "$ASSETS" | grep -Eq '\.exe$' || { echo "Missing NSIS installer (.exe)"; exit 1; }
           printf '%s\n' "$ASSETS" | grep -Eq '\.msi$' || { echo "Missing MSI installer (.msi)"; exit 1; }
+          printf '%s\n' "$ASSETS" | grep -Fxq 'latest.json' || { echo "Missing updater manifest: latest.json"; exit 1; }
+          printf '%s\n' "$ASSETS" | grep -Eq '\.sig$' || { echo "Missing updater signatures (.sig)"; exit 1; }
 
   # Auto-submit a winget-pkgs update PR for each release. No-ops unless the
   # WINGET_TOKEN secret (a classic PAT with public_repo) is configured.

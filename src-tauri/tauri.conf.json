@@ -58,6 +58,14 @@
       "icons/tray-icon.png",
       "icons/tray-icon-light.png"
     ],
-    "createUpdaterArtifacts": false
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVEQjUwMUFGRTAzM0FGNTkKUldSWnJ6UGdyd0cxN1ZUY1ppMXNCQ0tod1pzaEdKbnNUVVRuRkJVaEVMWitrRkxqdDJNWGNVakYK",
+      "endpoints": [
+        "https://github.com/PowerUserZ/OpenTokenUsage/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

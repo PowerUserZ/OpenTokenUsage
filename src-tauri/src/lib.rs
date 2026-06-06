@@ -700,9 +700,11 @@ pub fn run() {
                 });
             }
 
-            // Auto-updater disabled for this fork
-            // app.handle()
-            //     .plugin(tauri_plugin_updater::Builder::new().build())?;
+            // Native auto-updater, restored to match upstream. Requires the
+            // signed updater artifacts (latest.json + .sig) produced by the
+            // publish workflow and the pubkey/endpoints in tauri.conf.json.
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             // Register global shortcut from stored settings
             #[cfg(desktop)]
