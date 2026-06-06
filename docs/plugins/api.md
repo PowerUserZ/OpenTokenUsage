@@ -230,15 +230,16 @@ const resp = ctx.host.http.request({
 ## Keychain (macOS only)
 
 ```typescript
-host.keychain.readGenericPassword(service: string): string
+host.keychain.readGenericPassword(service: string, account?: string): string
 ```
 
-Reads a generic password from the macOS Keychain.
+Reads a generic password from the macOS Keychain. Pass `account` when the service stores multiple accounts and the plugin must avoid a service-wide match.
 
 ### Behavior
 
 - **macOS only**: Throws on other platforms
 - **Throws if not found**: Returns the password string if found, throws otherwise
+- **Optional account scope**: When `account` is set, lookup uses both service and account
 
 ### Example
 
@@ -423,6 +424,36 @@ ctx.line.badge({
 ```javascript
 ctx.line.badge({ label: "Plan", text: "Pro", color: "#000000" })
 ctx.line.badge({ label: "Status", text: "Connected", color: "#22c55e" })
+```
+
+### `ctx.line.barChart(opts)`
+
+Creates a compact vertical bar chart line for usage history.
+
+```typescript
+ctx.line.barChart({
+  label: string,                    // Required: chart label
+  points: Array<{
+    label: string,                  // Required: point label, e.g. day
+    value: number,                  // Required: non-negative chart value
+    valueLabel?: string             // Optional: displayed value, e.g. "1.2M tokens"
+  }>,
+  note?: string,                    // Optional: small muted note below chart
+  color?: string,                   // Optional: hex color for bars
+}): MetricLine
+```
+
+**Example:**
+
+```javascript
+ctx.line.barChart({
+  label: "Usage Trend",
+  points: [
+    { label: "2/1", value: 1200, valueLabel: "1.2K tokens" },
+    { label: "2/2", value: 2400, valueLabel: "2.4K tokens" },
+  ],
+  note: "Estimated from local logs",
+})
 ```
 
 ## Formatters

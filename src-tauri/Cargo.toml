@@ -1,6 +1,6 @@
 [package]
 name = "opentokenusage"
-version = "0.6.24"
+version = "0.6.27"
 description = "OpenTokenUsage - AI subscription usage tracker for Windows"
 authors = ["Robin Ebers"]
 edition = "2024"
@@ -27,12 +27,13 @@ dirs = "6"
 log = "0.4"
 libc = "0.2"
 reqwest = { version = "0.13", features = ["blocking", "socks"] }
-rquickjs = { version = "0.11", features = ["bindgen"] }
+rquickjs = { version = "0.12", features = ["bindgen"] }
 tauri-plugin-store = "2.4.3"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
 tauri-plugin-log = "2"
 tauri-plugin-aptabase = { git = "https://github.com/aptabase/tauri-plugin-aptabase", rev = "e896cceb" }
+tauri-plugin-clipboard-manager = "2.3.2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-global-shortcut = "2"
@@ -53,4 +54,4 @@ objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSScreen", "NSGraphic
 objc2-web-kit = { version = "0.3", features = ["WKPreferences", "WKWebView", "WKWebViewConfiguration"] }
 
 [dev-dependencies]
-serial_test = "3.4.0"
+serial_test = "3.5.0"

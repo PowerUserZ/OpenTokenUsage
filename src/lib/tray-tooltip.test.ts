@@ -62,5 +62,32 @@ describe("tray-tooltip", () => {
       const tooltip = formatTrayTooltip(bars, mockMeta)
       expect(tooltip).toBe("OpenTokenUsage\nPlugin 1: --%")
     })
+
+    it("omits tags in weekly mode when every line is weekly", () => {
+      const bars: TrayPrimaryBar[] = [
+        { id: "p1", fraction: 0.42, label: "Weekly", weekly: true },
+        { id: "p2", fraction: 0.6, label: "Weekly", weekly: true },
+      ]
+      const tooltip = formatTrayTooltip(bars, mockMeta, true)
+      expect(tooltip).toBe("OpenTokenUsage\nPlugin 1: 42%\nPlugin 2: 60%")
+    })
+
+    it("tags every line in weekly mode when the list is mixed", () => {
+      const bars: TrayPrimaryBar[] = [
+        { id: "p1", fraction: 0.42, label: "Weekly", weekly: true },
+        { id: "p2", fraction: 0.3, label: "Premium" },
+      ]
+      const tooltip = formatTrayTooltip(bars, mockMeta, true)
+      expect(tooltip).toBe("OpenTokenUsage\nPlugin 1: 42% · Weekly\nPlugin 2: 30% · Premium")
+    })
+
+    it("does not tag lines when weekly mode is off", () => {
+      const bars: TrayPrimaryBar[] = [
+        { id: "p1", fraction: 0.42, label: "Weekly", weekly: true },
+        { id: "p2", fraction: 0.3, label: "Premium" },
+      ]
+      const tooltip = formatTrayTooltip(bars, mockMeta, false)
+      expect(tooltip).toBe("OpenTokenUsage\nPlugin 1: 42%\nPlugin 2: 30%")
+    })
   })
 })

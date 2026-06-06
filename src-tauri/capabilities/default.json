@@ -18,6 +18,7 @@
     "process:allow-restart",
     "global-shortcut:default",
     "autostart:default",
+    "clipboard-manager:allow-write-text",
     "core:menu:default"
   ]
 }

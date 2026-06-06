@@ -16,12 +16,14 @@ const {
   loadTrayMetricMock,
   loadTrayPercentColorMock,
   loadTrayProviderMock,
+  loadMenubarMetricMock,
   loadPluginSettingsMock,
   loadResetTimerDisplayModeMock,
   loadStartOnLoginMock,
   loadThemeModeMock,
   loadTimeFormatModeMock,
   migrateLegacyTraySettingsMock,
+  migrateWindsurfToDevinMock,
   normalizePluginSettingsMock,
   savePluginSettingsMock,
 } = vi.hoisted(() => ({
@@ -39,12 +41,14 @@ const {
   loadTrayMetricMock: vi.fn(),
   loadTrayPercentColorMock: vi.fn(),
   loadTrayProviderMock: vi.fn(),
+  loadMenubarMetricMock: vi.fn(),
   loadPluginSettingsMock: vi.fn(),
   loadResetTimerDisplayModeMock: vi.fn(),
   loadStartOnLoginMock: vi.fn(),
   loadThemeModeMock: vi.fn(),
   loadTimeFormatModeMock: vi.fn(),
   migrateLegacyTraySettingsMock: vi.fn(),
+  migrateWindsurfToDevinMock: vi.fn(),
   normalizePluginSettingsMock: vi.fn(),
   savePluginSettingsMock: vi.fn(),
 }))
@@ -66,6 +70,7 @@ vi.mock("@/lib/settings", () => ({
   DEFAULT_DISPLAY_MODE: "left",
   DEFAULT_GLOBAL_SHORTCUT: null,
   DEFAULT_MENUBAR_ICON_STYLE: "icon",
+  DEFAULT_MENUBAR_METRIC: "default",
   DEFAULT_RESET_TIMER_DISPLAY_MODE: "relative",
   DEFAULT_START_ON_LOGIN: false,
   DEFAULT_THEME_MODE: "system",
@@ -78,12 +83,14 @@ vi.mock("@/lib/settings", () => ({
   loadTrayMetric: loadTrayMetricMock,
   loadTrayPercentColor: loadTrayPercentColorMock,
   loadTrayProvider: loadTrayProviderMock,
+  loadMenubarMetric: loadMenubarMetricMock,
   loadPluginSettings: loadPluginSettingsMock,
   loadResetTimerDisplayMode: loadResetTimerDisplayModeMock,
   loadStartOnLogin: loadStartOnLoginMock,
   loadThemeMode: loadThemeModeMock,
   loadTimeFormatMode: loadTimeFormatModeMock,
   migrateLegacyTraySettings: migrateLegacyTraySettingsMock,
+  migrateWindsurfToDevin: migrateWindsurfToDevinMock,
   normalizePluginSettings: normalizePluginSettingsMock,
   savePluginSettings: savePluginSettingsMock,
 }))
@@ -105,6 +112,7 @@ function createArgs() {
     setTrayProvider: vi.fn(),
     setTrayMetric: vi.fn(),
     setTrayPercentColor: vi.fn(),
+    setMenubarMetric: vi.fn(),
     setLoadingForPlugins: vi.fn(),
     setErrorForPlugins: vi.fn(),
     startBatch: vi.fn().mockResolvedValue(undefined),
@@ -127,12 +135,14 @@ describe("useSettingsBootstrap", () => {
     loadTrayMetricMock.mockReset()
     loadTrayPercentColorMock.mockReset()
     loadTrayProviderMock.mockReset()
+    loadMenubarMetricMock.mockReset()
     loadPluginSettingsMock.mockReset()
     loadResetTimerDisplayModeMock.mockReset()
     loadStartOnLoginMock.mockReset()
     loadThemeModeMock.mockReset()
     loadTimeFormatModeMock.mockReset()
     migrateLegacyTraySettingsMock.mockReset()
+    migrateWindsurfToDevinMock.mockReset()
     normalizePluginSettingsMock.mockReset()
     savePluginSettingsMock.mockReset()
 
@@ -161,8 +171,10 @@ describe("useSettingsBootstrap", () => {
     loadTrayProviderMock.mockResolvedValue("auto")
     loadTrayMetricMock.mockResolvedValue("auto")
     loadTrayPercentColorMock.mockResolvedValue("#ffffff")
+    loadMenubarMetricMock.mockResolvedValue("default")
     loadStartOnLoginMock.mockResolvedValue(true)
     migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
+    migrateWindsurfToDevinMock.mockImplementation((settings) => settings)
     savePluginSettingsMock.mockResolvedValue(undefined)
     getEnabledPluginIdsMock.mockReturnValue(["codex"])
   })
@@ -194,5 +206,67 @@ describe("useSettingsBootstrap", () => {
     })
 
     errorSpy.mockRestore()
+  })
+
+  it("applies the stored menubar metric", async () => {
+    loadMenubarMetricMock.mockResolvedValueOnce("weekly")
+    const args = createArgs()
+
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(args.setMenubarMetric).toHaveBeenCalledWith("weekly")
+    })
+  })
+
+  it("falls back to default menubar metric when loading fails", async () => {
+    const metricError = new Error("menubar metric unavailable")
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    loadMenubarMetricMock.mockRejectedValueOnce(metricError)
+    const args = createArgs()
+
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("Failed to load menubar metric:", metricError)
+      expect(args.setMenubarMetric).toHaveBeenCalledWith("default")
+    })
+
+    errorSpy.mockRestore()
+  })
+
+  it("migrates windsurf settings before normalizing and saves the first-launch result", async () => {
+    const args = createArgs()
+    const storedSettings = { order: ["windsurf"], disabled: [] }
+    const migratedSettings = { order: ["devin"], disabled: [] }
+    const availablePlugins = [
+      {
+        id: "devin",
+        name: "Devin",
+        iconUrl: "/devin.svg",
+        brandColor: "#000000",
+        lines: [],
+        primaryCandidates: [],
+      },
+    ]
+
+    invokeMock.mockResolvedValueOnce(availablePlugins)
+    loadPluginSettingsMock.mockResolvedValueOnce(storedSettings)
+    migrateWindsurfToDevinMock.mockReturnValueOnce(migratedSettings)
+    normalizePluginSettingsMock.mockReturnValueOnce(migratedSettings)
+    arePluginSettingsEqualMock.mockReturnValueOnce(false)
+    getEnabledPluginIdsMock.mockReturnValueOnce(["devin"])
+
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(normalizePluginSettingsMock).toHaveBeenCalledWith(
+        migratedSettings,
+        availablePlugins
+      )
+      expect(savePluginSettingsMock).toHaveBeenCalledWith(migratedSettings)
+      expect(args.setPluginSettings).toHaveBeenCalledWith(migratedSettings)
+      expect(args.startBatch).toHaveBeenCalledWith(["devin"])
+    })
   })
 })

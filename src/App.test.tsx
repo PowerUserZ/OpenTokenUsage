@@ -27,6 +27,8 @@ const state = vi.hoisted(() => ({
   saveTrayMetricMock: vi.fn(),
   loadTrayPercentColorMock: vi.fn(),
   saveTrayPercentColorMock: vi.fn(),
+  loadMenubarMetricMock: vi.fn(),
+  saveMenubarMetricMock: vi.fn(),
   migrateLegacyTraySettingsMock: vi.fn(),
   loadGlobalShortcutMock: vi.fn(),
   saveGlobalShortcutMock: vi.fn(),
@@ -245,6 +247,8 @@ vi.mock("@/lib/settings", async () => {
     saveTrayMetric: state.saveTrayMetricMock,
     loadTrayPercentColor: state.loadTrayPercentColorMock,
     saveTrayPercentColor: state.saveTrayPercentColorMock,
+    loadMenubarMetric: state.loadMenubarMetricMock,
+    saveMenubarMetric: state.saveMenubarMetricMock,
     migrateLegacyTraySettings: state.migrateLegacyTraySettingsMock,
     loadGlobalShortcut: state.loadGlobalShortcutMock,
     saveGlobalShortcut: state.saveGlobalShortcutMock,
@@ -289,6 +293,8 @@ describe("App", () => {
     state.saveTrayMetricMock.mockReset()
     state.loadTrayPercentColorMock.mockReset()
     state.saveTrayPercentColorMock.mockReset()
+    state.loadMenubarMetricMock.mockReset()
+    state.saveMenubarMetricMock.mockReset()
     state.migrateLegacyTraySettingsMock.mockReset()
     state.loadGlobalShortcutMock.mockReset()
     state.saveGlobalShortcutMock.mockReset()
@@ -333,6 +339,8 @@ describe("App", () => {
     state.saveTrayMetricMock.mockResolvedValue(undefined)
     state.loadTrayPercentColorMock.mockResolvedValue("#ffffff")
     state.saveTrayPercentColorMock.mockResolvedValue(undefined)
+    state.loadMenubarMetricMock.mockResolvedValue("default")
+    state.saveMenubarMetricMock.mockResolvedValue(undefined)
     state.migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     state.loadGlobalShortcutMock.mockResolvedValue(null)
     state.saveGlobalShortcutMock.mockResolvedValue(undefined)
@@ -371,6 +379,7 @@ describe("App", () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollHeight
   })
 
@@ -738,6 +747,115 @@ describe("App", () => {
       expect(latestCall).toBeDefined()
       expect(latestCall!.style).toBe("percent")
     })
+  })
+
+  it("settings UI persists menubar metric change and re-renders the tray", async () => {
+    state.loadDisplayModeMock.mockResolvedValue("used")
+    state.invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_plugins") {
+        return [
+          {
+            id: "a",
+            name: "Alpha",
+            iconUrl: "icon-a",
+            primaryCandidates: ["Session"],
+            weeklyCandidate: "Weekly",
+            lines: [
+              { type: "progress", label: "Session", scope: "overview" },
+              { type: "progress", label: "Weekly", scope: "overview", period: "weekly" },
+            ],
+          },
+        ]
+      }
+      return null
+    })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
+
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+
+    state.probeHandlers?.onResult({
+      providerId: "a",
+      displayName: "Alpha",
+      iconUrl: "icon-a",
+      lines: [
+        { type: "progress", label: "Session", used: 20, limit: 100, format: { kind: "percent" } },
+        { type: "progress", label: "Weekly", used: 60, limit: 100, format: { kind: "percent" } },
+      ],
+    })
+
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+
+    await userEvent.click(await screen.findByRole("radio", { name: "Weekly" }))
+    expect(state.saveMenubarMetricMock).toHaveBeenCalledWith("weekly")
+
+    await waitFor(() => {
+      const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
+      expect(latestCall).toBeDefined()
+      expect(latestCall!.bars?.[0]?.fraction).toBe(0.6)
+    })
+  })
+
+  it("sends the mixed-tagged weekly tooltip to the tray", async () => {
+    state.loadDisplayModeMock.mockResolvedValue("used")
+    state.invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_plugins") {
+        return [
+          {
+            id: "claude",
+            name: "Claude",
+            iconUrl: "icon-claude",
+            primaryCandidates: ["Session"],
+            weeklyCandidate: "Weekly",
+            lines: [
+              { type: "progress", label: "Session", scope: "overview" },
+              { type: "progress", label: "Weekly", scope: "overview" },
+            ],
+          },
+          {
+            id: "cursor",
+            name: "Cursor",
+            iconUrl: "icon-cursor",
+            primaryCandidates: ["Credits"],
+            lines: [{ type: "progress", label: "Credits", scope: "overview" }],
+          },
+        ]
+      }
+      return null
+    })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["claude", "cursor"], disabled: [] })
+
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+
+    state.probeHandlers?.onResult({
+      providerId: "claude",
+      displayName: "Claude",
+      iconUrl: "icon-claude",
+      lines: [
+        { type: "progress", label: "Session", used: 20, limit: 100, format: { kind: "percent" } },
+        { type: "progress", label: "Weekly", used: 42, limit: 100, format: { kind: "percent" } },
+      ],
+    })
+    state.probeHandlers?.onResult({
+      providerId: "cursor",
+      displayName: "Cursor",
+      iconUrl: "icon-cursor",
+      lines: [{ type: "progress", label: "Credits", used: 55, limit: 100, format: { kind: "percent" } }],
+    })
+
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+    await userEvent.click(await screen.findByRole("radio", { name: "Weekly" }))
+
+    // Cursor has no weekly line -> falls back to its primary, so the list is mixed
+    // and every line gets a metric tag.
+    await waitFor(() =>
+      expect(state.traySetTooltipMock).toHaveBeenCalledWith(
+        "OpenTokenUsage\nClaude: 42% · Weekly\nCursor: 55% · Credits"
+      )
+    )
   })
 
   it("logs when saving display mode fails", async () => {
@@ -1402,6 +1520,13 @@ describe("App", () => {
     await vi.waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
 
     // Clear the initial batch call count
+    state.probeHandlers?.onResult({
+      providerId: "a",
+      displayName: "Alpha",
+      iconUrl: "icon-a",
+      lines: [{ type: "text", label: "Now", value: "OK" }],
+    })
+    state.probeHandlers?.onBatchComplete()
     const initialCalls = state.startBatchMock.mock.calls.length
 
     // Advance time by 5 minutes to trigger the interval
@@ -1430,6 +1555,13 @@ describe("App", () => {
 
     // Wait for initial batch
     await vi.waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    state.probeHandlers?.onResult({
+      providerId: "a",
+      displayName: "Alpha",
+      iconUrl: "icon-a",
+      lines: [{ type: "text", label: "Now", value: "OK" }],
+    })
+    state.probeHandlers?.onBatchComplete()
 
     // Advance time to trigger the interval (which will fail)
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000)

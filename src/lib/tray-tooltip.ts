@@ -13,16 +13,31 @@ export function formatTrayPercentText(fraction: number | undefined): string {
 /**
  * Creates a multi-line tooltip string for the tray icon.
  * Lists the app name followed by enabled plugins and their usage percentages.
+ *
+ * In weekly mode, lines are tagged with their metric label only when the list
+ * is mixed (at least one provider fell back from weekly). When every provider
+ * is showing weekly, the tags are redundant and omitted.
  */
-export function formatTrayTooltip(bars: TrayPrimaryBar[], pluginsMeta: PluginMeta[]): string {
+export function formatTrayTooltip(
+  bars: TrayPrimaryBar[],
+  pluginsMeta: PluginMeta[],
+  weeklyMode = false
+): string {
   const lines = ["OpenTokenUsage"]
   if (bars.length === 0) return lines[0]!
-  
+
+  const resolved = bars.filter((bar) => bar.label !== undefined)
+  const hasFallback = resolved.some((bar) => !bar.weekly)
+  const showTags = weeklyMode && resolved.length > 0 && hasFallback
+
   const metaById = new Map(pluginsMeta.map((p) => [p.id, p]))
   for (const bar of bars) {
     const meta = metaById.get(bar.id)
-    if (meta) {
-      const percent = formatTrayPercentText(bar.fraction)
+    if (!meta) continue
+    const percent = formatTrayPercentText(bar.fraction)
+    if (showTags && bar.label) {
+      lines.push(`${meta.name}: ${percent} · ${bar.label}`)
+    } else {
       lines.push(`${meta.name}: ${percent}`)
     }
   }

@@ -51,7 +51,7 @@ Bundled plugins live under `src-tauri/resources/bundled_plugins/<id>/`.
   "links": [{ "label": "Status", "url": "https://status.example.com" }],
   "lines": [
     { "type": "badge", "label": "Plan", "scope": "overview" },
-    { "type": "progress", "label": "Usage", "scope": "overview", "primary": true },
+    { "type": "progress", "label": "Usage", "scope": "overview", "primaryOrder": 1 },
     { "type": "text", "label": "Details", "scope": "detail" }
   ]
 }
@@ -92,22 +92,23 @@ loading skeletons instantly while probes execute asynchronously.
 
 | Field     | Type    | Required | Description                                       |
 |-----------|---------|----------|---------------------------------------------------|
-| `type`    | string  | Yes      | One of: `text`, `progress`, `badge`               |
+| `type`    | string  | Yes      | One of: `text`, `progress`, `badge`, `barChart`   |
 | `label`   | string  | Yes      | Static label shown in the UI for this line        |
 | `scope`   | string  | Yes      | `"overview"` or `"detail"` - where line appears   |
-| `primary` | boolean | No       | If `true`, this progress line appears in tray icon |
+| `primaryOrder` | number | No | Lower number = higher priority; orders this progress line among the tray-icon candidates (see below) |
+| `period`  | string  | No       | `"weekly"` marks this line as the provider's weekly metric (see below) |
 
 - `"overview"` - shown on both Overview tab and plugin detail pages
 - `"detail"` - shown only on plugin detail pages
 
 ### Primary Progress (Tray Icon)
 
-Plugins can optionally mark one progress line as `primary: true`. This progress metric will be displayed as a horizontal bar in the system tray icon, allowing users to see usage at a glance without opening the app.
+Progress lines opt into the system tray icon by setting `primaryOrder` (a number). Lines are sorted by `primaryOrder` into an ordered list of candidates, and the tray shows the **first candidate that has runtime data** — falling back to the next when an earlier one is absent. This lets a provider prefer a short-window metric but degrade gracefully when it isn't reported.
 
 Rules:
-- Only `type: "progress"` lines can be primary (the flag is ignored on other types)
-- Only the **first** `primary: true` line is used (subsequent ones are ignored)
-- Up to 4 enabled plugins with primary progress are shown in the tray (in plugin order)
+- Only `type: "progress"` lines are candidates (`primaryOrder` is ignored on other types)
+- Lower `primaryOrder` wins; the frontend walks the ordered list and uses the first one present in live data
+- Up to 4 enabled plugins are shown in the tray (in plugin order)
 - If no data is available yet, the bar shows as a track without fill
 
 Example:
@@ -116,9 +117,24 @@ Example:
 {
   "lines": [
     { "type": "badge", "label": "Plan", "scope": "overview" },
-    { "type": "progress", "label": "Plan usage", "scope": "overview", "primary": true },
-    { "type": "progress", "label": "Extra", "scope": "detail" },
+    { "type": "progress", "label": "Plan usage", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Overage", "scope": "overview", "primaryOrder": 2 },
     { "type": "text", "label": "Resets", "scope": "detail" }
+  ]
+}
+```
+
+### Weekly Metric (Menubar)
+
+A provider can mark one progress line with `"period": "weekly"`. When the user sets the menubar metric to **Weekly** (Settings → Menubar Icon), the tray icon and tooltip show this line instead of the provider's primary metric.
+
+It is an **override of the primary metric**, not a standalone mode: the provider must still define a primary (`primaryOrder`) line — a provider with *only* a weekly line will not appear in the menubar. Providers without a weekly line keep showing their primary. `period` only recognizes `"weekly"` (other values are ignored), and only the first `"period": "weekly"` line is used.
+
+```json
+{
+  "lines": [
+    { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Weekly", "scope": "overview", "period": "weekly" }
   ]
 }
 ```
@@ -161,6 +177,13 @@ type MetricLine =
       color?: string;
     }
   | { type: "badge"; label: string; text: string; color?: string; subtitle?: string }
+  | {
+      type: "barChart";
+      label: string;
+      points: Array<{ label: string; value: number; valueLabel?: string }>;
+      note?: string;
+      color?: string;
+    }
 ```
 
 - `color`: optional hex string (e.g. `#22c55e`)
@@ -196,6 +219,21 @@ ctx.line.progress({
   resetsAt: ctx.util.toIso("2026-02-01T00:00:00Z"),
 })
 // UI will show: "Resets in …"
+```
+
+### Bar Chart Line
+
+Shows a compact vertical bar chart for small history snapshots.
+
+```javascript
+ctx.line.barChart({
+  label: "Usage Trend",
+  points: [
+    { label: "Feb 1", value: 1200, valueLabel: "1.2K tokens" },
+    { label: "Feb 2", value: 2400, valueLabel: "2.4K tokens" },
+  ],
+  note: "Estimated from local logs",
+})
 ```
 
 ### Badge Line
@@ -237,7 +275,7 @@ A complete, working plugin that fetches data and displays all three line types.
   "icon": "icon.svg",
   "lines": [
     { "type": "badge", "label": "Status", "scope": "overview" },
-    { "type": "progress", "label": "Usage", "scope": "overview", "primary": true },
+    { "type": "progress", "label": "Usage", "scope": "overview", "primaryOrder": 1 },
     { "type": "text", "label": "Fetched at", "scope": "detail" }
   ]
 }

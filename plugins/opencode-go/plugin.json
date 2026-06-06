@@ -26,7 +26,8 @@
     {
       "type": "progress",
       "label": "Weekly",
-      "scope": "overview"
+      "scope": "overview",
+      "period": "weekly"
     },
     {
       "type": "progress",

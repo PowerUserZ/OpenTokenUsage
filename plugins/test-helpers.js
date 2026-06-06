@@ -113,6 +113,12 @@ export const makeCtx = () => {
       if (opts.subtitle) line.subtitle = opts.subtitle
       return line
     },
+    barChart: (opts) => {
+      const line = { type: "barChart", label: opts.label, points: opts.points || [] }
+      if (opts.note) line.note = opts.note
+      if (opts.color) line.color = opts.color
+      return line
+    },
   }
 
   ctx.fmt = {

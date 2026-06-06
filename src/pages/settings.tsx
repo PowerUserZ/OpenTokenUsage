@@ -24,6 +24,7 @@ import {
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
   MENUBAR_ICON_STYLE_OPTIONS,
+  MENUBAR_METRIC_OPTIONS,
   RESET_TIMER_DISPLAY_OPTIONS,
   THEME_OPTIONS,
   TIME_FORMAT_OPTIONS,
@@ -31,6 +32,7 @@ import {
   type DisplayMode,
   type GlobalShortcut,
   type MenubarIconStyle,
+  type MenubarMetric,
   type ResetTimerDisplayMode,
   type ThemeMode,
   type TimeFormatMode,
@@ -219,6 +221,8 @@ interface SettingsPageProps {
   onTrayMetricChange: (value: string) => void;
   trayPercentColor: string;
   onTrayPercentColorChange: (value: string) => void;
+  menubarMetric: MenubarMetric;
+  onMenubarMetricChange: (value: MenubarMetric) => void;
   traySettingsPreview: TraySettingsPreview;
   globalShortcut: GlobalShortcut;
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
@@ -248,6 +252,8 @@ export function SettingsPage({
   onTrayMetricChange,
   trayPercentColor,
   onTrayPercentColorChange,
+  menubarMetric,
+  onMenubarMetricChange,
   traySettingsPreview,
   globalShortcut,
   onGlobalShortcutChange,
@@ -475,6 +481,29 @@ export function SettingsPage({
             )}
           </div>
         )}
+        <p className="text-sm text-muted-foreground mt-3 mb-2">Metric</p>
+        <div className="bg-muted/50 rounded-lg p-1">
+          <div className="flex gap-1" role="radiogroup" aria-label="Menubar metric">
+            {MENUBAR_METRIC_OPTIONS.map((option) => {
+              const isActive = option.value === menubarMetric;
+              return (
+                <Button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-label={option.label}
+                  aria-checked={isActive}
+                  variant={isActive ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => onMenubarMetricChange(option.value)}
+                >
+                  {option.label}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">App Theme</h3>

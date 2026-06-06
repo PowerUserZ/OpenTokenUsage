@@ -27,6 +27,8 @@ export type TrayMetric = "auto" | string;
 
 export type TrayPercentColor = string;
 
+export type MenubarMetric = "default" | "weekly";
+
 export type GlobalShortcut = string | null;
 
 const SETTINGS_STORE_PATH = "settings.json";
@@ -37,6 +39,7 @@ const DISPLAY_MODE_KEY = "displayMode";
 const RESET_TIMER_DISPLAY_MODE_KEY = "resetTimerDisplayMode";
 const TIME_FORMAT_MODE_KEY = "timeFormatMode";
 const MENUBAR_ICON_STYLE_KEY = "menubarIconStyle";
+const MENUBAR_METRIC_KEY = "menubarMetric";
 const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const TRAY_PROVIDER_KEY = "trayProvider";
@@ -54,6 +57,7 @@ export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "icon";
 export const DEFAULT_TRAY_PROVIDER: TrayProvider = "auto";
 export const DEFAULT_TRAY_METRIC: TrayMetric = "auto";
 export const DEFAULT_TRAY_PERCENT_COLOR: TrayPercentColor = "#ffffff";
+export const DEFAULT_MENUBAR_METRIC: MenubarMetric = "default";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = true;
 
@@ -63,11 +67,17 @@ const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
 const TIME_FORMAT_MODES: TimeFormatMode[] = ["auto", "12h", "24h"];
 const MENUBAR_ICON_STYLES: MenubarIconStyle[] = ["icon", "percent", "bars"];
+const MENUBAR_METRICS: MenubarMetric[] = ["default", "weekly"];
 
 export const MENUBAR_ICON_STYLE_OPTIONS: { value: MenubarIconStyle; label: string }[] = [
   { value: "icon", label: "Icon" },
   { value: "percent", label: "Percent" },
   { value: "bars", label: "Bars" },
+];
+
+export const MENUBAR_METRIC_OPTIONS: { value: MenubarMetric; label: string }[] = [
+  { value: "default", label: "Default" },
+  { value: "weekly", label: "Weekly" },
 ];
 
 export const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] =
@@ -121,6 +131,30 @@ export async function loadPluginSettings(): Promise<PluginSettings> {
 export async function savePluginSettings(settings: PluginSettings): Promise<void> {
   await store.set(PLUGIN_SETTINGS_KEY, settings);
   await store.save();
+}
+
+// TODO(remove after 2026-09-01): One-time Windsurf -> Devin settings migration.
+export function migrateWindsurfToDevin(settings: PluginSettings): PluginSettings {
+  const hasDevin = settings.order.includes("devin");
+  const hasWindsurf = settings.order.includes("windsurf");
+  const windsurfWasDisabled = settings.disabled.includes("windsurf");
+  const order = Array.from(
+    new Set(settings.order.map((id) => (id === "windsurf" ? "devin" : id)))
+  );
+  let disabled = settings.disabled.filter((id) => id !== "windsurf");
+
+  if (hasWindsurf && !windsurfWasDisabled) {
+    disabled = disabled.filter((id) => id !== "devin");
+  }
+
+  if (!hasDevin && windsurfWasDisabled && !disabled.includes("devin")) {
+    disabled.push("devin");
+  }
+
+  return {
+    order,
+    disabled: Array.from(new Set(disabled)),
+  };
 }
 
 function isAutoUpdateInterval(value: unknown): value is AutoUpdateIntervalMinutes {
@@ -318,6 +352,21 @@ export async function loadTrayPercentColor(): Promise<TrayPercentColor> {
 
 export async function saveTrayPercentColor(value: TrayPercentColor): Promise<void> {
   await store.set(TRAY_PERCENT_COLOR_KEY, value);
+  await store.save();
+}
+
+function isMenubarMetric(value: unknown): value is MenubarMetric {
+  return typeof value === "string" && MENUBAR_METRICS.includes(value as MenubarMetric);
+}
+
+export async function loadMenubarMetric(): Promise<MenubarMetric> {
+  const stored = await store.get<unknown>(MENUBAR_METRIC_KEY);
+  if (isMenubarMetric(stored)) return stored;
+  return DEFAULT_MENUBAR_METRIC;
+}
+
+export async function saveMenubarMetric(metric: MenubarMetric): Promise<void> {
+  await store.set(MENUBAR_METRIC_KEY, metric);
   await store.save();
 }
 

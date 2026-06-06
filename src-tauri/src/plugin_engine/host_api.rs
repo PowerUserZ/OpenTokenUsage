@@ -4,13 +4,14 @@ use aes_gcm::{
     aes::Aes256,
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use rquickjs::{Ctx, Exception, Function, Object};
+use rquickjs::{function::Rest, Ctx, Exception, Function, Object};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 /// Create a `Command` that won't flash a console window on Windows.
 fn silent_command(program: &str) -> Command {
@@ -42,6 +43,53 @@ const WHITELISTED_ENV_VARS: [&str; 16] = [
     "SYNTHETIC_API_KEY",
     "PI_CODING_AGENT_DIR",
 ];
+const MIN_BLOCKING_TIMEOUT: Duration = Duration::from_millis(1);
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ProbeDeadline {
+    expires_at: Option<Instant>,
+}
+
+impl ProbeDeadline {
+    #[cfg(test)]
+    pub(crate) fn none() -> Self {
+        Self { expires_at: None }
+    }
+
+    pub(crate) fn at(expires_at: Instant) -> Self {
+        Self {
+            expires_at: Some(expires_at),
+        }
+    }
+
+    pub(crate) fn has_elapsed(self) -> bool {
+        self.expires_at
+            .map(|expires_at| Instant::now() >= expires_at)
+            .unwrap_or(false)
+    }
+
+    fn clamp_duration(self, requested: Duration) -> Option<Duration> {
+        let Some(expires_at) = self.expires_at else {
+            return Some(requested);
+        };
+        let remaining = expires_at
+            .checked_duration_since(Instant::now())
+            .filter(|remaining| *remaining >= MIN_BLOCKING_TIMEOUT)?;
+        Some(requested.min(remaining))
+    }
+}
+
+fn log_probe_deadline_skip(plugin_id: &str, operation: &str) {
+    log::warn!(
+        "[plugin:{}] {} skipped: probe timed out",
+        plugin_id,
+        operation
+    );
+}
+
+fn probe_timeout_error<'js>(ctx: &Ctx<'js>) -> rquickjs::Error {
+    Exception::throw_message(ctx, "probe timed out")
+}
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
     text.lines()
@@ -343,6 +391,16 @@ fn redact_body(body: &str) -> String {
         })
         .to_string();
 
+    if let Ok(devin_session_re) =
+        regex_lite::Regex::new(r#"devin-session-token\$[^\s"',}\]]+"#)
+    {
+        result = devin_session_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                redact_value(&caps[0])
+            })
+            .to_string();
+    }
+
     // Redact JSON values for sensitive keys
     let sensitive_keys = [
         "name",
@@ -370,6 +428,10 @@ fn redact_body(body: &str) -> String {
         "accountId",
         "team_id",
         "teamId",
+        "org_id",
+        "orgId",
+        "account_display_name",
+        "accountDisplayName",
         "payment_id",
         "paymentId",
         "profile_arn",
@@ -413,6 +475,15 @@ pub(crate) fn redact_log_message(msg: &str) -> String {
     }
     if let Ok(api_re) = regex_lite::Regex::new(r#"(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}"#) {
         result = api_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                redact_value(&caps[0])
+            })
+            .to_string();
+    }
+    if let Ok(devin_session_re) =
+        regex_lite::Regex::new(r#"devin-session-token\$[^\s"',}\]]+"#)
+    {
+        result = devin_session_re
             .replace_all(&result, |caps: &regex_lite::Captures| {
                 redact_value(&caps[0])
             })
@@ -524,11 +595,28 @@ fn encrypt_aes_256_gcm_envelope(plaintext: &str, key_b64: &str) -> Result<String
     ))
 }
 
-pub fn inject_host_api<'js>(
+#[cfg(test)]
+pub(crate) fn inject_host_api<'js>(
     ctx: &Ctx<'js>,
     plugin_id: &str,
     app_data_dir: &PathBuf,
     app_version: &str,
+) -> rquickjs::Result<()> {
+    inject_host_api_with_deadline(
+        ctx,
+        plugin_id,
+        app_data_dir,
+        app_version,
+        ProbeDeadline::none(),
+    )
+}
+
+pub(crate) fn inject_host_api_with_deadline<'js>(
+    ctx: &Ctx<'js>,
+    plugin_id: &str,
+    app_data_dir: &PathBuf,
+    app_version: &str,
+    deadline: ProbeDeadline,
 ) -> rquickjs::Result<()> {
     let globals = ctx.globals();
     let probe_ctx = Object::new(ctx.clone())?;
@@ -558,11 +646,11 @@ pub fn inject_host_api<'js>(
     inject_fs(ctx, &host)?;
     inject_crypto(ctx, &host)?;
     inject_env(ctx, &host, plugin_id)?;
-    inject_http(ctx, &host, plugin_id)?;
+    inject_http(ctx, &host, plugin_id, deadline)?;
     inject_keychain(ctx, &host, plugin_id)?;
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
-    inject_ccusage(ctx, &host, plugin_id)?;
+    inject_ccusage(ctx, &host, plugin_id, deadline)?;
 
     probe_ctx.set("host", host)?;
     globals.set("__openusage_ctx", probe_ctx)?;
@@ -733,7 +821,12 @@ fn inject_env<'js>(ctx: &Ctx<'js>, host: &Object<'js>, _plugin_id: &str) -> rqui
     Ok(())
 }
 
-fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
+fn inject_http<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    plugin_id: &str,
+    deadline: ProbeDeadline,
+) -> rquickjs::Result<()> {
     let http_obj = Object::new(ctx.clone())?;
     let pid = plugin_id.to_string();
 
@@ -745,6 +838,10 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                 let req: HttpReqParams = serde_json::from_str(&req_json).map_err(|e| {
                     Exception::throw_message(&ctx_inner, &format!("invalid request: {}", e))
                 })?;
+
+                if deadline.has_elapsed() {
+                    return Err(Exception::throw_message(&ctx_inner, "probe timed out"));
+                }
 
                 let method_str = req.method.as_deref().unwrap_or("GET");
                 let redacted_url = redact_url(&req.url);
@@ -771,9 +868,13 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                 }
 
                 let timeout_ms = req.timeout_ms.unwrap_or(10_000);
+                let Some(timeout) = deadline.clamp_duration(Duration::from_millis(timeout_ms))
+                else {
+                    return Err(probe_timeout_error(&ctx_inner));
+                };
                 let mut builder = reqwest::blocking::Client::builder()
-                    .timeout(std::time::Duration::from_millis(timeout_ms))
-                    .connect_timeout(std::time::Duration::from_millis(timeout_ms))
+                    .timeout(timeout)
+                    .connect_timeout(timeout)
                     .redirect(reqwest::redirect::Policy::none());
 
                 // Apply pre-resolved proxy (localhost bypass already configured)
@@ -923,6 +1024,12 @@ pub fn inject_utils(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
                     var line = { type: "badge", label: opts.label, text: opts.text };
                     if (opts.color) line.color = opts.color;
                     if (opts.subtitle) line.subtitle = opts.subtitle;
+                    return line;
+                },
+                barChart: function(opts) {
+                    var line = { type: "barChart", label: opts.label, points: opts.points || [] };
+                    if (opts.note) line.note = opts.note;
+                    if (opts.color) line.color = opts.color;
                     return line;
                 }
             };
@@ -1259,15 +1366,19 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
 
                 let ps_stdout = String::from_utf8_lossy(&ps_output.stdout);
                 let process_name_lower = opts.process_name.to_lowercase();
-                let markers_lower: Vec<String> =
-                    opts.markers.iter().map(|m| m.to_lowercase()).collect();
+                let markers_lower: Vec<String> = opts
+                    .markers
+                    .iter()
+                    .map(|m| m.trim().to_lowercase())
+                    .filter(|m| !m.is_empty())
+                    .collect();
 
                 // Find the target process. Marker patterns are Codeium-derived.
                 // Matching priority:
                 //   1. Exact --ide_name / --app_data_dir flag value (prevents
                 //      "windsurf" matching "windsurf-next")
                 //   2. Path substring (/<marker>/) as fallback when no flags found
-                let mut found: Option<(i32, String)> = None;
+                let mut candidates: Vec<(u8, i32, String)> = Vec::new();
 
                 for line in ps_stdout.lines() {
                     let trimmed = line.trim();
@@ -1285,134 +1396,116 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                         None => continue,
                     };
 
-                    let command_lower = command.to_lowercase();
-
-                    if !command_lower.contains(&process_name_lower) {
+                    if !ls_command_matches_process(command, &process_name_lower) {
                         continue;
                     }
 
-                    let ide_name = ls_extract_flag(command, "--ide_name").map(|v| v.to_lowercase());
-                    let app_data =
-                        ls_extract_flag(command, "--app_data_dir").map(|v| v.to_lowercase());
-
-                    let has_marker = markers_lower.iter().any(|m| {
-                        // Prefer exact flag match; skip path fallback when
-                        // a distinguishing flag exists.
-                        if let Some(ref name) = ide_name {
-                            return *name == *m;
-                        }
-                        if let Some(ref dir) = app_data {
-                            return *dir == *m;
-                        }
-                        // Fallback: path substring
-                        command_lower.contains(&format!("/{}/", m))
-                    });
-                    if !has_marker {
+                    let Some(marker_rank) = ls_marker_rank(command, &markers_lower) else {
                         continue;
-                    }
+                    };
 
                     if let Ok(p) = pid_str.parse::<i32>() {
-                        found = Some((p, command.to_string()));
-                        break;
+                        candidates.push((marker_rank, p, command.to_string()));
                     }
                 }
 
-                let (process_pid, command) = match found {
-                    Some(pair) => pair,
-                    None => {
-                        log::info!("[plugin:{}] LS process not found", pid);
-                        return Ok("null".to_string());
-                    }
-                };
-
-                // Extract CSRF token
-                let csrf = match ls_extract_flag(&command, &opts.csrf_flag) {
-                    Some(c) => c,
-                    None => {
-                        log::warn!("[plugin:{}] CSRF token not found in process args", pid);
-                        return Ok("null".to_string());
-                    }
-                };
-
-                // Extract extension port (optional)
-                let extension_port = opts.port_flag.as_ref().and_then(|flag| {
-                    ls_extract_flag(&command, flag).and_then(|v| v.parse::<i32>().ok())
-                });
-
-                // Extract extra flags (optional)
-                let mut extra = std::collections::HashMap::new();
-                if let Some(ref flags) = opts.extra_flags {
-                    for flag in flags {
-                        if let Some(val) = ls_extract_flag(&command, flag) {
-                            // Use flag name without leading dashes as key
-                            let key = flag.trim_start_matches('-').to_string();
-                            extra.insert(key, val);
-                        }
-                    }
+                if candidates.is_empty() {
+                    log::info!("[plugin:{}] LS process not found", pid);
+                    return Ok("null".to_string());
                 }
 
-                // Find lsof binary
                 let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
                     .iter()
                     .find(|p| std::path::Path::new(p).exists())
                     .copied();
 
-                let ports = if let Some(lsof) = lsof_path {
-                    match silent_command(lsof)
-                        .args([
-                            "-nP",
-                            "-iTCP",
-                            "-sTCP:LISTEN",
-                            "-a",
-                            "-p",
-                            &process_pid.to_string(),
-                        ])
-                        .output()
-                    {
-                        Ok(o) if o.status.success() => {
-                            ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
+                candidates.sort_by_key(|(marker_rank, _, _)| *marker_rank);
+                for (_, process_pid, command) in candidates {
+                    let csrf = if opts.csrf_flag.trim().is_empty() {
+                        String::new()
+                    } else {
+                        match ls_extract_flag(&command, &opts.csrf_flag) {
+                            Some(c) => c,
+                            None => {
+                                log::warn!("[plugin:{}] CSRF token not found in process args", pid);
+                                continue;
+                            }
                         }
-                        Ok(_) => {
-                            log::warn!("[plugin:{}] lsof returned non-zero", pid);
-                            Vec::new()
-                        }
-                        Err(e) => {
-                            log::warn!("[plugin:{}] lsof failed: {}", pid, e);
-                            Vec::new()
+                    };
+
+                    let extension_port = opts.port_flag.as_ref().and_then(|flag| {
+                        ls_extract_flag(&command, flag).and_then(|v| v.parse::<i32>().ok())
+                    });
+
+                    let mut extra = std::collections::HashMap::new();
+                    if let Some(ref flags) = opts.extra_flags {
+                        for flag in flags {
+                            if let Some(val) = ls_extract_flag(&command, flag) {
+                                let key = flag.trim_start_matches('-').to_string();
+                                extra.insert(key, val);
+                            }
                         }
                     }
-                } else {
-                    log::warn!("[plugin:{}] lsof not found", pid);
-                    Vec::new()
-                };
 
-                if ports.is_empty() && extension_port.is_none() {
-                    log::warn!(
-                        "[plugin:{}] no listening ports found for pid {}",
+                    let ports = if let Some(lsof) = lsof_path {
+                        match silent_command(lsof)
+                            .args([
+                                "-nP",
+                                "-iTCP",
+                                "-sTCP:LISTEN",
+                                "-a",
+                                "-p",
+                                &process_pid.to_string(),
+                            ])
+                            .output()
+                        {
+                            Ok(o) if o.status.success() => {
+                                ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
+                            }
+                            Ok(_) => {
+                                log::warn!("[plugin:{}] lsof returned non-zero", pid);
+                                Vec::new()
+                            }
+                            Err(e) => {
+                                log::warn!("[plugin:{}] lsof failed: {}", pid, e);
+                                Vec::new()
+                            }
+                        }
+                    } else {
+                        log::warn!("[plugin:{}] lsof not found", pid);
+                        Vec::new()
+                    };
+
+                    if ports.is_empty() && extension_port.is_none() {
+                        log::warn!(
+                            "[plugin:{}] no listening ports found for pid {}",
+                            pid,
+                            process_pid
+                        );
+                        continue;
+                    }
+
+                    log::info!(
+                        "[plugin:{}] LS found: pid={}, ports={:?}, csrf=[REDACTED]",
                         pid,
-                        process_pid
+                        process_pid,
+                        ports
                     );
-                    return Ok("null".to_string());
+
+                    let result = LsDiscoverResult {
+                        pid: process_pid,
+                        csrf,
+                        ports,
+                        extra,
+                        extension_port,
+                    };
+
+                    return serde_json::to_string(&result).map_err(|e| {
+                        Exception::throw_message(&ctx_inner, &format!("serialize failed: {}", e))
+                    });
                 }
 
-                log::info!(
-                    "[plugin:{}] LS found: pid={}, ports={:?}, csrf=[REDACTED]",
-                    pid,
-                    process_pid,
-                    ports
-                );
-
-                let result = LsDiscoverResult {
-                    pid: process_pid,
-                    csrf,
-                    ports,
-                    extra,
-                    extension_port,
-                };
-
-                serde_json::to_string(&result).map_err(|e| {
-                    Exception::throw_message(&ctx_inner, &format!("serialize failed: {}", e))
-                })
+                Ok("null".to_string())
             },
         )?,
     )?;
@@ -1454,6 +1547,71 @@ fn ls_extract_flag(command: &str, flag: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn ls_marker_rank(command: &str, markers_lower: &[String]) -> Option<u8> {
+    if markers_lower.is_empty() {
+        return Some(0);
+    }
+
+    let ide_name = ls_extract_flag(command, "--ide_name").map(|v| v.to_lowercase());
+    let app_data = ls_extract_flag(command, "--app_data_dir").map(|v| v.to_lowercase());
+    if ide_name.is_some() || app_data.is_some() {
+        return markers_lower
+            .iter()
+            .any(|m| {
+                ide_name.as_ref().is_some_and(|name| name == m)
+                    || app_data.as_ref().is_some_and(|dir| dir == m)
+            })
+            .then_some(0);
+    }
+
+    let command_lower = command.to_lowercase();
+    markers_lower
+        .iter()
+        .any(|m| command_lower.contains(&format!("/{}/", m)))
+        .then_some(1)
+}
+
+fn ls_argv0(command: &str) -> &str {
+    let trimmed = command.trim_start();
+    let Some(quote) = trimmed.chars().next().filter(|c| *c == '"' || *c == '\'') else {
+        return trimmed.split_whitespace().next().unwrap_or_default();
+    };
+
+    let quote_len = quote.len_utf8();
+    let rest = &trimmed[quote_len..];
+    match rest.find(quote) {
+        Some(end) => &rest[..end],
+        None => trimmed.split_whitespace().next().unwrap_or_default(),
+    }
+}
+
+fn ls_command_matches_process(command: &str, process_name_lower: &str) -> bool {
+    if process_name_lower.is_empty() {
+        return false;
+    }
+
+    let argv0 = ls_argv0(command);
+    let exe_name = Path::new(argv0)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.to_lowercase())
+        .unwrap_or_default();
+
+    if exe_name == process_name_lower {
+        return true;
+    }
+
+    if process_name_lower.len() >= 8 {
+        exe_name.starts_with(&format!("{}_", process_name_lower))
+            || command.to_lowercase().contains(process_name_lower)
+    } else {
+        let command_lower = command.to_lowercase();
+        command_lower.ends_with(&format!("/{}", process_name_lower))
+            || command_lower.contains(&format!("/{} ", process_name_lower))
+            || command_lower.contains(&format!("/{}\t", process_name_lower))
+    }
 }
 
 /// Parse listening port numbers from `lsof -nP -iTCP -sTCP:LISTEN` output.
@@ -2016,6 +2174,7 @@ fn format_ccusage_timeout(timeout: std::time::Duration) -> String {
     format!("{:.3}s", timeout.as_secs_f64())
 }
 
+#[cfg(test)]
 fn run_ccusage_with_runner(
     kind: CcusageRunnerKind,
     program: &str,
@@ -2023,6 +2182,35 @@ fn run_ccusage_with_runner(
     provider: CcusageProvider,
     plugin_id: &str,
 ) -> CcusageRunnerResult {
+    run_ccusage_with_runner_deadline(
+        kind,
+        program,
+        opts,
+        provider,
+        plugin_id,
+        ProbeDeadline::none(),
+    )
+}
+
+fn run_ccusage_with_runner_deadline(
+    kind: CcusageRunnerKind,
+    program: &str,
+    opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
+    plugin_id: &str,
+    deadline: ProbeDeadline,
+) -> CcusageRunnerResult {
+    if deadline.has_elapsed() {
+        log::warn!("[plugin:{}] ccusage skipped: probe timed out", plugin_id);
+        return CcusageRunnerResult::TimedOut;
+    }
+
+    let Some(current_timeout) = deadline.clamp_duration(Duration::from_secs(CCUSAGE_TIMEOUT_SECS))
+    else {
+        log_probe_deadline_skip(plugin_id, "ccusage");
+        return CcusageRunnerResult::TimedOut;
+    };
+
     let current = run_ccusage_with_runner_timeout(
         kind,
         program,
@@ -2030,18 +2218,27 @@ fn run_ccusage_with_runner(
         provider,
         plugin_id,
         CcusageCommandFlavor::Current,
-        std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS),
+        current_timeout,
     );
     match current {
-        CcusageRunnerResult::Failed => run_ccusage_with_runner_timeout(
-            kind,
-            program,
-            opts,
-            provider,
-            plugin_id,
-            CcusageCommandFlavor::Legacy,
-            std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS),
-        ),
+        CcusageRunnerResult::Failed if deadline.has_elapsed() => CcusageRunnerResult::TimedOut,
+        CcusageRunnerResult::Failed => {
+            let Some(legacy_timeout) =
+                deadline.clamp_duration(Duration::from_secs(CCUSAGE_TIMEOUT_SECS))
+            else {
+                log_probe_deadline_skip(plugin_id, "ccusage legacy fallback");
+                return CcusageRunnerResult::TimedOut;
+            };
+            run_ccusage_with_runner_timeout(
+                kind,
+                program,
+                opts,
+                provider,
+                plugin_id,
+                CcusageCommandFlavor::Legacy,
+                legacy_timeout,
+            )
+        }
         other => other,
     }
 }
@@ -2239,6 +2436,7 @@ fn inject_ccusage<'js>(
     ctx: &Ctx<'js>,
     host: &Object<'js>,
     plugin_id: &str,
+    deadline: ProbeDeadline,
 ) -> rquickjs::Result<()> {
     let ccusage_obj = Object::new(ctx.clone())?;
     let pid = plugin_id.to_string();
@@ -2266,7 +2464,11 @@ fn inject_ccusage<'js>(
                     &opts,
                     provider,
                     &pid,
-                    run_ccusage_with_runner,
+                    |kind, program, opts, provider, plugin_id| {
+                        run_ccusage_with_runner_deadline(
+                            kind, program, opts, provider, plugin_id, deadline,
+                        )
+                    },
                 ))
             },
         )?,
@@ -2309,16 +2511,47 @@ fn inject_keychain<'js>(
         "readGenericPassword",
         Function::new(
             ctx.clone(),
-            move |ctx_inner: Ctx<'_>, service: String| -> rquickjs::Result<String> {
+            move |ctx_inner: Ctx<'_>,
+                  service: String,
+                  account_args: Rest<Option<String>>|
+                  -> rquickjs::Result<String> {
                 if !cfg!(target_os = "macos") {
                     return Err(Exception::throw_message(
                         &ctx_inner,
                         "keychain API is only supported on macOS",
                     ));
                 }
-                log::info!("[plugin:{}] keychain read: service={}", pid_read, service);
+                let account = account_args
+                    .0
+                    .into_iter()
+                    .next()
+                    .flatten()
+                    .and_then(|value| {
+                        let trimmed = value.trim();
+                        if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        }
+                    });
+                let redacted_account = account.as_ref().map(|value| redact_value(value));
+                if let Some(ref redacted) = redacted_account {
+                    log::info!(
+                        "[plugin:{}] keychain read: service={}, account={}",
+                        pid_read,
+                        service,
+                        redacted
+                    );
+                } else {
+                    log::info!("[plugin:{}] keychain read: service={}", pid_read, service);
+                }
+                let args = if let Some(ref account) = account {
+                    keychain_find_generic_password_args_for_account(&service, account)
+                } else {
+                    keychain_find_generic_password_args(&service)
+                };
                 let output = silent_command("security")
-                    .args(keychain_find_generic_password_args(&service))
+                    .args(args)
                     .output()
                     .map_err(|e| {
                         Exception::throw_message(
@@ -2330,23 +2563,42 @@ fn inject_keychain<'js>(
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     let first_line = stderr.lines().next().unwrap_or("").trim();
-                    log::warn!(
-                        "[plugin:{}] keychain read miss: service={}, error={}",
-                        pid_read,
-                        service,
-                        first_line
-                    );
+                    if let Some(ref redacted) = redacted_account {
+                        log::warn!(
+                            "[plugin:{}] keychain read miss: service={}, account={}, error={}",
+                            pid_read,
+                            service,
+                            redacted,
+                            first_line
+                        );
+                    } else {
+                        log::warn!(
+                            "[plugin:{}] keychain read miss: service={}, error={}",
+                            pid_read,
+                            service,
+                            first_line
+                        );
+                    }
                     return Err(Exception::throw_message(
                         &ctx_inner,
                         &format!("keychain item not found: {}", first_line),
                     ));
                 }
 
-                log::info!(
-                    "[plugin:{}] keychain read hit: service={}",
-                    pid_read,
-                    service
-                );
+                if let Some(ref redacted) = redacted_account {
+                    log::info!(
+                        "[plugin:{}] keychain read hit: service={}, account={}",
+                        pid_read,
+                        service,
+                        redacted
+                    );
+                } else {
+                    log::info!(
+                        "[plugin:{}] keychain read hit: service={}",
+                        pid_read,
+                        service
+                    );
+                }
                 Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
             },
         )?,
@@ -2939,6 +3191,91 @@ mod tests {
     }
 
     #[test]
+    fn keychain_read_generic_password_accepts_optional_account_arg_from_js() {
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+
+            let message: String = ctx
+                .eval(
+                    r#"
+                    try {
+                        __openusage_ctx.host.keychain.readGenericPassword("__openusage_missing_service__");
+                        "ok";
+                    } catch (e) {
+                        String(e);
+                    }
+                    "#,
+                )
+                .expect("js eval");
+
+            assert!(
+                !message.contains("2 where expected"),
+                "single-arg call should reach the keychain implementation, got: {}",
+                message
+            );
+        });
+    }
+
+    #[test]
+    fn ls_command_matches_language_server_variants() {
+        assert!(ls_command_matches_process(
+            "/Applications/Antigravity IDE.app/Contents/Resources/language_server_macos_arm --app_data_dir antigravity-ide",
+            "language_server"
+        ));
+        assert!(ls_command_matches_process(
+            "/tmp/language_server --app_data_dir antigravity-ide",
+            "language_server"
+        ));
+    }
+
+    #[test]
+    fn ls_command_matches_short_process_names_exactly() {
+        assert!(ls_command_matches_process(
+            "/opt/homebrew/bin/agy --some-flag",
+            "agy"
+        ));
+        assert!(ls_command_matches_process(
+            "/Applications/Antigravity IDE.app/Contents/Resources/agy --some-flag",
+            "agy"
+        ));
+        assert!(ls_command_matches_process(
+            "\"/Applications/Antigravity IDE.app/Contents/Resources/agy\" --some-flag",
+            "agy"
+        ));
+        assert!(!ls_command_matches_process(
+            "/opt/homebrew/bin/not-agy-helper --some-flag agy",
+            "agy"
+        ));
+    }
+
+    #[test]
+    fn ls_marker_rank_prefers_exact_flags_over_path_fallback() {
+        let markers = vec!["antigravity".to_string()];
+
+        assert_eq!(
+            ls_marker_rank(
+                "/tmp/windsurf/language_server --ide_name antigravity",
+                &markers
+            ),
+            Some(0)
+        );
+        assert_eq!(
+            ls_marker_rank("/tmp/antigravity/language_server", &markers),
+            Some(1)
+        );
+        assert_eq!(
+            ls_marker_rank(
+                "/tmp/antigravity/language_server --ide_name windsurf",
+                &markers
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn env_api_respects_allowlist_in_host_and_js() {
         let claude_env_vars = [
             "CLAUDE_CONFIG_DIR",
@@ -3254,6 +3591,22 @@ mod tests {
     }
 
     #[test]
+    fn redact_body_redacts_devin_session_token() {
+        let body = r#"metadata apiKey=devin-session-token$abcdefghijklmnopqrstuvwxyz123456"#;
+        let redacted = redact_body(body);
+        assert!(
+            !redacted.contains("devin-session-token$abcdefghijklmnopqrstuvwxyz123456"),
+            "Devin session token should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("devi...3456"),
+            "Devin session token should use first4...last4 redaction, got: {}",
+            redacted
+        );
+    }
+
+    #[test]
     fn redact_body_redacts_json_password_field() {
         let body = r#"{"password": "supersecretpassword123"}"#;
         let redacted = redact_body(body);
@@ -3318,6 +3671,42 @@ mod tests {
     }
 
     #[test]
+    fn redact_body_redacts_devin_org_and_account_display_name() {
+        let body = r#"{"orgId":"org-6b6e9de248db472bb25b296599ea3dc0","accountDisplayName":"rob@sunstory.com","devinInfo":{"org_id":"org-abcdef1234567890","account_display_name":"team@example.com"}}"#;
+        let redacted = redact_body(body);
+        assert!(
+            !redacted.contains("org-6b6e9de248db472bb25b296599ea3dc0"),
+            "orgId should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("rob@sunstory.com"),
+            "accountDisplayName should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("org-abcdef1234567890"),
+            "org_id should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("team@example.com"),
+            "account_display_name should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("org-...3dc0"),
+            "orgId should show first4...last4, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("rob@....com"),
+            "accountDisplayName should show first4...last4, got: {}",
+            redacted
+        );
+    }
+
+    #[test]
     fn redact_body_redacts_team_id_payment_id_and_paths() {
         let body = r#"{"teamId":"cc1ac023-9ff5-4c1f-a5a4-ae2a82df4243","paymentId":"cus_S5m1PGxjLWoc1c","binaryPath":"/opt/homebrew/bin/bunx","homePath":"/Users/rebers/.claude"}"#;
         let redacted = redact_body(body);
@@ -3375,6 +3764,22 @@ mod tests {
         assert!(
             !redacted.contains("sk-1234567890abcdef"),
             "API key should be redacted"
+        );
+    }
+
+    #[test]
+    fn redact_log_message_redacts_devin_session_token() {
+        let msg = "auth=devin-session-token$abcdefghijklmnopqrstuvwxyz123456";
+        let redacted = redact_log_message(msg);
+        assert!(
+            !redacted.contains("devin-session-token$abcdefghijklmnopqrstuvwxyz123456"),
+            "Devin session token should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("devi...3456"),
+            "Devin session token should use first4...last4 redaction, got: {}",
+            redacted
         );
     }
 
@@ -4167,15 +4572,55 @@ esac
         );
     }
 
+    #[test]
+    fn probe_deadline_clamps_host_timeout_to_remaining_budget() {
+        let deadline = ProbeDeadline::at(Instant::now() + Duration::from_millis(25));
+        let clamped = deadline
+            .clamp_duration(Duration::from_secs(10))
+            .expect("remaining budget should produce a host timeout");
+
+        assert!(
+            clamped <= Duration::from_millis(25),
+            "host timeout should not exceed remaining probe budget"
+        );
+        assert!(
+            clamped >= Duration::from_millis(1),
+            "host timeout should stay non-zero for blocking clients"
+        );
+    }
+
+    #[test]
+    fn probe_deadline_does_not_extend_elapsed_budget() {
+        let deadline = ProbeDeadline::at(Instant::now());
+
+        assert_eq!(deadline.clamp_duration(Duration::from_secs(10)), None);
+    }
+
     #[cfg(unix)]
     #[test]
     fn ccusage_timeout_kills_descendant_and_closes_pipes() {
         use std::io::Write;
         use std::os::unix::fs::PermissionsExt;
+        use std::path::Path;
         use std::time::{Duration, Instant};
 
         fn pid_exists(pid: i32) -> bool {
             unsafe { libc::kill(pid, 0) == 0 }
+        }
+
+        fn read_pid_file(path: &Path, deadline: Instant) -> i32 {
+            loop {
+                if let Ok(pid_text) = std::fs::read_to_string(path) {
+                    let pid_text = pid_text.trim();
+                    if !pid_text.is_empty() {
+                        return pid_text.parse().expect("parse descendant pid");
+                    }
+                }
+                if Instant::now() >= deadline {
+                    panic!("descendant pid file was not created at {}", path.display());
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
         }
 
         let test_id = format!(
@@ -4216,7 +4661,7 @@ wait
             CcusageProvider::Codex,
             "codex",
             CcusageCommandFlavor::Current,
-            Duration::from_millis(100),
+            Duration::from_secs(1),
         );
 
         assert_eq!(result, CcusageRunnerResult::TimedOut);
@@ -4225,11 +4670,7 @@ wait
             "timeout cleanup should not hang on inherited stdout/stderr pipes"
         );
 
-        let descendant_pid: i32 = std::fs::read_to_string(&pid_path)
-            .expect("read descendant pid")
-            .trim()
-            .parse()
-            .expect("parse descendant pid");
+        let descendant_pid = read_pid_file(&pid_path, Instant::now() + Duration::from_secs(1));
 
         let deadline = Instant::now() + Duration::from_secs(2);
         while pid_exists(descendant_pid) && Instant::now() < deadline {

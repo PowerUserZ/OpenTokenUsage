@@ -12,6 +12,7 @@ import type {
   DisplayMode,
   GlobalShortcut,
   MenubarIconStyle,
+  MenubarMetric,
   ResetTimerDisplayMode,
   ThemeMode,
   TimeFormatMode,
@@ -37,6 +38,7 @@ export type AppContentActionProps = {
   onTrayProviderChange: (value: string) => void
   onTrayMetricChange: (value: string) => void
   onTrayPercentColorChange: (value: string) => void
+  onMenubarMetricChange: (value: MenubarMetric) => void
   traySettingsPreview: TraySettingsPreview
   onGlobalShortcutChange: (value: GlobalShortcut) => void
   onStartOnLoginChange: (value: boolean) => void
@@ -61,6 +63,7 @@ export function AppContent({
   onTrayProviderChange,
   onTrayMetricChange,
   onTrayPercentColorChange,
+  onMenubarMetricChange,
   traySettingsPreview,
   onGlobalShortcutChange,
   onStartOnLoginChange,
@@ -79,6 +82,7 @@ export function AppContent({
     trayProvider,
     trayMetric,
     trayPercentColor,
+    menubarMetric,
     autoUpdateInterval,
     globalShortcut,
     themeMode,
@@ -92,6 +96,7 @@ export function AppContent({
       trayProvider: state.trayProvider,
       trayMetric: state.trayMetric,
       trayPercentColor: state.trayPercentColor,
+      menubarMetric: state.menubarMetric,
       autoUpdateInterval: state.autoUpdateInterval,
       globalShortcut: state.globalShortcut,
       themeMode: state.themeMode,
@@ -136,6 +141,8 @@ export function AppContent({
         onTrayMetricChange={onTrayMetricChange}
         trayPercentColor={trayPercentColor}
         onTrayPercentColorChange={onTrayPercentColorChange}
+        menubarMetric={menubarMetric}
+        onMenubarMetricChange={onMenubarMetricChange}
         traySettingsPreview={traySettingsPreview}
         globalShortcut={globalShortcut}
         onGlobalShortcutChange={onGlobalShortcutChange}

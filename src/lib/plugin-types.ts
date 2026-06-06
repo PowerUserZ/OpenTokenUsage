@@ -3,6 +3,12 @@ export type ProgressFormat =
   | { kind: "dollars" }
   | { kind: "count"; suffix: string }
 
+export type BarChartPoint = {
+  label: string
+  value: number
+  valueLabel?: string
+}
+
 export type MetricLine =
   | { type: "text"; label: string; value: string; color?: string; subtitle?: string }
   | {
@@ -16,9 +22,10 @@ export type MetricLine =
       color?: string
     }
   | { type: "badge"; label: string; text: string; color?: string; subtitle?: string }
+  | { type: "barChart"; label: string; points: BarChartPoint[]; note?: string; color?: string }
 
 export type ManifestLine = {
-  type: "text" | "progress" | "badge"
+  type: "text" | "progress" | "badge" | "barChart"
   label: string
   scope: "overview" | "detail"
 }
@@ -45,6 +52,8 @@ export type PluginMeta = {
   links?: PluginLink[]
   /** Ordered list of primary metric candidates. Frontend picks first available. */
   primaryCandidates: string[]
+  /** Label of the line marked `"period": "weekly"`, if the provider has one. */
+  weeklyCandidate?: string
 }
 
 export type PluginDisplayState = {

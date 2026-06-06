@@ -65,6 +65,8 @@ const defaultProps = {
   onTrayMetricChange: vi.fn(),
   trayPercentColor: "#ffffff",
   onTrayPercentColorChange: vi.fn(),
+  menubarMetric: "default" as const,
+  onMenubarMetricChange: vi.fn(),
   traySettingsPreview: {
     bars: [{ id: "a", fraction: 0.7 }],
     providerBars: [{ id: "a", fraction: 0.7 }],
@@ -257,6 +259,25 @@ describe("SettingsPage", () => {
     )
     await userEvent.click(screen.getByRole("radio", { name: "Percent" }))
     expect(onMenubarIconStyleChange).toHaveBeenCalledWith("percent")
+  })
+
+  it("renders the menubar metric control", () => {
+    render(<SettingsPage {...defaultProps} />)
+    expect(screen.getByText("Metric")).toBeInTheDocument()
+    expect(screen.getByRole("radio", { name: "Default" })).toBeInTheDocument()
+    expect(screen.getByRole("radio", { name: "Weekly" })).toBeInTheDocument()
+  })
+
+  it("clicking Weekly triggers onMenubarMetricChange(\"weekly\")", async () => {
+    const onMenubarMetricChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onMenubarMetricChange={onMenubarMetricChange}
+      />
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Weekly" }))
+    expect(onMenubarMetricChange).toHaveBeenCalledWith("weekly")
   })
 
   it("does not render removed bar icon controls", () => {

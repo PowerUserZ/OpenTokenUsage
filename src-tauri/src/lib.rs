@@ -2,13 +2,14 @@
 mod app_nap;
 mod config;
 mod local_http_api;
+mod log_path;
 mod panel;
 mod plugin_engine;
 mod tray;
 #[cfg(target_os = "macos")]
 mod webkit_config;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -25,6 +26,11 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 const GLOBAL_SHORTCUT_STORE_KEY: &str = "globalShortcut";
 const DAILY_ACTIVE_TRACKED_DAY_KEY: &str = "analytics.daily_active_day";
 const DAILY_ACTIVE_EVENT_NAME: &str = "app_started";
+const MAX_CONCURRENT_PROBES: usize = 4;
+
+fn probe_worker_count(plugin_count: usize) -> usize {
+    plugin_count.min(MAX_CONCURRENT_PROBES)
+}
 
 fn today_utc_ymd() -> String {
     let date = time::OffsetDateTime::now_utc().date();
@@ -150,6 +156,9 @@ pub struct PluginMeta {
     /// Ordered list of primary metric candidates (sorted by primaryOrder).
     /// Frontend picks the first one that exists in runtime data.
     pub primary_candidates: Vec<String>,
+    /// Label of the progress line marked `"period": "weekly"`, if any.
+    /// Drives the menubar weekly-metric preference.
+    pub weekly_candidate: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -307,8 +316,23 @@ async fn start_probe_batch(
         });
     }
 
-    let remaining = Arc::new(AtomicUsize::new(selected_plugins.len()));
-    for plugin in selected_plugins {
+    let selected_count = selected_plugins.len();
+    let worker_count = probe_worker_count(selected_count);
+    if worker_count < selected_count {
+        log::info!(
+            "probe batch {} using {} workers for {} plugins",
+            batch_id,
+            worker_count,
+            selected_count
+        );
+    }
+
+    let remaining = Arc::new(AtomicUsize::new(selected_count));
+    let probe_queue = Arc::new(Mutex::new(
+        selected_plugins.into_iter().collect::<VecDeque<_>>(),
+    ));
+
+    for _ in 0..worker_count {
         let handle = app_handle.clone();
         let completion_handle = app_handle.clone();
         let bid = batch_id.clone();
@@ -316,49 +340,63 @@ async fn start_probe_batch(
         let data_dir = app_data_dir.clone();
         let version = app_version.clone();
         let counter = Arc::clone(&remaining);
+        let queue = Arc::clone(&probe_queue);
 
         tauri::async_runtime::spawn_blocking(move || {
-            let plugin_id = plugin.manifest.id.clone();
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                plugin_engine::runtime::run_probe(&plugin, &data_dir, &version)
-            }));
+            loop {
+                let plugin = {
+                    let mut queue = queue
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    queue.pop_front()
+                };
 
-            match result {
-                Ok(output) => {
-                    let has_error = output.lines.iter().any(|line| {
-                        matches!(line, plugin_engine::runtime::MetricLine::Badge { label, .. } if label == "Error")
-                    });
-                    if has_error {
-                        log::warn!("probe {} completed with error", plugin_id);
-                    } else {
-                        log::info!(
-                            "probe {} completed ok ({} lines)",
-                            plugin_id,
-                            output.lines.len()
+                let Some(plugin) = plugin else {
+                    break;
+                };
+
+                let plugin_id = plugin.manifest.id.clone();
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    plugin_engine::runtime::run_probe(&plugin, &data_dir, &version)
+                }));
+
+                match result {
+                    Ok(output) => {
+                        let has_error = output.lines.iter().any(|line| {
+                            matches!(line, plugin_engine::runtime::MetricLine::Badge { label, .. } if label == "Error")
+                        });
+                        if has_error {
+                            log::warn!("probe {} completed with error", plugin_id);
+                        } else {
+                            log::info!(
+                                "probe {} completed ok ({} lines)",
+                                plugin_id,
+                                output.lines.len()
+                            );
+                            local_http_api::cache_successful_output(&output);
+                        }
+                        let _ = handle.emit(
+                            "probe:result",
+                            ProbeResult {
+                                batch_id: bid.clone(),
+                                output,
+                            },
                         );
-                        local_http_api::cache_successful_output(&output);
                     }
-                    let _ = handle.emit(
-                        "probe:result",
-                        ProbeResult {
-                            batch_id: bid,
-                            output,
+                    Err(_) => {
+                        log::error!("probe {} panicked", plugin_id);
+                    }
+                }
+
+                if counter.fetch_sub(1, Ordering::SeqCst) == 1 {
+                    log::info!("probe batch {} complete", completion_bid);
+                    let _ = completion_handle.emit(
+                        "probe:batch-complete",
+                        ProbeBatchComplete {
+                            batch_id: completion_bid.clone(),
                         },
                     );
                 }
-                Err(_) => {
-                    log::error!("probe {} panicked", plugin_id);
-                }
-            }
-
-            if counter.fetch_sub(1, Ordering::SeqCst) == 1 {
-                log::info!("probe batch {} complete", completion_bid);
-                let _ = completion_handle.emit(
-                    "probe:batch-complete",
-                    ProbeBatchComplete {
-                        batch_id: completion_bid,
-                    },
-                );
             }
         });
     }
@@ -371,13 +409,7 @@ async fn start_probe_batch(
 
 #[tauri::command]
 fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
-    use tauri::Manager;
-    let log_dir = app_handle
-        .path()
-        .app_log_dir()
-        .map_err(|e| format!("failed to resolve log directory: {}", e))?;
-    let log_file = log_dir.join(format!("{}.log", app_handle.package_info().name));
-    Ok(log_file.to_string_lossy().to_string())
+    log_path::for_app(&app_handle).map(|path| path.to_string_lossy().to_string())
 }
 
 /// Update the global shortcut registration.
@@ -461,6 +493,11 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
             let primary_candidates: Vec<String> =
                 candidates.iter().map(|line| line.label.clone()).collect();
 
+            // The weekly metric is the progress line declared `"period": "weekly"`.
+            let weekly_candidate: Option<String> =
+                plugin_engine::manifest::weekly_candidate(&plugin.manifest.lines)
+                    .map(str::to_string);
+
             PluginMeta {
                 id: plugin.manifest.id,
                 name: plugin.manifest.name,
@@ -486,6 +523,7 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
                     })
                     .collect(),
                 primary_candidates,
+                weekly_candidate,
             }
         })
         .collect()
@@ -560,6 +598,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_aptabase::Builder::new("A-US-6435241436").build())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(nspanel_plugin())
         .plugin(
@@ -701,13 +740,19 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_, _| {});
+        .run(|_, event| match event {
+            tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
+                local_http_api::flush_cache();
+            }
+            _ => {}
+        });
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        DAILY_ACTIVE_TRACKED_DAY_KEY, seconds_until_next_utc_day, should_track_daily_active,
+        DAILY_ACTIVE_TRACKED_DAY_KEY, MAX_CONCURRENT_PROBES, probe_worker_count,
+        seconds_until_next_utc_day, should_track_daily_active,
     };
     use time::{Date, Month, PrimitiveDateTime, Time};
 
@@ -742,5 +787,19 @@ mod tests {
         .assume_utc();
 
         assert_eq!(seconds_until_next_utc_day(now), 10);
+    }
+
+    #[test]
+    fn probe_worker_count_is_bounded() {
+        assert_eq!(probe_worker_count(0), 0);
+        assert_eq!(probe_worker_count(1), 1);
+        assert_eq!(
+            probe_worker_count(MAX_CONCURRENT_PROBES),
+            MAX_CONCURRENT_PROBES
+        );
+        assert_eq!(
+            probe_worker_count(MAX_CONCURRENT_PROBES + 1),
+            MAX_CONCURRENT_PROBES
+        );
     }
 }

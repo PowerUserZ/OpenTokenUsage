@@ -4,6 +4,7 @@ import {
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
+  DEFAULT_MENUBAR_METRIC,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
@@ -15,17 +16,20 @@ import {
   loadDisplayMode,
   loadGlobalShortcut,
   loadMenubarIconStyle,
+  loadMenubarMetric,
   loadPluginSettings,
   loadResetTimerDisplayMode,
   loadStartOnLogin,
   loadTimeFormatMode,
   migrateLegacyTraySettings,
+  migrateWindsurfToDevin,
   loadThemeMode,
   normalizePluginSettings,
   saveAutoUpdateInterval,
   saveDisplayMode,
   saveGlobalShortcut,
   saveMenubarIconStyle,
+  saveMenubarMetric,
   savePluginSettings,
   saveResetTimerDisplayMode,
   saveStartOnLogin,
@@ -98,11 +102,59 @@ describe("settings", () => {
     const plugins: PluginMeta[] = [
       { id: "claude", name: "Claude", iconUrl: "", lines: [], primaryCandidates: [] },
       { id: "copilot", name: "Copilot", iconUrl: "", lines: [], primaryCandidates: [] },
-      { id: "windsurf", name: "Windsurf", iconUrl: "", lines: [], primaryCandidates: [] },
+      { id: "devin", name: "Devin", iconUrl: "", lines: [], primaryCandidates: [] },
     ]
     const result = normalizePluginSettings({ order: [], disabled: [] }, plugins)
-    expect(result.order).toEqual(["claude", "copilot", "windsurf"])
-    expect(result.disabled).toEqual(["copilot", "windsurf"])
+    expect(result.order).toEqual(["claude", "copilot", "devin"])
+    expect(result.disabled).toEqual(["copilot", "devin"])
+  })
+
+  it("migrates enabled windsurf settings to enabled devin settings", () => {
+    const result = migrateWindsurfToDevin({
+      order: ["claude", "windsurf", "codex"],
+      disabled: [],
+    })
+
+    expect(result).toEqual({
+      order: ["claude", "devin", "codex"],
+      disabled: [],
+    })
+  })
+
+  it("keeps devin enabled when enabled windsurf conflicts with a stale disabled devin entry", () => {
+    const result = migrateWindsurfToDevin({
+      order: ["claude", "windsurf", "codex"],
+      disabled: ["devin"],
+    })
+
+    expect(result).toEqual({
+      order: ["claude", "devin", "codex"],
+      disabled: [],
+    })
+  })
+
+  it("migrates disabled windsurf settings to disabled devin settings", () => {
+    const result = migrateWindsurfToDevin({
+      order: ["windsurf", "claude"],
+      disabled: ["windsurf"],
+    })
+
+    expect(result).toEqual({
+      order: ["devin", "claude"],
+      disabled: ["devin"],
+    })
+  })
+
+  it("does not disable an existing devin entry when removing old windsurf settings", () => {
+    const result = migrateWindsurfToDevin({
+      order: ["windsurf", "devin", "claude"],
+      disabled: ["windsurf"],
+    })
+
+    expect(result).toEqual({
+      order: ["devin", "claude"],
+      disabled: [],
+    })
   })
 
   it("compares settings equality", () => {
@@ -281,6 +333,25 @@ describe("settings", () => {
   it("falls back to default for invalid menubar icon style", async () => {
     storeState.set("menubarIconStyle", "invalid")
     await expect(loadMenubarIconStyle()).resolves.toBe(DEFAULT_MENUBAR_ICON_STYLE)
+  })
+
+  it("loads default menubar metric when missing", async () => {
+    await expect(loadMenubarMetric()).resolves.toBe(DEFAULT_MENUBAR_METRIC)
+  })
+
+  it("loads stored menubar metric", async () => {
+    storeState.set("menubarMetric", "weekly")
+    await expect(loadMenubarMetric()).resolves.toBe("weekly")
+  })
+
+  it("saves menubar metric", async () => {
+    await saveMenubarMetric("weekly")
+    await expect(loadMenubarMetric()).resolves.toBe("weekly")
+  })
+
+  it("falls back to default for invalid menubar metric", async () => {
+    storeState.set("menubarMetric", "invalid")
+    await expect(loadMenubarMetric()).resolves.toBe(DEFAULT_MENUBAR_METRIC)
   })
 
   it("skips legacy tray migration when keys are absent", async () => {

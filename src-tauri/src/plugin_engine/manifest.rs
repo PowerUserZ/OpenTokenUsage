@@ -12,6 +12,9 @@ pub struct ManifestLine {
     /// Lower number = higher priority for primary metric selection.
     /// Only progress lines with primary_order are candidates.
     pub primary_order: Option<u32>,
+    /// Marks this line as the provider's recurring-period metric for the
+    /// menubar metric preference. Currently only "weekly" is recognized.
+    pub period: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -69,6 +72,15 @@ pub fn load_plugins_from_dir(plugins_dir: &std::path::Path) -> Vec<LoadedPlugin>
     plugins
 }
 
+/// Label of the progress line marked `"period": "weekly"`, if any.
+/// Drives the menubar weekly-metric preference; first match wins.
+pub fn weekly_candidate(lines: &[ManifestLine]) -> Option<&str> {
+    lines
+        .iter()
+        .find(|line| line.line_type == "progress" && line.period.as_deref() == Some("weekly"))
+        .map(|line| line.label.as_str())
+}
+
 fn load_single_plugin(
     plugin_dir: &std::path::Path,
 ) -> Result<LoadedPlugin, Box<dyn std::error::Error>> {
@@ -77,7 +89,8 @@ fn load_single_plugin(
     let mut manifest: PluginManifest = serde_json::from_str(&manifest_text)?;
     manifest.links = sanitize_plugin_links(&manifest.id, std::mem::take(&mut manifest.links));
 
-    // Validate primary_order: only progress lines can have it
+    // Validate primary_order / period: only progress lines can carry them,
+    // and period currently only recognizes "weekly".
     for line in manifest.lines.iter() {
         if line.primary_order.is_some() && line.line_type != "progress" {
             log::warn!(
@@ -86,6 +99,23 @@ fn load_single_plugin(
                 line.label,
                 line.line_type
             );
+        }
+        if let Some(period) = line.period.as_deref() {
+            if line.line_type != "progress" {
+                log::warn!(
+                    "plugin {} line '{}' has period but type is '{}'; will be ignored",
+                    manifest.id,
+                    line.label,
+                    line.line_type
+                );
+            } else if period != "weekly" {
+                log::warn!(
+                    "plugin {} line '{}' has unsupported period '{}'; only \"weekly\" is recognized",
+                    manifest.id,
+                    line.label,
+                    period
+                );
+            }
         }
     }
 
@@ -238,6 +268,102 @@ mod tests {
         let labels: Vec<_> = candidates.iter().map(|l| l.label.as_str()).collect();
 
         assert_eq!(labels, vec!["First", "Second", "Third"]);
+    }
+
+    #[test]
+    fn period_parsed_and_weekly_candidate_resolved() {
+        let manifest = parse_manifest(
+            r#"
+            {
+              "schemaVersion": 1,
+              "id": "x",
+              "name": "X",
+              "version": "0.0.1",
+              "entry": "plugin.js",
+              "icon": "icon.svg",
+              "brandColor": null,
+              "lines": [
+                { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
+                { "type": "progress", "label": "Weekly", "scope": "overview", "period": "weekly" }
+              ]
+            }
+            "#,
+        );
+
+        assert!(manifest.lines[0].period.is_none());
+        assert_eq!(manifest.lines[1].period.as_deref(), Some("weekly"));
+
+        // Exercise the shipped resolver used by list_plugins.
+        assert_eq!(weekly_candidate(&manifest.lines), Some("Weekly"));
+    }
+
+    #[test]
+    fn weekly_candidate_absent_when_no_period() {
+        let manifest = parse_manifest(
+            r#"
+            {
+              "schemaVersion": 1,
+              "id": "x",
+              "name": "X",
+              "version": "0.0.1",
+              "entry": "plugin.js",
+              "icon": "icon.svg",
+              "brandColor": null,
+              "lines": [
+                { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 }
+              ]
+            }
+            "#,
+        );
+
+        assert_eq!(weekly_candidate(&manifest.lines), None);
+    }
+
+    #[test]
+    fn weekly_candidate_first_match_wins() {
+        // Precedence is intentionally first-match; lock it in so it can't drift silently.
+        let manifest = parse_manifest(
+            r#"
+            {
+              "schemaVersion": 1,
+              "id": "x",
+              "name": "X",
+              "version": "0.0.1",
+              "entry": "plugin.js",
+              "icon": "icon.svg",
+              "brandColor": null,
+              "lines": [
+                { "type": "progress", "label": "Weekly A", "scope": "overview", "period": "weekly" },
+                { "type": "progress", "label": "Weekly B", "scope": "overview", "period": "weekly" }
+              ]
+            }
+            "#,
+        );
+
+        assert_eq!(weekly_candidate(&manifest.lines), Some("Weekly A"));
+    }
+
+    #[test]
+    fn weekly_candidate_ignores_unsupported_period() {
+        // A typo'd period (e.g. "week") is not recognized; the provider keeps its primary metric.
+        let manifest = parse_manifest(
+            r#"
+            {
+              "schemaVersion": 1,
+              "id": "x",
+              "name": "X",
+              "version": "0.0.1",
+              "entry": "plugin.js",
+              "icon": "icon.svg",
+              "brandColor": null,
+              "lines": [
+                { "type": "progress", "label": "Weekly", "scope": "overview", "period": "week" }
+              ]
+            }
+            "#,
+        );
+
+        assert_eq!(weekly_candidate(&manifest.lines), None);
     }
 
     #[test]

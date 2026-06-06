@@ -1,13 +1,13 @@
 # MiniMax
 
-> Uses MiniMax Coding Plan remains API with a user-provided API key.
+> Uses MiniMax Token Plan remains API with a user-provided API key.
 
 ## Overview
 
 - **Protocol:** HTTPS (JSON)
-- **Endpoint:** `GET https://api.minimax.io/v1/api/openplatform/coding_plan/remains`
+- **Endpoint:** `GET https://www.minimax.io/v1/token_plan/remains`
 - **Auth:** `Authorization: Bearer <api_key>`
-- **Window model:** dynamic rolling 5-hour limit (per MiniMax Coding Plan docs)
+- **Window model:** Token Plan remaining usage, returned as counts or percent
 
 ## Authentication
 
@@ -30,22 +30,20 @@ If no key is found after attempting both regions, it throws:
 Request:
 
 ```http
-GET /v1/api/openplatform/coding_plan/remains HTTP/1.1
-Host: api.minimax.io
+GET /v1/token_plan/remains HTTP/1.1
+Host: www.minimax.io
 Authorization: Bearer <api_key>
 Content-Type: application/json
 Accept: application/json
 ```
 
-Fallbacks:
+Global requests use:
 
-- `https://api.minimax.io/v1/coding_plan/remains`
-- `https://www.minimax.io/v1/api/openplatform/coding_plan/remains` (legacy fallback; can return Cloudflare HTML)
+- `https://www.minimax.io/v1/token_plan/remains`
 
 When the selected region is `CN`, requests use:
 
-- `https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains`
-- `https://api.minimaxi.com/v1/coding_plan/remains`
+- `https://api.minimaxi.com/v1/token_plan/remains`
 
 Expected payload fields:
 
@@ -54,6 +52,7 @@ Expected payload fields:
 - `model_remains[].current_interval_total_count`
 - `model_remains[].current_interval_usage_count`
 - optional remaining aliases (`current_interval_remaining_count`, `current_interval_remains_count`)
+- optional remaining percent fields (`current_interval_remaining_percent`)
 - `model_remains[].start_time`
 - `model_remains[].end_time`
 - `model_remains[].remains_time`
@@ -64,6 +63,7 @@ Expected payload fields:
 - Treat `current_interval_usage_count` as remaining prompts (MiniMax remains API behavior).
 - If only remaining aliases are provided, compute `used = total - remaining`.
 - If explicit used-count fields are provided, prefer them.
+- If count totals are missing or too small to display after CN scaling, fall back to a valid `current_interval_remaining_percent`.
 - Plan name is taken from explicit plan/title fields when available.
 - If plan fields are missing in GLOBAL mode, infer plan tier from known limits (`100/300/1000/2000` prompts or `1500/4500/15000/30000` model-call equivalents).
 - If plan fields are missing in CN mode, infer only exact known CN limits (`600/1500/4500` model-call counts).
@@ -76,9 +76,14 @@ Expected payload fields:
 - **Plan**: best-effort from API payload (normalized to concise label, with ` (CN)` or ` (GLOBAL)` suffix)
 - **Session** (overview progress line):
   - `label`: `Session`
-  - `format`: count (`prompts`)
-  - `used`: computed used prompts
-  - `limit`: total prompt limit for current window
+  - Count format when totals are available:
+    - `format`: count (`prompts`)
+    - `used`: computed used prompts
+    - `limit`: total prompt limit for current window
+  - Percent format when count totals are unavailable:
+    - `format`: percent
+    - `used`: `100 - current_interval_remaining_percent`
+    - `limit`: `100`
   - `resetsAt`: derived from `end_time` or `remains_time`
 
 ## Errors

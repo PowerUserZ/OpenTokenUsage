@@ -82,7 +82,7 @@ describe("opencode-go plugin", () => {
     ]);
     expect(manifest.lines).toEqual([
       { type: "progress", label: "Session", scope: "overview", primaryOrder: 1 },
-      { type: "progress", label: "Weekly", scope: "overview" },
+      { type: "progress", label: "Weekly", scope: "overview", period: "weekly" },
       { type: "progress", label: "Monthly", scope: "detail" },
     ]);
   });

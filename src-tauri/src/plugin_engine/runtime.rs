@@ -3,6 +3,9 @@ use crate::plugin_engine::manifest::LoadedPlugin;
 use rquickjs::{Array, Context, Ctx, Error, Object, Promise, Runtime, Value};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
+
+const PROBE_TIMEOUT_SECS: u64 = 30;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -10,6 +13,15 @@ pub enum ProgressFormat {
     Percent,
     Dollars,
     Count { suffix: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BarChartPoint {
+    label: String,
+    value: f64,
+    #[serde(rename = "valueLabel")]
+    value_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +50,13 @@ pub enum MetricLine {
         color: Option<String>,
         subtitle: Option<String>,
     },
+    #[serde(rename = "barChart")]
+    BarChart {
+        label: String,
+        points: Vec<BarChartPoint>,
+        note: Option<String>,
+        color: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,12 +70,32 @@ pub struct PluginOutput {
 }
 
 pub fn run_probe(plugin: &LoadedPlugin, app_data_dir: &PathBuf, app_version: &str) -> PluginOutput {
+    run_probe_with_timeout(
+        plugin,
+        app_data_dir,
+        app_version,
+        Duration::from_secs(PROBE_TIMEOUT_SECS),
+    )
+}
+
+fn run_probe_with_timeout(
+    plugin: &LoadedPlugin,
+    app_data_dir: &PathBuf,
+    app_version: &str,
+    timeout: Duration,
+) -> PluginOutput {
     let fallback = error_output(plugin, "runtime error".to_string());
+    let timeout_message = probe_timeout_message(timeout);
+    let deadline_at = Instant::now()
+        .checked_add(timeout)
+        .unwrap_or_else(Instant::now);
+    let deadline = host_api::ProbeDeadline::at(deadline_at);
 
     let rt = match Runtime::new() {
         Ok(rt) => rt,
         Err(_) => return fallback,
     };
+    rt.set_interrupt_handler(Some(Box::new(move || Instant::now() >= deadline_at)));
 
     let ctx = match Context::full(&rt) {
         Ok(ctx) => ctx,
@@ -70,23 +109,49 @@ pub fn run_probe(plugin: &LoadedPlugin, app_data_dir: &PathBuf, app_version: &st
     let app_data = app_data_dir.clone();
 
     ctx.with(|ctx| {
-        if host_api::inject_host_api(&ctx, &plugin_id, &app_data, app_version).is_err() {
+        if host_api::inject_host_api_with_deadline(
+            &ctx,
+            &plugin_id,
+            &app_data,
+            app_version,
+            deadline,
+        )
+        .is_err()
+        {
+            if deadline.has_elapsed() {
+                return error_output(plugin, timeout_message.clone());
+            }
             return error_output(plugin, "host api injection failed".to_string());
         }
         if host_api::patch_http_wrapper(&ctx).is_err() {
+            if deadline.has_elapsed() {
+                return error_output(plugin, timeout_message.clone());
+            }
             return error_output(plugin, "http wrapper patch failed".to_string());
         }
         if host_api::patch_ls_wrapper(&ctx).is_err() {
+            if deadline.has_elapsed() {
+                return error_output(plugin, timeout_message.clone());
+            }
             return error_output(plugin, "ls wrapper patch failed".to_string());
         }
         if host_api::patch_ccusage_wrapper(&ctx).is_err() {
+            if deadline.has_elapsed() {
+                return error_output(plugin, timeout_message.clone());
+            }
             return error_output(plugin, "ccusage wrapper patch failed".to_string());
         }
         if host_api::inject_utils(&ctx).is_err() {
+            if deadline.has_elapsed() {
+                return error_output(plugin, timeout_message.clone());
+            }
             return error_output(plugin, "utils injection failed".to_string());
         }
 
         if ctx.eval::<(), _>(entry_script.as_bytes()).is_err() {
+            if deadline.has_elapsed() {
+                return error_output(plugin, timeout_message.clone());
+            }
             return error_output(plugin, "script eval failed".to_string());
         }
 
@@ -107,8 +172,16 @@ pub fn run_probe(plugin: &LoadedPlugin, app_data_dir: &PathBuf, app_version: &st
 
         let result_value: Value = match probe_fn.call((probe_ctx,)) {
             Ok(r) => r,
-            Err(_) => return error_output(plugin, extract_error_string(&ctx)),
+            Err(_) => {
+                if deadline.has_elapsed() {
+                    return error_output(plugin, timeout_message.clone());
+                }
+                return error_output(plugin, extract_error_string(&ctx));
+            }
         };
+        if deadline.has_elapsed() {
+            return error_output(plugin, timeout_message.clone());
+        }
         let result: Object = if result_value.is_promise() {
             let promise: Promise = match result_value.into_promise() {
                 Some(promise) => promise,
@@ -121,7 +194,12 @@ pub fn run_probe(plugin: &LoadedPlugin, app_data_dir: &PathBuf, app_version: &st
                 Err(Error::WouldBlock) => {
                     return error_output(plugin, "probe() returned unresolved promise".to_string());
                 }
-                Err(_) => return error_output(plugin, extract_error_string(&ctx)),
+                Err(_) => {
+                    if deadline.has_elapsed() {
+                        return error_output(plugin, timeout_message.clone());
+                    }
+                    return error_output(plugin, extract_error_string(&ctx));
+                }
             }
         } else {
             match result_value.into_object() {
@@ -129,6 +207,9 @@ pub fn run_probe(plugin: &LoadedPlugin, app_data_dir: &PathBuf, app_version: &st
                 None => return error_output(plugin, "probe() returned non-object".to_string()),
             }
         };
+        if deadline.has_elapsed() {
+            return error_output(plugin, timeout_message.clone());
+        }
 
         let plan: Option<String> = result
             .get::<_, String>("plan")
@@ -422,6 +503,15 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                     subtitle,
                 });
             }
+            "barChart" => {
+                let (chart, errors) = parse_bar_chart_line(&line, idx, label, color);
+                for message in errors {
+                    out.push(error_line(message));
+                }
+                if let Some(chart) = chart {
+                    out.push(chart);
+                }
+            }
             _ => {
                 out.push(error_line(format!(
                     "unknown line type at index {}: {}",
@@ -432,6 +522,154 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
     }
 
     Ok(out)
+}
+
+// Upper bound on barChart points parsed from a plugin. The chart is daily
+// history (plugins emit ~31), so a year of points is generous headroom while
+// keeping the loop and allocations bounded — parse_lines runs natively after
+// the JS returns, so the probe's interrupt-based timeout can't cap it here.
+const MAX_BAR_CHART_POINTS: usize = 366;
+
+// Parses a barChart line, keeping its point/value/note validation out of
+// parse_lines. Returns the built line (when at least one point is valid) plus
+// any per-point error messages the caller should surface as error lines.
+fn parse_bar_chart_line<'js>(
+    line: &Object<'js>,
+    idx: usize,
+    label: String,
+    color: Option<String>,
+) -> (Option<MetricLine>, Vec<String>) {
+    let mut errors: Vec<String> = Vec::new();
+
+    let points_array: Array = match line.get("points") {
+        Ok(points) => points,
+        Err(_) => {
+            errors.push(format!("barChart line at index {} missing points", idx));
+            return (None, errors);
+        }
+    };
+
+    // Bound the loop to a plugin-independent maximum so a huge points array
+    // can't exhaust CPU/memory in this native (non-interruptible) path.
+    let total_points = points_array.len();
+    let scan_count = total_points.min(MAX_BAR_CHART_POINTS);
+    if total_points > MAX_BAR_CHART_POINTS {
+        log::warn!(
+            "barChart line at index {} has {} points; capping at {}",
+            idx,
+            total_points,
+            MAX_BAR_CHART_POINTS
+        );
+    }
+
+    let mut points = Vec::new();
+    for point_idx in 0..scan_count {
+        let point: Object = match points_array.get(point_idx) {
+            Ok(point) => point,
+            Err(_) => {
+                errors.push(format!(
+                    "barChart line at index {} has invalid point at index {}",
+                    idx, point_idx
+                ));
+                continue;
+            }
+        };
+        let point_label = point.get::<_, String>("label").unwrap_or_default();
+        let point_label = point_label.trim().to_string();
+        if point_label.is_empty() {
+            errors.push(format!(
+                "barChart line at index {} has empty point label at index {}",
+                idx, point_idx
+            ));
+            continue;
+        }
+
+        let value: Value = match point.get("value") {
+            Ok(v) => v,
+            Err(_) => {
+                errors.push(format!(
+                    "barChart line at index {} point {} missing value",
+                    idx, point_idx
+                ));
+                continue;
+            }
+        };
+        let value = match value.as_number() {
+            Some(n) if n.is_finite() && n >= 0.0 => n,
+            _ => {
+                errors.push(format!(
+                    "barChart line at index {} point {} invalid value",
+                    idx, point_idx
+                ));
+                continue;
+            }
+        };
+
+        let value_label = match point.get::<_, Value>("valueLabel") {
+            Ok(v) => {
+                if v.is_null() || v.is_undefined() {
+                    None
+                } else if let Some(s) = v.as_string() {
+                    let value = s.to_string().unwrap_or_default();
+                    let trimmed = value.trim().to_string();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed)
+                    }
+                } else {
+                    log::warn!(
+                        "invalid barChart valueLabel at line {} point {}, omitting",
+                        idx,
+                        point_idx
+                    );
+                    None
+                }
+            }
+            Err(_) => None,
+        };
+
+        points.push(BarChartPoint {
+            label: point_label,
+            value,
+            value_label,
+        });
+    }
+
+    if points.is_empty() {
+        errors.push(format!("barChart line at index {} has no valid points", idx));
+        return (None, errors);
+    }
+
+    let note = match line.get::<_, Value>("note") {
+        Ok(v) => {
+            if v.is_null() || v.is_undefined() {
+                None
+            } else if let Some(s) = v.as_string() {
+                let value = s.to_string().unwrap_or_default();
+                let trimmed = value.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            } else {
+                log::warn!("invalid note at index {} (non-string), omitting", idx);
+                None
+            }
+        }
+        Err(_) => None,
+    };
+
+    (
+        Some(MetricLine::BarChart {
+            label,
+            points,
+            note,
+            color,
+        }),
+        errors,
+    )
 }
 
 fn error_output(plugin: &LoadedPlugin, message: String) -> PluginOutput {
@@ -457,6 +695,16 @@ fn extract_error_string(ctx: &Ctx<'_>) -> String {
         }
     }
     "The plugin failed, try again or contact plugin author.".to_string()
+}
+
+fn probe_timeout_message(timeout: Duration) -> String {
+    if timeout.subsec_millis() == 0 {
+        return format!("probe timed out after {}s", timeout.as_secs());
+    }
+    if timeout.as_secs() == 0 {
+        return format!("probe timed out after {}ms", timeout.as_millis());
+    }
+    format!("probe timed out after {:.3}s", timeout.as_secs_f64())
 }
 
 fn error_line(message: String) -> MetricLine {
@@ -541,6 +789,28 @@ mod tests {
     }
 
     #[test]
+    fn run_probe_times_out_cpu_bound_script() {
+        let plugin = test_plugin(
+            r#"
+            globalThis.__openusage_plugin = {
+                probe() {
+                    while (true) {}
+                }
+            };
+            "#,
+        );
+
+        let output = run_probe_with_timeout(
+            &plugin,
+            &temp_app_dir("timeout"),
+            "0.0.0",
+            Duration::from_millis(5),
+        );
+
+        assert_eq!(error_text(output), "probe timed out after 5ms");
+    }
+
+    #[test]
     fn progress_resets_at_serializes_as_resets_at_camelcase() {
         let line = MetricLine::Progress {
             label: "Session".to_string(),
@@ -558,6 +828,61 @@ mod tests {
         assert!(
             obj.get("resets_at").is_none(),
             "did not expect resets_at key"
+        );
+    }
+
+    #[test]
+    fn bar_chart_line_round_trips_from_builder() {
+        let plugin = test_plugin(
+            r#"
+            globalThis.__openusage_plugin = {
+                probe(ctx) {
+                    return {
+                        lines: [
+                            ctx.line.barChart({
+                                label: "Usage Trend",
+                                points: [{ label: "Today", value: 42, valueLabel: "42 tokens" }],
+                                note: "Estimated from local logs"
+                            })
+                        ]
+                    };
+                }
+            };
+            "#,
+        );
+
+        let output = run_probe(&plugin, &temp_app_dir("bar-chart"), "0.0.0");
+        let json: JsonValue = serde_json::to_value(&output.lines[0]).expect("serialize");
+        assert_eq!(json["type"], "barChart");
+        assert_eq!(json["label"], "Usage Trend");
+        assert_eq!(json["points"][0]["valueLabel"], "42 tokens");
+        assert_eq!(json["note"], "Estimated from local logs");
+    }
+
+    #[test]
+    fn bar_chart_caps_excessive_points() {
+        // A plugin-controlled points array must not parse unbounded: this path
+        // is native and runs after the JS deadline interrupt can fire.
+        let plugin = test_plugin(
+            r#"
+            globalThis.__openusage_plugin = {
+                probe(ctx) {
+                    var points = [];
+                    for (var i = 0; i < 5000; i++) {
+                        points.push({ label: "d" + i, value: i });
+                    }
+                    return { lines: [ctx.line.barChart({ label: "Big", points: points })] };
+                }
+            };
+            "#,
+        );
+
+        let output = run_probe(&plugin, &temp_app_dir("bar-chart-cap"), "0.0.0");
+        let json: JsonValue = serde_json::to_value(&output.lines[0]).expect("serialize");
+        assert_eq!(json["type"], "barChart");
+        assert_eq!(
+            json["points"].as_array().expect("points array").len(),
+            MAX_BAR_CHART_POINTS
         );
     }
 }
