@@ -115,7 +115,20 @@ fn save_cache(
         .map_err(|e| format!("failed to serialize usage cache: {}", e))?;
     std::fs::write(&tmp_path, &json)
         .map_err(|e| format!("failed to write temp cache file: {}", e))?;
-    std::fs::rename(&tmp_path, &path).map_err(|e| format!("failed to rename cache file: {}", e))?;
+    // Prefer an atomic temp+rename. On Windows the rename can fail when a reader
+    // holds the target without FILE_SHARE_DELETE; fall back to a direct overwrite
+    // so the cache still updates, then clean up the temp file. If the direct write
+    // also fails, propagate the error so the worker retries with backoff.
+    if let Err(rename_err) = std::fs::rename(&tmp_path, &path) {
+        let direct_write = std::fs::write(&path, json.as_bytes()).map_err(|e| {
+            format!(
+                "failed to overwrite cache file after rename failure ({}): {}",
+                rename_err, e
+            )
+        });
+        let _ = std::fs::remove_file(&tmp_path);
+        direct_write?;
+    }
     Ok(())
 }
 
