@@ -62,7 +62,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJDQkIwNjdCQUFBQ0IzM0QKUldROXM2eXFld2E3dkxROVE3MkFHSmYrdGs1bXdEYVpVcHBMK3JpdVFycTEvV1dGeWF0VmtVb28K",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVENzczNzRDQzU0MjA5Q0QKUldUTkNVTEZURGQzN2Ixb2grOC81YXNrM1FFbmdvVjJudk05U3VHYVFaajB2azh3eWEwVjRuMlQK",
       "endpoints": [
         "https://github.com/PowerUserZ/OpenTokenUsage/releases/latest/download/latest.json"
       ]
