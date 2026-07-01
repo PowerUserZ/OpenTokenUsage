@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.6.28
+
+### New Features
+- feat(codex): show rate limit resets ([#577](https://github.com/robinebers/openusage/pull/577)) by @robinebers
+- feat: add weekly menubar metric preference ([#555](https://github.com/robinebers/openusage/pull/555)) by @michaljuris
+
+### Bug Fixes
+- fix: patch security vulnerabilities via dep updates and overrides ([#712](https://github.com/robinebers/openusage/pull/712)) by @devin-ai-integration
+- fix: patch Rust security vulnerabilities via cargo update ([#570](https://github.com/robinebers/openusage/pull/570)) by @devin-ai-integration
+- fix(codex): reload auth during 401 recovery ([#568](https://github.com/robinebers/openusage/pull/568)) by @robinebers
+- fix(codex): align token refresh handling ([#568](https://github.com/robinebers/openusage/pull/568)) by @robinebers
+- fix(codex): recover from reused refresh token ([#568](https://github.com/robinebers/openusage/pull/568)) by @robinebers
+
+### Refactor
+- Refactor Codex credits display ([#567](https://github.com/robinebers/openusage/pull/567)) by @robinebers
+
+### Chores
+- chore: remove General Question from issue template chooser by @robinebers
+
+### OpenTokenUsage (Windows fork)
+- Synced upstream v0.6.28; preserved the native signed auto-updater and Windows hardening.
+- Excluded upstream's Tauri "retirement notice" banner. Upstream retired the cross-platform Tauri app in favor of a macOS-only Swift rewrite (v0.7.0+); this fork continues the Windows/Tauri edition, so the "app has moved" banner does not apply.
+
+---
+
+**Full Changelog**: [v0.6.27...v0.6.28](https://github.com/robinebers/openusage/compare/v0.6.27...v0.6.28)
+
 ## v0.6.27
 
 ### Bug Fixes

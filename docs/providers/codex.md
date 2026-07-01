@@ -16,7 +16,7 @@
 
 ### GET /backend-api/wham/usage
 
-Returns rate limit windows and optional credits.
+Returns rate limit windows, optional credits, and available on-demand rate limit resets.
 
 #### Headers
 
@@ -53,12 +53,22 @@ Returns rate limit windows and optional credits.
   "credits": {                             // purchased credits (optional)
     "has_credits": true,
     "unlimited": false,
-    "balance": 5.39                        // remaining balance
+    "balance": 820.6969075                 // remaining credits
+  },
+  "rate_limit_reset_credits": {            // on-demand resets (optional)
+    "available_count": 1
   }
 }
 ```
 
 Both rate_limit windows are enforced simultaneously — hitting either limit throttles the user.
+
+OpenUsage floors the remaining credit balance to a whole number and displays its fixed USD
+equivalent at `$0.04` per credit. For example, `820.6969075` renders as
+`$32.80 · 820 credits`. The credit balance is unbounded; the API does not provide a maximum.
+
+When available, OpenUsage displays the on-demand reset count as the first detail text metric,
+for example `1 available`.
 
 ## Authentication
 
