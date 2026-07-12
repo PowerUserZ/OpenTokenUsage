@@ -227,16 +227,13 @@
     return "$" + (micros / 1000000).toFixed(2)
   }
 
+  // Devin reports quota as percent *remaining*; the tile shows percent *used*, so
+  // every quota row flips 100 - remaining — including the weekly-from-daily fallback.
   function buildQuotaLine(ctx, label, remaining, resetsAt, periodDurationMs) {
     if (remaining === null) return null
-    return buildUsedQuotaLine(ctx, label, 100 - remaining, resetsAt, periodDurationMs)
-  }
-
-  function buildUsedQuotaLine(ctx, label, used, resetsAt, periodDurationMs) {
-    if (used === null) return null
     var line = {
       label: label,
-      used: clampPercent(used),
+      used: clampPercent(100 - remaining),
       limit: 100,
       format: { kind: "percent" },
       periodDurationMs: periodDurationMs,
@@ -266,7 +263,7 @@
     var weeklyLine = weeklyRemaining !== null
       ? buildQuotaLine(ctx, "Weekly quota", weeklyRemaining, weeklyReset, WEEK_MS)
       : hideDailyQuota
-        ? buildUsedQuotaLine(ctx, "Weekly quota", dailyRemaining, weeklyReset, WEEK_MS)
+        ? buildQuotaLine(ctx, "Weekly quota", dailyRemaining, weeklyReset, WEEK_MS)
         : null
 
     var lines = []

@@ -1,4 +1,5 @@
 import crypto from "node:crypto"
+import { readFileSync } from "node:fs"
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
@@ -424,6 +425,63 @@ describe("claude plugin", () => {
     expect(result.lines.find((line) => line.label === "Last 30 Days")?.value).toContain("150 tokens")
   })
 
+  it("prefers a stored profile-scoped login over CLAUDE_CODE_OAUTH_TOKEN for live usage (regression for upstream #865)", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "stored-token",
+          scopes: ["user:inference", "user:profile"],
+          subscriptionType: "pro",
+        },
+      })
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "CLAUDE_CODE_OAUTH_TOKEN" ? "env-oauth-token" : null
+    )
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // The ambient env token must not shadow the stored login that CAN read live usage.
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(ctx.host.http.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer stored-token" }),
+      })
+    )
+  })
+
+  it("falls back to the env token when the stored login lacks user:profile scope", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "stored-token",
+          scopes: ["user:inference"],
+          subscriptionType: "pro",
+        },
+      })
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "CLAUDE_CODE_OAUTH_TOKEN" ? "env-oauth-token" : null
+    )
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    // Neither credential can read live usage — no usage call is made.
+    expect(
+      ctx.host.http.request.mock.calls.some((call) => String(call[0]?.url).includes("/api/oauth/usage"))
+    ).toBe(false)
+  })
+
   it("renders usage lines from response", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () =>
@@ -634,6 +692,73 @@ describe("claude plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.lines.find((l) => l.label === "Claude Design")).toBeUndefined()
+  })
+
+  it("renders Fable weekly limit from the limits array (regression for upstream #814)", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "max" } })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        seven_day: { utilization: 20, resets_at: "2099-01-01T00:00:00.000Z" },
+        seven_day_sonnet: null,
+        limits: [
+          { kind: "session", group: "session", percent: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+          { kind: "weekly_all", group: "weekly", percent: 20, resets_at: "2099-01-08T00:00:00.000Z" },
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 7,
+            resets_at: "2099-01-08T00:00:00.000Z",
+            scope: { model: { display_name: "Fable", id: null }, surface: null },
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const fableLine = result.lines.find((l) => l.label === "Fable")
+    expect(fableLine).toBeTruthy()
+    expect(fableLine.used).toBe(7)
+    expect(fableLine.limit).toBe(100)
+    expect(fableLine.format).toEqual({ kind: "percent" })
+    expect(fableLine.resetsAt).toBe("2099-01-08T00:00:00.000Z")
+    expect(fableLine.periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
+    // Legacy top-level keys still render; a null seven_day_sonnet simply skips the Sonnet row.
+    expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
+    expect(result.lines.find((l) => l.label === "Weekly")).toBeTruthy()
+    expect(result.lines.find((l) => l.label === "Sonnet")).toBeUndefined()
+  })
+
+  it("omits the Fable line when limits has no matching weekly_scoped entry", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "max" } })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        limits: [
+          null,
+          { kind: "weekly_all", group: "weekly", percent: 20 },
+          // Different model — not the Fable bucket.
+          { kind: "weekly_scoped", percent: 12, scope: { model: { display_name: "Sonnet" } } },
+          // Non-numeric percent is skipped.
+          { kind: "weekly_scoped", percent: "7", scope: { model: { display_name: "Fable" } } },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Fable")).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
   })
 
   it("omits extra usage line when used credits are zero and no limit exists", async () => {
@@ -1675,7 +1800,7 @@ describe("claude plugin", () => {
       expect(last30.value).toContain("$1.50")
     })
 
-    it("shows empty Today/Yesterday and Last 30 Days when today has no entry", async () => {
+    it("shows No data for days ccusage did not report instead of fabricated zeros (regression for upstream #746)", async () => {
       const ctx = makeProbeCtx({
         ccusageResult: okUsage([
             { date: "2026-02-01", inputTokens: 500, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 600, totalCost: 2.0 },
@@ -1685,29 +1810,25 @@ describe("claude plugin", () => {
       const result = plugin.probe(ctx)
       const todayLine = result.lines.find((l) => l.label === "Today")
       expect(todayLine).toBeTruthy()
-      expect(todayLine.value).toContain("$0.00")
-      expect(todayLine.value).toContain("0 tokens")
+      expect(todayLine.value).toBe("No data")
       const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
       expect(yesterdayLine).toBeTruthy()
-      expect(yesterdayLine.value).toContain("$0.00")
-      expect(yesterdayLine.value).toContain("0 tokens")
+      expect(yesterdayLine.value).toBe("No data")
       const last30 = result.lines.find((l) => l.label === "Last 30 Days")
       expect(last30).toBeTruthy()
       expect(last30.value).toContain("600 tokens")
     })
 
-    it("shows empty Today state when ccusage returns ok with empty daily array", async () => {
+    it("shows No data for Today/Yesterday when ccusage returns ok with empty daily array", async () => {
       const ctx = makeProbeCtx({ ccusageResult: okUsage([]) })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
       const todayLine = result.lines.find((l) => l.label === "Today")
       expect(todayLine).toBeTruthy()
-      expect(todayLine.value).toContain("$0.00")
-      expect(todayLine.value).toContain("0 tokens")
+      expect(todayLine.value).toBe("No data")
       const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
       expect(yesterdayLine).toBeTruthy()
-      expect(yesterdayLine.value).toContain("$0.00")
-      expect(yesterdayLine.value).toContain("0 tokens")
+      expect(yesterdayLine.value).toBe("No data")
       expect(result.lines.find((l) => l.label === "Last 30 Days")).toBeUndefined()
     })
 
@@ -2054,5 +2175,155 @@ describe("claude plugin", () => {
         vi.useRealTimers()
       }
     })
+  })
+
+  describe("login isolation (regression for upstream #953)", () => {
+    const FAR_EXPIRY = new Date("2026-04-15T00:00:00.000Z").getTime()
+
+    const credsJson = (suffix) =>
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "token-" + suffix,
+          refreshToken: "refresh-" + suffix,
+          expiresAt: FAR_EXPIRY,
+          subscriptionType: "pro",
+        },
+      })
+
+    it("refetches usage instead of serving the previous login's cache after account switch", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        ctx.host.fs.exists = () => true
+        let creds = credsJson("a")
+        ctx.host.fs.readText = () => creds
+        ctx.host.http.request
+          .mockReturnValueOnce({
+            status: 200,
+            bodyText: JSON.stringify({ five_hour: { utilization: 42, resets_at: null } }),
+            headers: {},
+          })
+          .mockReturnValue({
+            status: 200,
+            bodyText: JSON.stringify({ five_hour: { utilization: 7, resets_at: null } }),
+            headers: {},
+          })
+        const plugin = await loadPlugin()
+
+        const result1 = plugin.probe(ctx)
+        expect(result1.lines.find((l) => l.label === "Session")?.used).toBe(42)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // Switch account 60 s later — well within the 5-minute min-fetch interval, which must
+        // not serve the previous login's cached usage.
+        creds = credsJson("b")
+        vi.setSystemTime(new Date("2026-04-14T10:01:00.000Z"))
+        const result2 = plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+        expect(result2.lines.find((l) => l.label === "Session")?.used).toBe(7)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("does not inherit the previous login's rate-limit cooldown after account switch", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        ctx.host.fs.exists = () => true
+        let creds = credsJson("a")
+        ctx.host.fs.readText = () => creds
+        ctx.host.http.request
+          .mockReturnValueOnce({ status: 429, bodyText: "", headers: { "Retry-After": "300" } })
+          .mockReturnValue({
+            status: 200,
+            bodyText: JSON.stringify({ five_hour: { utilization: 5, resets_at: null } }),
+            headers: {},
+          })
+        const plugin = await loadPlugin()
+
+        // First probe — account A is rate limited for 5 minutes.
+        const result1 = plugin.probe(ctx)
+        expect(result1.lines.find((l) => l.label === "Status")).toBeTruthy()
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // Switch account 60 s later — the new login must not sit out A's cooldown.
+        creds = credsJson("b")
+        vi.setSystemTime(new Date("2026-04-14T10:01:00.000Z"))
+        const result2 = plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+        expect(result2.lines.find((l) => l.label === "Session")?.used).toBe(5)
+        expect(result2.lines.find((l) => l.label === "Status" && l.color === "#f59e0b")).toBeUndefined()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("does not treat a token rotation for the same login as an account switch", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        ctx.host.fs.exists = () => true
+        // Expired token forces a proactive refresh on the first probe, which rotates the pair
+        // and persists it via fs.writeText (the makeCtx in-memory file store).
+        const files = new Map()
+        files.set("cred", JSON.stringify({
+          claudeAiOauth: {
+            accessToken: "old-token",
+            refreshToken: "old-refresh",
+            expiresAt: new Date("2026-04-14T09:00:00.000Z").getTime(),
+            subscriptionType: "pro",
+          },
+        }))
+        ctx.host.fs.readText = () => files.get("cred")
+        ctx.host.fs.writeText = vi.fn((path, text) => files.set("cred", text))
+        ctx.host.http.request.mockImplementation((opts) => {
+          if (String(opts.url).includes("/v1/oauth/token")) {
+            return {
+              status: 200,
+              bodyText: JSON.stringify({
+                access_token: "new-token",
+                refresh_token: "new-refresh",
+                expires_in: 3600,
+              }),
+            }
+          }
+          return {
+            status: 200,
+            bodyText: JSON.stringify({ five_hour: { utilization: 42, resets_at: null } }),
+            headers: {},
+          }
+        })
+        const plugin = await loadPlugin()
+
+        plugin.probe(ctx)
+        const usageCalls = () =>
+          ctx.host.http.request.mock.calls.filter((call) =>
+            String(call[0]?.url).includes("/api/oauth/usage")
+          ).length
+        expect(usageCalls()).toBe(1)
+
+        // Second probe 60 s later reloads the ROTATED credentials — same login, so the cached
+        // usage stands and the min-fetch interval keeps the API untouched.
+        vi.setSystemTime(new Date("2026-04-14T10:01:00.000Z"))
+        const result2 = plugin.probe(ctx)
+        expect(usageCalls()).toBe(1)
+        expect(result2.lines.find((l) => l.label === "Session")?.used).toBe(42)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
+  it("declares Status badge (overview) and Fable progress (detail) lines in the manifest", () => {
+    // The overview page filters runtime lines to manifest overview-scope labels, so the
+    // rate-limited Status badge must be declared with scope "overview" or a rate-limited
+    // fetch with no cached data renders a silent blank card (regression for upstream #849).
+    const manifest = JSON.parse(readFileSync("plugins/claude/plugin.json", "utf8"))
+    expect(manifest.lines).toContainEqual({ type: "badge", label: "Status", scope: "overview" })
+    expect(manifest.lines).toContainEqual({ type: "progress", label: "Fable", scope: "detail" })
   })
 })

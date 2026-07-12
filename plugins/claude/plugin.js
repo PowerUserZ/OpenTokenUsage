@@ -16,6 +16,7 @@
   let rateLimitedUntilMs = 0  // epoch ms; 0 = not rate-limited
   let lastUsageFetchMs = 0    // epoch ms of the most-recent API attempt
   let cachedUsageData = null  // last successful API response body (parsed JSON)
+  let lastCredentialFingerprint = null // sha256 of the login's token pair; null until first probe
 
   function utf8DecodeBytes(bytes) {
     // Prefer native TextDecoder when available (QuickJS may not expose it).
@@ -331,6 +332,15 @@
       return stored
     }
 
+    // CLAUDE_CODE_OAUTH_TOKEN is inference-only (typically a `claude setup-token` token) and
+    // cannot read the usage endpoint. It also reaches us when merely ambiently exported, so it
+    // must not shadow a stored profile-scoped login that CAN fetch live usage — prefer the
+    // stored login, and use the env token only when no live-capable stored login exists.
+    if (hasProfileScope(stored)) {
+      ctx.host.log.info("preferring stored profile-scoped login over CLAUDE_CODE_OAUTH_TOKEN")
+      return stored
+    }
+
     const oauth = stored && stored.oauth ? Object.assign({}, stored.oauth) : {}
     oauth.accessToken = envAccessToken
     return {
@@ -351,6 +361,18 @@
       return scopes.indexOf("user:profile") !== -1
     }
     return true
+  }
+
+  function credentialFingerprint(ctx, creds) {
+    const oauth = (creds && creds.oauth) || {}
+    const raw = String(oauth.accessToken || "") + "\n" + String(oauth.refreshToken || "")
+    const sha256Hex = ctx.host && ctx.host.crypto && ctx.host.crypto.sha256Hex
+    if (typeof sha256Hex === "function") {
+      try {
+        return sha256Hex(raw)
+      } catch {}
+    }
+    return raw // kept in module memory only, never logged
   }
 
   function saveCredentials(ctx, source, serviceName, fullData) {
@@ -733,7 +755,16 @@
   }
 
   function pushDayUsageLine(lines, ctx, label, dayEntry) {
-    const tokens = Number(dayEntry && dayEntry.totalTokens) || 0
+    if (!dayEntry) {
+      // ccusage omits days it hasn't reported (idle, or lagging a CLI format change), so an
+      // absent day is unknown — render "No data" instead of a fabricated "$0.00 · 0 tokens"
+      // that would contradict a live session meter. A present all-zero entry stays a real,
+      // measured "$0.00 · 0 tokens".
+      lines.push(ctx.line.text({ label: label, value: "No data" }))
+      return
+    }
+
+    const tokens = Number(dayEntry.totalTokens) || 0
     const cost = usageCostUsd(dayEntry)
     if (tokens > 0) {
       lines.push(ctx.line.text({
@@ -749,12 +780,49 @@
     }))
   }
 
+  // A model-scoped weekly limit from the `limits` array — `kind: "weekly_scoped"` with
+  // `scope.model.display_name` naming the model (e.g. "Fable"). Anthropic moved the per-model
+  // weekly windows off the legacy top-level `seven_day_<model>` keys (which now come back null)
+  // and into this array, so each scoped row is read by display name. `percent` is 0-100.
+  function pushScopedWeeklyLimitLine(lines, ctx, limits, modelName, label) {
+    if (!Array.isArray(limits)) return
+    for (let i = 0; i < limits.length; i++) {
+      const entry = limits[i]
+      if (!entry || typeof entry !== "object") continue
+      if (entry.kind !== "weekly_scoped") continue
+      const model = entry.scope && entry.scope.model
+      if (!model || model.display_name !== modelName) continue
+      if (typeof entry.percent !== "number") continue
+      lines.push(ctx.line.progress({
+        label: label,
+        used: entry.percent,
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: ctx.util.toIso(entry.resets_at),
+        periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
+      }))
+      return
+    }
+  }
+
   function probe(ctx) {
     const creds = loadCredentials(ctx)
     if (!creds || !creds.oauth || !creds.oauth.accessToken || !creds.oauth.accessToken.trim()) {
       ctx.host.log.error("probe failed: not logged in")
       throw "Not logged in. Run `claude` to authenticate."
     }
+
+    // A different login (switched account, fresh `claude` login) must not see the previous
+    // login's cached usage or inherit its rate-limit cooldown — reset module-scope state
+    // whenever the credential fingerprint changes.
+    const fingerprint = credentialFingerprint(ctx, creds)
+    if (lastCredentialFingerprint !== null && lastCredentialFingerprint !== fingerprint) {
+      ctx.host.log.info("login changed — resetting cached usage state")
+      cachedUsageData = null
+      rateLimitedUntilMs = 0
+      lastUsageFetchMs = 0
+    }
+    lastCredentialFingerprint = fingerprint
 
     const nowMs = Date.now()
     let accessToken = creds.oauth.accessToken
@@ -863,6 +931,11 @@
       ctx.host.log.info("skipping live usage fetch for inference-only token")
     }
 
+    // A token refresh above rotates the pair for the SAME login — re-fingerprint so the
+    // rotation isn't mistaken for a login change on the next probe (which would drop the
+    // cache and rate-limit backoff we just established).
+    lastCredentialFingerprint = credentialFingerprint(ctx, creds)
+
     let plan = null
     if (creds.oauth.subscriptionType) {
       const basePlan = ctx.fmt.planLabel(creds.oauth.subscriptionType)
@@ -918,6 +991,7 @@
           periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
         }))
       }
+      pushScopedWeeklyLimitLine(lines, ctx, data.limits, "Fable", "Fable")
 
       if (data.extra_usage && data.extra_usage.is_enabled) {
         const used = data.extra_usage.used_credits
@@ -1011,6 +1085,7 @@
     rateLimitedUntilMs = 0
     lastUsageFetchMs = 0
     cachedUsageData = null
+    lastCredentialFingerprint = null
   }
 
   globalThis.__openusage_plugin = { id: "claude", probe, _resetState }

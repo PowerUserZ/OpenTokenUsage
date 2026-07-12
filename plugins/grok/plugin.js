@@ -1,10 +1,14 @@
 (function () {
   const AUTH_PATH = "~/.grok/auth.json"
-  const BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing"
+  // The weekly shared-pool data: the billing endpoint with `?format=credits` returns the
+  // `GetGrokCreditsConfig` message as JSON — the exact call the Grok CLI itself makes.
+  const BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
   const SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings"
   const REFRESH_URL = "https://auth.x.ai/oauth2/token"
   const DEFAULT_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828"
   const TOKEN_AUTH_HEADER = "xai-grok-cli"
+  // The shared weekly pool Grok migrated unified-billing users to.
+  const WEEKLY_PERIOD_TYPE = "USAGE_PERIOD_TYPE_WEEKLY"
   const AUTH_REFRESH_BUFFER_MS = 5 * 60 * 1000
   const LOGIN_HINT = "Grok auth expired. Run `grok login` again."
 
@@ -177,10 +181,66 @@
     throw "Grok auth invalid. Run `grok login` again."
   }
 
-  function unitsValue(obj) {
-    if (!obj || typeof obj !== "object") return null
-    const n = Number(obj.val)
-    return Number.isFinite(n) ? n : null
+  function finiteNumber(value) {
+    if (typeof value === "number") return Number.isFinite(value) ? value : null
+    if (typeof value === "string" && value.trim()) {
+      const n = Number(value)
+      return Number.isFinite(n) ? n : null
+    }
+    return null
+  }
+
+  // Decode the `GetGrokCreditsConfig` proto-JSON body. proto-JSON drops zero-valued fields, so
+  // an absent creditUsagePercent/onDemandCap is a genuine 0 — but a present field with an
+  // unexpected shape is schema drift and must fail loud.
+  function decodeCreditsConfig(ctx, data) {
+    const config = data && data.config
+    if (!config || typeof config !== "object") {
+      throw "Grok billing response changed."
+    }
+
+    const period = config.currentPeriod
+    if (!period || typeof period !== "object") {
+      throw "Grok billing response changed."
+    }
+    const periodType = typeof period.type === "string" ? period.type.trim() : ""
+    const startMs = typeof period.start === "string" ? ctx.util.parseDateMs(period.start) : null
+    const endMs = typeof period.end === "string" ? ctx.util.parseDateMs(period.end) : null
+    if (!periodType || startMs === null || endMs === null || endMs <= startMs) {
+      throw "Grok billing response changed."
+    }
+
+    let usedPercent = 0
+    if (config.creditUsagePercent !== undefined) {
+      const percent = finiteNumber(config.creditUsagePercent)
+      if (percent === null) {
+        throw "Grok billing response changed."
+      }
+      usedPercent = percent
+    }
+
+    let onDemandCap = 0
+    if (config.onDemandCap !== undefined) {
+      const capObject = config.onDemandCap
+      if (!capObject || typeof capObject !== "object") {
+        throw "Grok billing response changed."
+      }
+      if (capObject.val !== undefined) {
+        const cap = finiteNumber(capObject.val)
+        if (cap === null) {
+          throw "Grok billing response changed."
+        }
+        onDemandCap = cap
+      }
+    }
+
+    return {
+      periodType,
+      usedPercent,
+      periodEndIso: new Date(endMs).toISOString(),
+      periodDurationMs: endMs - startMs,
+      onDemandCap,
+    }
   }
 
   function clampPercent(value) {
@@ -257,38 +317,29 @@
       },
     })
     const data = parseBilling(ctx, billingResp)
-    const config = data && data.config
-    if (!config || typeof config !== "object") {
-      throw "Grok billing response changed."
-    }
+    const credits = decodeCreditsConfig(ctx, data)
 
-    const usedUnits = unitsValue(config.used)
-    const limitUnits = unitsValue(config.monthlyLimit)
-    const onDemandCapUnits = unitsValue(config.onDemandCap)
-    if (usedUnits === null || limitUnits === null || limitUnits <= 0 || onDemandCapUnits === null) {
-      throw "Grok billing response changed."
-    }
-
-    const resetsAt = ctx.util.toIso(config.billingPeriodEnd)
-    if (!resetsAt) {
-      throw "Grok billing response changed."
-    }
-
-    const usedPercent = clampPercent((usedUnits / limitUnits) * 100)
-    const lines = [
-      ctx.line.progress({
-        label: "Credits used",
-        used: usedPercent,
+    // The weekly line is omitted when the current period isn't weekly — an account still on the
+    // old monthly-only billing has no weekly pool, and mislabeling its percent would be worse
+    // than an honest blank.
+    const lines = []
+    if (credits.periodType === WEEKLY_PERIOD_TYPE) {
+      lines.push(ctx.line.progress({
+        label: "Weekly limit",
+        used: clampPercent(credits.usedPercent),
         limit: 100,
         format: { kind: "percent" },
-        resetsAt,
-      }),
-      ctx.line.badge({
-        label: "Pay as you go",
-        text: onDemandCapUnits > 0 ? String(onDemandCapUnits) + " cap" : "Disabled",
-        color: onDemandCapUnits > 0 ? "#22c55e" : "#a3a3a3",
-      }),
-    ]
+        resetsAt: credits.periodEndIso,
+        periodDurationMs: credits.periodDurationMs,
+      }))
+    }
+    // A missing onDemandCap means no pay-as-you-go (proto-JSON also drops a 0 cap) → the
+    // Disabled badge, same as a present cap of 0.
+    lines.push(ctx.line.badge({
+      label: "Pay as you go",
+      text: credits.onDemandCap > 0 ? String(credits.onDemandCap) + " cap" : "Disabled",
+      color: credits.onDemandCap > 0 ? "#22c55e" : "#a3a3a3",
+    }))
 
     return { plan: fetchPlanName(ctx, auth.token), lines }
   }

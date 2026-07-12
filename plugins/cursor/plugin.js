@@ -240,6 +240,19 @@
     })
   }
 
+  // Prefer explicit spend fields reported by Cursor; fall back to inferring
+  // limit - remaining. A zero in one spend field must not mask real usage
+  // reported elsewhere, so positive signals win before zero is accepted.
+  function onDemandSpendCents(su, limit, remaining) {
+    const reported = [su.individualUsed, su.pooledUsed, su.totalSpend]
+      .filter((v) => typeof v === "number" && Number.isFinite(v))
+    const positive = reported.find((v) => v > 0)
+    if (positive !== undefined) return positive
+    const inferred = Math.max(0, limit - remaining)
+    if (inferred > 0) return inferred
+    return reported.length > 0 ? reported[0] : 0
+  }
+
   function buildSessionToken(ctx, accessToken) {
     var payload = ctx.jwt.decodePayload(accessToken)
     if (!payload || !payload.sub) return null
@@ -557,13 +570,14 @@
       !isNaN(grantTotalCents) &&
       !isNaN(grantUsedCents)
     const combinedTotalCents = (hasValidGrantData ? grantTotalCents : 0) + stripeBalanceCents
+    // A used/limit meter here would mix grant-used against grant + Stripe
+    // totals, which is misleading; show the remaining balance instead.
+    const remainingCreditsCents = Math.max(0, combinedTotalCents - (hasValidGrantData ? grantUsedCents : 0))
 
     if (combinedTotalCents > 0) {
-      lines.push(ctx.line.progress({
+      lines.push(ctx.line.text({
         label: "Credits",
-        used: ctx.fmt.dollars(hasValidGrantData ? grantUsedCents : 0),
-        limit: ctx.fmt.dollars(combinedTotalCents),
-        format: { kind: "dollars" },
+        value: "$" + String(ctx.fmt.dollars(remainingCreditsCents)) + " left",
       }))
     }
 
@@ -652,13 +666,20 @@
     if (su) {
       const limit = su.individualLimit ?? su.pooledLimit ?? 0
       const remaining = su.individualRemaining ?? su.pooledRemaining ?? 0
+      const spent = onDemandSpendCents(su, limit, remaining)
       if (limit > 0) {
-        const used = limit - remaining
         lines.push(ctx.line.progress({
           label: "On-demand",
-          used: ctx.fmt.dollars(used),
+          used: ctx.fmt.dollars(spent),
           limit: ctx.fmt.dollars(limit),
           format: { kind: "dollars" },
+        }))
+      } else if (spent > 0) {
+        // Cursor returned real spend without a usable limit; render an
+        // unbounded row rather than hiding it.
+        lines.push(ctx.line.text({
+          label: "On-demand",
+          value: "$" + String(ctx.fmt.dollars(spent)) + " spent",
         }))
       }
     }

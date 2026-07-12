@@ -316,6 +316,7 @@ describe("devin plugin", () => {
       bodyText: JSON.stringify(
         makeQuotaResponse({
           planInfo: { hideDailyQuota: true },
+          dailyQuotaRemainingPercent: 25,
           weeklyQuotaRemainingPercent: undefined,
         })
       ),
@@ -327,7 +328,7 @@ describe("devin plugin", () => {
     expect(result.lines.find((line) => line.label === "Daily quota")).toBeUndefined()
     expect(result.lines.find((line) => line.label === "Weekly quota")).toMatchObject({
       type: "progress",
-      used: 100,
+      used: 75,
       limit: 100,
       format: { kind: "percent" },
       resetsAt: "2026-03-22T08:00:00.000Z",
@@ -340,6 +341,30 @@ describe("devin plugin", () => {
       expect.stringContaining("hasWeeklyQuotaPercent=false")
     )
     expect(result.lines.find((line) => line.label === "Extra usage balance")?.value).toBe("$964.22")
+  })
+
+  it("renders a fully unused hidden daily quota as 0% used in the weekly fallback", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml())
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(
+        makeQuotaResponse({
+          planInfo: { hideDailyQuota: true },
+          dailyQuotaRemainingPercent: 100,
+          weeklyQuotaRemainingPercent: undefined,
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Weekly quota")).toMatchObject({
+      type: "progress",
+      used: 0,
+      limit: 100,
+    })
   })
 
   it("renders quota percentages when reset timestamps are absent", async () => {

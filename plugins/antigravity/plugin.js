@@ -13,6 +13,7 @@
   var LOAD_CODE_ASSIST_PATH = "/v1internal:loadCodeAssist"
   var FETCH_MODELS_PATH = "/v1internal:fetchAvailableModels"
   var RETRIEVE_QUOTA_PATH = "/v1internal:retrieveUserQuota"
+  var QUOTA_SUMMARY_PATH = "/v1internal:retrieveUserQuotaSummary"
   var LOGIN_MESSAGE = "Start Antigravity or run `agy` and try again."
   var GOOGLE_OAUTH_URL = "https://oauth2.googleapis.com/token"
   var GOOGLE_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
@@ -165,7 +166,7 @@
         return null
       }
       var expiresIn = (typeof body.expires_in === "number") ? body.expires_in : 3600
-      cacheToken(ctx, body.access_token, expiresIn)
+      cacheToken(ctx, body.access_token, expiresIn, refreshTokenValue)
       return body.access_token
     } catch (e) {
       ctx.host.log.warn("Google OAuth refresh failed: " + String(e))
@@ -174,13 +175,54 @@
   }
 
   // --- Token cache ---
+  // The cached access token is derived from a local Antigravity refresh token. It is bound
+  // to that minting credential via a SHA-256 fingerprint so a logout / account switch can
+  // never keep serving the previous account's token from our cache.
 
-  function loadCachedToken(ctx) {
+  function credentialFingerprint(ctx, refreshTokenValue) {
+    var sha256Hex = ctx.host.crypto && ctx.host.crypto.sha256Hex
+    if (typeof sha256Hex !== "function") return null
+    var trimmed = trimString(refreshTokenValue)
+    if (!trimmed) return null
+    return sha256Hex(trimmed)
+  }
+
+  // The host fs API has no remove; overwriting with an empty object is the purge.
+  function discardCachedToken(ctx) {
+    var path = ctx.app.pluginDataDir + "/auth.json"
+    try {
+      if (!ctx.host.fs.exists(path)) return
+      ctx.host.fs.writeText(path, "{}")
+      ctx.host.log.info("discarded stale cached token")
+    } catch (e) {
+      ctx.host.log.warn("failed to discard stale cached token: " + String(e))
+    }
+  }
+
+  // Returns the cached access token only when it was minted by one of the refresh tokens
+  // still present locally. No local refresh credentials, a legacy unbound cache, or a
+  // fingerprint mismatch all purge the cache — it is never an independent credential.
+  function loadCachedToken(ctx, localRefreshTokens) {
+    var expected = []
+    for (var i = 0; i < (localRefreshTokens || []).length; i++) {
+      var fp = credentialFingerprint(ctx, localRefreshTokens[i])
+      if (fp && expected.indexOf(fp) === -1) expected.push(fp)
+    }
+    if (expected.length === 0) {
+      discardCachedToken(ctx)
+      return null
+    }
     var path = ctx.app.pluginDataDir + "/auth.json"
     try {
       if (!ctx.host.fs.exists(path)) return null
       var data = ctx.util.tryParseJson(ctx.host.fs.readText(path))
       if (!data || !data.accessToken || !data.expiresAtMs) return null
+      if (!data.credentialFingerprint || expected.indexOf(data.credentialFingerprint) === -1) {
+        // Includes legacy caches with no fingerprint. Never log the fingerprints themselves.
+        ctx.host.log.info("cached token was not minted by a current local credential; discarding it")
+        discardCachedToken(ctx)
+        return null
+      }
       if (data.expiresAtMs <= Date.now()) return null
       return data.accessToken
     } catch (e) {
@@ -189,12 +231,18 @@
     }
   }
 
-  function cacheToken(ctx, accessToken, expiresInSeconds) {
+  function cacheToken(ctx, accessToken, expiresInSeconds, sourceRefreshToken) {
+    var fingerprint = credentialFingerprint(ctx, sourceRefreshToken)
+    if (!fingerprint) {
+      ctx.host.log.warn("cannot fingerprint the minting credential; not caching the refreshed token")
+      return
+    }
     var path = ctx.app.pluginDataDir + "/auth.json"
     try {
       ctx.host.fs.writeText(path, JSON.stringify({
         accessToken: accessToken,
         expiresAtMs: Date.now() + (expiresInSeconds || 3600) * 1000,
+        credentialFingerprint: fingerprint,
       }))
     } catch (e) {
       ctx.host.log.warn("failed to cache refreshed token: " + String(e))
@@ -364,26 +412,26 @@
   }
 
   function poolLabel(normalizedLabel) {
-    var lower = normalizedLabel.toLowerCase()
-    if (lower.indexOf("gemini") !== -1 && lower.indexOf("pro") !== -1) return "Gemini Pro"
-    if (lower.indexOf("gemini") !== -1 && lower.indexOf("flash") !== -1) return "Gemini Flash"
-    // All non-Gemini models (Claude, GPT-OSS, etc.) share a single quota pool
-    return "Claude"
+    // Pro and Flash draw from one shared pool since Antigravity's 2026-05-19 quota merge,
+    // so every Gemini model maps to the single "Session" meter; Claude, GPT-OSS, and any
+    // other non-Gemini model share the other pool.
+    return normalizedLabel.toLowerCase().indexOf("gemini") !== -1 ? SESSION_LABEL : CLAUDE_LABEL
   }
 
   function modelSortKey(label) {
-    var lower = label.toLowerCase()
-    // Gemini Pro variants first, then other Gemini, then Claude Opus, then other Claude, then rest
-    if (lower.indexOf("gemini") !== -1 && lower.indexOf("pro") !== -1) return "0a_" + label
-    if (lower.indexOf("gemini") !== -1) return "0b_" + label
-    if (lower.indexOf("claude") !== -1 && lower.indexOf("opus") !== -1) return "1a_" + label
-    if (lower.indexOf("claude") !== -1) return "1b_" + label
-    return "2_" + label
+    // The Gemini pool ("Session") before Claude, matching the plugin.json declaration order.
+    return label === SESSION_LABEL ? "0_" + label : "1_" + label
   }
 
   var QUOTA_PERIOD_MS = 5 * 60 * 60 * 1000 // 5 hours
+  var WEEKLY_PERIOD_MS = 7 * 24 * 60 * 60 * 1000
 
-  function modelLine(ctx, label, remainingFraction, resetTime) {
+  var SESSION_LABEL = "Session"
+  var WEEKLY_LABEL = "Weekly"
+  var CLAUDE_LABEL = "Claude"
+  var CLAUDE_WEEKLY_LABEL = "Claude Weekly"
+
+  function modelLine(ctx, label, remainingFraction, resetTime, periodMs) {
     var clamped = Math.max(0, Math.min(1, remainingFraction))
     var used = Math.round((1 - clamped) * 100)
     return ctx.line.progress({
@@ -392,7 +440,7 @@
       limit: 100,
       format: { kind: "percent" },
       resetsAt: resetTime || undefined,
-      periodDurationMs: QUOTA_PERIOD_MS,
+      periodDurationMs: periodMs || QUOTA_PERIOD_MS,
     })
   }
 
@@ -403,7 +451,14 @@
       var label = (typeof c.label === "string") ? c.label.trim() : ""
       if (!label) continue
       var qi = c.quotaInfo
-      var frac = (qi && typeof qi.remainingFraction === "number") ? qi.remainingFraction : 0
+      var frac = (qi && typeof qi.remainingFraction === "number" && Number.isFinite(qi.remainingFraction))
+        ? qi.remainingFraction
+        : null
+      if (frac === null) {
+        // Never fabricate a 100%-used meter from missing quota info — drop the model.
+        ctx.host.log.warn("model '" + label + "' has no usable remainingFraction; dropping it")
+        continue
+      }
       var rtime = (qi && qi.resetTime) || undefined
       var pool = poolLabel(normalizeLabel(label))
       if (!deduped[pool] || frac < deduped[pool].remainingFraction) {
@@ -430,6 +485,69 @@
     var lines = []
     for (var i = 0; i < models.length; i++) {
       lines.push(modelLine(ctx, models[i].label, models[i].remainingFraction, models[i].resetTime))
+    }
+    return lines
+  }
+
+  // --- RetrieveUserQuotaSummary (the authoritative source) ---
+
+  // The four pool buckets the summary reports, matched by exact bucketId only — a future
+  // bucket (e.g. gemini-image-5h) must never silently join a pool, and pool identity is
+  // never inferred from displayName/window.
+  var SUMMARY_BUCKETS = [
+    { bucketId: "gemini-5h", label: SESSION_LABEL, periodMs: QUOTA_PERIOD_MS },
+    { bucketId: "gemini-weekly", label: WEEKLY_LABEL, periodMs: WEEKLY_PERIOD_MS },
+    { bucketId: "3p-5h", label: CLAUDE_LABEL, periodMs: QUOTA_PERIOD_MS },
+    { bucketId: "3p-weekly", label: CLAUDE_WEEKLY_LABEL, periodMs: WEEKLY_PERIOD_MS },
+  ]
+
+  // RetrieveUserQuotaSummary → up to four pool meters, ordered Session, Weekly, Claude,
+  // Claude Weekly. Accepts both the LS envelope ({"response":{"groups":…}}) and the bare
+  // Cloud Code payload ({"groups":…}). Returns null when the body has no groups anywhere
+  // (not a summary — the caller may fall back to the legacy endpoints). A non-null result,
+  // even an empty one, is authoritative and must never fall through to the legacy chain.
+  // A bucket with a missing/unusable remainingFraction drops its line instead of
+  // fabricating 0% or 100%.
+  function parseQuotaSummary(ctx, data) {
+    if (!data || typeof data !== "object") return null
+    var groups = null
+    if (data.response && Array.isArray(data.response.groups)) {
+      groups = data.response.groups
+    } else if (Array.isArray(data.groups)) {
+      groups = data.groups
+    }
+    if (!groups) return null
+
+    var pooled = {}
+    for (var i = 0; i < groups.length; i++) {
+      var buckets = (groups[i] && Array.isArray(groups[i].buckets)) ? groups[i].buckets : []
+      for (var j = 0; j < buckets.length; j++) {
+        var bucket = buckets[j]
+        if (!bucket || typeof bucket !== "object") continue
+        var id = bucket.bucketId
+        var known = false
+        for (var k = 0; k < SUMMARY_BUCKETS.length; k++) {
+          if (SUMMARY_BUCKETS[k].bucketId === id) { known = true; break }
+        }
+        if (!known) {
+          ctx.host.log.warn("quota summary: skipping unrecognized bucket id '" + String(id) + "'")
+          continue
+        }
+        if (pooled[id]) continue // duplicate bucket id — first one wins
+        if (typeof bucket.remainingFraction !== "number" || !Number.isFinite(bucket.remainingFraction)) {
+          ctx.host.log.warn("quota summary: bucket '" + id + "' has no usable remainingFraction; dropping its line")
+          continue
+        }
+        pooled[id] = { fraction: bucket.remainingFraction, resetTime: bucket.resetTime || undefined }
+      }
+    }
+
+    var lines = []
+    for (var m = 0; m < SUMMARY_BUCKETS.length; m++) {
+      var spec = SUMMARY_BUCKETS[m]
+      var entry = pooled[spec.bucketId]
+      if (!entry) continue
+      lines.push(modelLine(ctx, spec.label, entry.fraction, entry.resetTime, spec.periodMs))
     }
     return lines
   }
@@ -471,8 +589,24 @@
     return null
   }
 
-  function probeCloudCode(ctx, token, userAgent) {
-    return requestCloudCodeJson(ctx, FETCH_MODELS_PATH, token, userAgent, {})
+  // Cloud Code probe for one DB/cached/refreshed token: the quota summary first (the only
+  // endpoint reporting the merged pools and weekly windows; authoritative even when empty),
+  // then the legacy fetchAvailableModels chain for builds without the RPC.
+  // Returns { plan, lines }, { _authFailed: true }, or null (unavailable).
+  function probeCloudCodeToken(ctx, token) {
+    var summary = requestCloudCodeJson(ctx, QUOTA_SUMMARY_PATH, token, "antigravity", {})
+    if (summary && summary._authFailed) return summary
+    if (summary) {
+      var summaryLines = parseQuotaSummary(ctx, summary)
+      if (summaryLines) return { plan: null, lines: summaryLines }
+      // 2xx but not a summary payload — the parser said so; fall to the legacy chain.
+    }
+
+    var data = requestCloudCodeJson(ctx, FETCH_MODELS_PATH, token, "antigravity", {})
+    if (!data || data._authFailed) return data
+    var lines = buildModelLines(ctx, parseCloudCodeModels(data))
+    if (lines.length === 0) return null
+    return { plan: null, lines: lines }
   }
 
   function parseCloudCodeModels(data) {
@@ -491,12 +625,11 @@
         (typeof m.label === "string" && m.label.trim()) ||
         ""
       if (!displayName) continue
-      var qi = m.quotaInfo
-      var frac = (qi && typeof qi.remainingFraction === "number") ? qi.remainingFraction : 0
-      var rtime = (qi && qi.resetTime) || undefined
+      // Pass quotaInfo through untouched — buildModelLines drops models without a usable
+      // remainingFraction instead of fabricating a value here.
       configs.push({
         label: displayName,
-        quotaInfo: { remainingFraction: frac, resetTime: rtime },
+        quotaInfo: m.quotaInfo,
       })
     }
     return configs
@@ -523,16 +656,29 @@
       if (!bucket || typeof bucket !== "object") continue
       var modelId = (typeof bucket.modelId === "string" && bucket.modelId.trim()) || ""
       if (!modelId) continue
-      var frac = (typeof bucket.remainingFraction === "number") ? bucket.remainingFraction : 0
+      // No frac default — buildModelLines drops buckets without a usable remainingFraction.
       configs.push({
         label: modelId,
-        quotaInfo: { remainingFraction: frac, resetTime: bucket.resetTime || undefined },
+        quotaInfo: { remainingFraction: bucket.remainingFraction, resetTime: bucket.resetTime || undefined },
       })
     }
     return configs
   }
 
   function probeAgyCloudCode(ctx, token) {
+    // Authoritative first: the quota summary. The plan lookup never gates it — a failed
+    // loadCodeAssist just leaves the plan blank.
+    var summary = requestCloudCodeJson(ctx, QUOTA_SUMMARY_PATH, token, "agy", {})
+    if (summary && summary._authFailed) return summary
+    if (summary) {
+      var summaryLines = parseQuotaSummary(ctx, summary)
+      if (summaryLines) {
+        var planData = requestCloudCodeJson(ctx, LOAD_CODE_ASSIST_PATH, token, "agy", {})
+        var plan = (planData && !planData._authFailed) ? readAgyPlan(planData) : null
+        return { plan: plan, lines: summaryLines }
+      }
+    }
+
     var loadData = requestCloudCodeJson(ctx, LOAD_CODE_ASSIST_PATH, token, "agy", {})
     if (!loadData || loadData._authFailed) return loadData
 
@@ -556,6 +702,19 @@
 
   // --- LS probe ---
 
+  // Prefer userTier.name (Google's own subscription system) over the legacy
+  // planInfo.planName field inherited from Windsurf/Codeium, which always
+  // returns "Pro" for all paid tiers including Google AI Ultra.
+  function readLsPlan(data) {
+    var us = data && data.userStatus
+    if (!us) return null
+    var ut = us.userTier
+    if (ut && typeof ut.name === "string" && ut.name.trim()) return ut.name.trim()
+    var ps = us.planStatus || {}
+    var pi = ps.planInfo || {}
+    return (typeof pi.planName === "string" && pi.planName.trim()) ? pi.planName.trim() : null
+  }
+
   function probeDiscovery(ctx, discovery) {
     if (!discovery) return null
 
@@ -569,6 +728,32 @@
       extensionName: "antigravity",
       ideVersion: "unknown",
       locale: "en",
+    }
+
+    // Authoritative first: RetrieveUserQuotaSummary (merged pools + weekly windows). A
+    // parsed summary — even with zero usable buckets — is the answer and never falls
+    // through to the legacy endpoints, which would fabricate lines from partial data.
+    // Builds without the RPC return non-2xx (callLs logs it) and use the legacy chain.
+    var summaryData = null
+    try {
+      summaryData = callLs(ctx, found.port, found.scheme, discovery.csrf, "RetrieveUserQuotaSummary", { metadata: metadata })
+    } catch (e) {
+      ctx.host.log.warn("RetrieveUserQuotaSummary threw: " + String(e))
+    }
+    if (summaryData) {
+      var summaryLines = parseQuotaSummary(ctx, summaryData)
+      if (summaryLines) {
+        // The plan comes from an independent GetUserStatus call; a failed plan lookup
+        // just leaves the plan blank.
+        var summaryPlan = null
+        try {
+          summaryPlan = readLsPlan(callLs(ctx, found.port, found.scheme, discovery.csrf, "GetUserStatus", { metadata: metadata }))
+        } catch (e) {
+          ctx.host.log.warn("GetUserStatus threw: " + String(e))
+        }
+        return { plan: summaryPlan, lines: summaryLines }
+      }
+      // 2xx but not a summary payload — fall to the legacy flow.
     }
 
     // Try GetUserStatus first, fall back to GetCommandModelConfigs
@@ -605,23 +790,7 @@
     var lines = buildModelLines(ctx, filtered)
     if (lines.length === 0) return null
 
-    var plan = null
-    if (hasUserStatus) {
-      // Prefer userTier.name (Google's own subscription system) over the legacy
-      // planInfo.planName field inherited from Windsurf/Codeium, which always
-      // returns "Pro" for all paid tiers including Google AI Ultra.
-      var ut = data.userStatus.userTier
-      var userTierName =
-        ut && typeof ut.name === "string" && ut.name.trim() ? ut.name.trim() : null
-      if (userTierName) {
-        plan = userTierName
-      } else {
-        var ps = data.userStatus.planStatus || {}
-        var pi = ps.planInfo || {}
-        plan =
-          typeof pi.planName === "string" && pi.planName.trim() ? pi.planName.trim() : null
-      }
-    }
+    var plan = hasUserStatus ? readLsPlan(data) : null
 
     return { plan: plan, lines: lines }
   }
@@ -646,64 +815,60 @@
     var dbTokenCandidates = loadOAuthTokenCandidates(ctx)
 
     var tokens = []
+    var refreshTokens = []
     var nowSec = Math.floor(Date.now() / 1000)
     for (var i = 0; i < dbTokenCandidates.length; i++) {
       var dbTokens = dbTokenCandidates[i]
       if (dbTokens.accessToken && (!dbTokens.expirySeconds || dbTokens.expirySeconds > nowSec)) {
         if (tokens.indexOf(dbTokens.accessToken) === -1) tokens.push(dbTokens.accessToken)
       }
+      if (dbTokens.refreshToken && refreshTokens.indexOf(dbTokens.refreshToken) === -1) {
+        refreshTokens.push(dbTokens.refreshToken)
+      }
     }
 
-    var cached = loadCachedToken(ctx)
+    // The cache only yields a token minted by a refresh token that is still present locally.
+    var cached = loadCachedToken(ctx, refreshTokens)
     if (cached && tokens.indexOf(cached) === -1) tokens.push(cached)
 
-    var ccData = null
+    var ccResult = null
     var sawAuthFailure = false
     for (var i = 0; i < tokens.length; i++) {
-      var nextData = probeCloudCode(ctx, tokens[i])
-      if (nextData && !nextData._authFailed) {
-        ccData = nextData
+      var nextResult = probeCloudCodeToken(ctx, tokens[i])
+      if (nextResult && !nextResult._authFailed) {
+        ccResult = nextResult
         break
       }
-      if (nextData && nextData._authFailed) sawAuthFailure = true
+      if (nextResult && nextResult._authFailed) sawAuthFailure = true
     }
 
     // Only refresh on evidence of an auth failure, or when there were no tokens to try.
-    // probeCloudCode returns null for transient failures (5xx/timeouts); without this
+    // probeCloudCodeToken returns null for transient failures (5xx/timeouts); without this
     // guard a Cloud Code incident would trigger a Google OAuth refresh every probe cycle
     // instead of ~once per token lifetime — risking refresh-token throttling or rotation.
-    if (!ccData && (sawAuthFailure || tokens.length === 0)) {
-      var refreshTokens = []
-      for (var j = 0; j < dbTokenCandidates.length; j++) {
-        var refreshToken = dbTokenCandidates[j].refreshToken
-        if (refreshToken && refreshTokens.indexOf(refreshToken) === -1) refreshTokens.push(refreshToken)
-      }
+    if (!ccResult && (sawAuthFailure || tokens.length === 0)) {
       for (var k = 0; k < refreshTokens.length; k++) {
         var refreshed = refreshAccessToken(ctx, refreshTokens[k])
         if (!refreshed) continue
-        var refreshedData = probeCloudCode(ctx, refreshed)
-        if (refreshedData && !refreshedData._authFailed) {
-          ccData = refreshedData
+        var refreshedResult = probeCloudCodeToken(ctx, refreshed)
+        if (refreshedResult && !refreshedResult._authFailed) {
+          ccResult = refreshedResult
           break
         }
-        if (refreshedData && refreshedData._authFailed) ccData = refreshedData
+        if (refreshedResult && refreshedResult._authFailed) ccResult = refreshedResult
       }
     }
 
-    if (!ccData || ccData._authFailed) {
+    if (!ccResult || ccResult._authFailed) {
       var agyToken = loadAgyKeychainToken(ctx)
       if (agyToken) {
         var agyResult = probeAgyCloudCode(ctx, agyToken)
         if (agyResult && !agyResult._authFailed) return agyResult
-        if (agyResult && agyResult._authFailed) ccData = agyResult
+        if (agyResult && agyResult._authFailed) ccResult = agyResult
       }
     }
 
-    if (ccData && !ccData._authFailed) {
-      var configs = parseCloudCodeModels(ccData)
-      var lines = buildModelLines(ctx, configs)
-      if (lines.length > 0) return { plan: null, lines: lines }
-    }
+    if (ccResult && !ccResult._authFailed) return ccResult
 
     throw LOGIN_MESSAGE
   }

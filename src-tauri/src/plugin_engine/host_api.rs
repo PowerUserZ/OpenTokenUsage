@@ -414,6 +414,8 @@ fn redact_body(body: &str) -> String {
         "authorization",
         "bearer",
         "credential",
+        "credential_fingerprint",
+        "credentialFingerprint",
         "session_token",
         "sessionToken",
         "auth_token",
@@ -1638,7 +1640,7 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
     ports.into_iter().collect()
 }
 
-const CCUSAGE_VERSION: &str = "20.0.2";
+const CCUSAGE_VERSION: &str = "20.0.14";
 const CCUSAGE_PACKAGE_NAME: &str = "ccusage";
 const CCUSAGE_BIN_NAME: &str = "ccusage";
 const CCUSAGE_LEGACY_VERSION: &str = "18.0.11";
@@ -2000,11 +2002,31 @@ fn is_valid_date_param(s: &str) -> bool {
     s.len() == 8 && s.bytes().all(|b| b.is_ascii_digit())
 }
 
+/// Validate an IANA timezone identifier (e.g. `Europe/Istanbul`, `Etc/GMT+3`).
+/// The value ends up on a ccusage command line, so restrict it to a strict
+/// charset to prevent injection of arbitrary CLI flags or paths, and reject
+/// a leading `-` so it can never be parsed as a flag.
+fn is_valid_timezone_param(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 64
+        && !s.starts_with('-')
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'+' | b'/' | b'-'))
+}
+
+/// The local IANA timezone passed to `ccusage --timezone` so its day buckets
+/// match the local-time Today/Yesterday keys computed by the plugins
+/// (ccusage otherwise buckets days in UTC).
+fn local_iana_timezone() -> Option<String> {
+    iana_time_zone::get_timezone().ok()
+}
+
 fn append_ccusage_common_args(
     args: &mut Vec<String>,
     opts: &CcusageQueryOpts,
     provider: CcusageProvider,
     flavor: CcusageCommandFlavor,
+    timezone: Option<&str>,
 ) {
     let config = ccusage_provider_config(provider);
     if flavor == CcusageCommandFlavor::Current {
@@ -2044,6 +2066,19 @@ fn append_ccusage_common_args(
             log::warn!("Rejected invalid ccusage --until param: {:?}", until);
         }
     }
+
+    // Only the current pinned ccusage is validated to support --timezone; the
+    // legacy fallback stays flag-free so an unknown option can never break it.
+    if flavor == CcusageCommandFlavor::Current {
+        if let Some(tz) = timezone.map(str::trim).filter(|s| !s.is_empty()) {
+            if is_valid_timezone_param(tz) {
+                args.push("--timezone".to_string());
+                args.push(tz.to_string());
+            } else {
+                log::warn!("Rejected invalid ccusage --timezone param: {:?}", tz);
+            }
+        }
+    }
 }
 
 fn ccusage_runner_args(
@@ -2051,6 +2086,7 @@ fn ccusage_runner_args(
     opts: &CcusageQueryOpts,
     provider: CcusageProvider,
     flavor: CcusageCommandFlavor,
+    timezone: Option<&str>,
 ) -> Vec<String> {
     let package_spec = match flavor {
         CcusageCommandFlavor::Current => ccusage_package_spec(),
@@ -2079,7 +2115,7 @@ fn ccusage_runner_args(
         CcusageRunnerKind::Npx => vec!["--yes".to_string(), package_spec],
     };
 
-    append_ccusage_common_args(&mut args, opts, provider, flavor);
+    append_ccusage_common_args(&mut args, opts, provider, flavor, timezone);
     args
 }
 
@@ -2252,7 +2288,8 @@ fn run_ccusage_with_runner_timeout(
     flavor: CcusageCommandFlavor,
     timeout: std::time::Duration,
 ) -> CcusageRunnerResult {
-    let args = ccusage_runner_args(kind, opts, provider, flavor);
+    let timezone = local_iana_timezone();
+    let args = ccusage_runner_args(kind, opts, provider, flavor, timezone.as_deref());
     let enriched_path = ccusage_enriched_path();
     let mut command = silent_command(program);
     configure_ccusage_command(&mut command, &args, enriched_path.as_deref());
@@ -3866,6 +3903,118 @@ mod tests {
     }
 
     #[test]
+    fn redact_body_redacts_credential_fingerprint() {
+        // [antigravity] credentialFingerprint is a sha256 hex of the minting
+        // Google OAuth refresh token, persisted in pluginDataDir/auth.json.
+        let body = r#"{"accessToken":"ya29.A0AfB4XvExampleAccessTokenValue","credentialFingerprint":"9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08","credential_fingerprint":"2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"}"#;
+        let redacted = redact_body(body);
+        assert!(
+            !redacted.contains("9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"),
+            "credentialFingerprint should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("9f86...0a08"),
+            "credentialFingerprint should show first4...last4, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"),
+            "credential_fingerprint should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("ya29.A0AfB4XvExampleAccessTokenValue"),
+            "accessToken should be redacted, got: {}",
+            redacted
+        );
+    }
+
+    #[test]
+    fn redact_body_preserves_claude_usage_limits_fields() {
+        // [claude] GET /api/oauth/usage new limits[] entries are non-sensitive
+        // rate-limit metadata and must stay readable in logs.
+        let body = r#"{"five_hour":{"utilization":12},"limits":[{"kind":"five_hour","group":"default","percent":42,"resets_at":"2026-07-13T05:00:00Z","scope":{"surface":"claude_code","model":{"display_name":"Claude Opus 4.5","id":"claude-opus-4-5"}}}]}"#;
+        let redacted = redact_body(body);
+        assert_eq!(
+            redacted, body,
+            "non-sensitive claude usage limit fields must pass through unredacted"
+        );
+    }
+
+    #[test]
+    fn redact_url_preserves_grok_billing_credits_format_param() {
+        // [grok] GET /v1/billing?format=credits — the query param is not a secret.
+        let url = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
+        assert_eq!(redact_url(url), url);
+    }
+
+    #[test]
+    fn redact_body_preserves_grok_billing_config_fields() {
+        let body = r#"{"config":{"creditUsagePercent":37.5,"isUnifiedBillingUser":true,"currentPeriod":{"type":"monthly","start":"2026-07-01T00:00:00Z","end":"2026-08-01T00:00:00Z"}}}"#;
+        let redacted = redact_body(body);
+        assert_eq!(
+            redacted, body,
+            "grok billing config fields must pass through unredacted"
+        );
+    }
+
+    #[test]
+    fn redact_body_preserves_copilot_quota_snapshot_fields() {
+        let body = r#"{"quota_snapshots":{"premium_interactions":{"unlimited":false,"entitlement":300,"remaining":211.5,"overage_permitted":true,"overage_count":0},"completions":{"unlimited":true,"entitlement":0,"remaining":0}}}"#;
+        let redacted = redact_body(body);
+        assert_eq!(
+            redacted, body,
+            "copilot quota snapshot fields must pass through unredacted"
+        );
+    }
+
+    #[test]
+    fn redact_body_preserves_cursor_spend_limit_usage_fields() {
+        let body = r#"{"spendLimitUsage":{"individualUsed":12.34,"pooledUsed":0,"totalSpend":12.34}}"#;
+        let redacted = redact_body(body);
+        assert_eq!(
+            redacted, body,
+            "cursor spend limit usage fields must pass through unredacted"
+        );
+    }
+
+    #[test]
+    fn redact_url_preserves_antigravity_quota_endpoints() {
+        // [antigravity] new Cloud Code quota endpoints and local LS RPC carry no
+        // query params; redact_url must leave them untouched.
+        for url in [
+            "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+            "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+            "http://127.0.0.1:42100/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary",
+        ] {
+            assert_eq!(redact_url(url), url);
+        }
+    }
+
+    #[test]
+    fn redact_body_preserves_antigravity_quota_summary_fields() {
+        // Response shape shared by the Cloud Code retrieveUserQuotaSummary
+        // endpoints and the local language-server RetrieveUserQuotaSummary RPC.
+        let body = r#"{"response":{"groups":[{"displayName":"Gemini 3 Pro","buckets":[{"bucketId":"GEMINI_3_PRO","displayName":"5h","window":"FIVE_HOUR","remainingFraction":0.82,"resetTime":"2026-07-13T02:00:00Z"}]}]}}"#;
+        let redacted = redact_body(body);
+        assert_eq!(
+            redacted, body,
+            "antigravity quota summary fields must pass through unredacted"
+        );
+    }
+
+    #[test]
+    fn redact_body_preserves_antigravity_ls_request_metadata() {
+        let body = r#"{"metadata":{"ideName":"antigravity","extensionName":"antigravity","ideVersion":"1.0.0","locale":"en"}}"#;
+        let redacted = redact_body(body);
+        assert_eq!(
+            redacted, body,
+            "antigravity LS request metadata must pass through unredacted"
+        );
+    }
+
+    #[test]
     fn ccusage_runner_order_matches_expected_priority() {
         assert_eq!(
             ccusage_runner_order(),
@@ -3889,7 +4038,7 @@ mod tests {
             claude_path: None,
         };
         let expected_ccusage_package = ccusage_package_spec();
-        assert_eq!(expected_ccusage_package, "ccusage@20.0.2");
+        assert_eq!(expected_ccusage_package, "ccusage@20.0.14");
         let expected_npm_exec_package = format!("--package={expected_ccusage_package}");
 
         let bunx = ccusage_runner_args(
@@ -3897,6 +4046,7 @@ mod tests {
             &opts,
             CcusageProvider::Claude,
             CcusageCommandFlavor::Current,
+            Some("America/New_York"),
         );
         assert_eq!(
             bunx,
@@ -3911,7 +4061,9 @@ mod tests {
                 "--since",
                 "20260101",
                 "--until",
-                "20260131"
+                "20260131",
+                "--timezone",
+                "America/New_York"
             ]
         );
 
@@ -3920,6 +4072,7 @@ mod tests {
             &opts,
             CcusageProvider::Claude,
             CcusageCommandFlavor::Current,
+            Some("America/New_York"),
         );
         assert_eq!(
             pnpm,
@@ -3935,7 +4088,9 @@ mod tests {
                 "--since",
                 "20260101",
                 "--until",
-                "20260131"
+                "20260131",
+                "--timezone",
+                "America/New_York"
             ]
         );
 
@@ -3944,6 +4099,7 @@ mod tests {
             &opts,
             CcusageProvider::Claude,
             CcusageCommandFlavor::Current,
+            Some("America/New_York"),
         );
         assert_eq!(
             yarn,
@@ -3959,7 +4115,9 @@ mod tests {
                 "--since",
                 "20260101",
                 "--until",
-                "20260131"
+                "20260131",
+                "--timezone",
+                "America/New_York"
             ]
         );
 
@@ -3968,6 +4126,7 @@ mod tests {
             &opts,
             CcusageProvider::Claude,
             CcusageCommandFlavor::Current,
+            Some("America/New_York"),
         );
         assert_eq!(
             npm_exec,
@@ -3985,7 +4144,9 @@ mod tests {
                 "--since",
                 "20260101",
                 "--until",
-                "20260131"
+                "20260131",
+                "--timezone",
+                "America/New_York"
             ]
         );
 
@@ -3994,6 +4155,7 @@ mod tests {
             &opts,
             CcusageProvider::Claude,
             CcusageCommandFlavor::Current,
+            Some("America/New_York"),
         );
         assert_eq!(
             npx,
@@ -4008,7 +4170,9 @@ mod tests {
                 "--since",
                 "20260101",
                 "--until",
-                "20260131"
+                "20260131",
+                "--timezone",
+                "America/New_York"
             ]
         );
     }
@@ -4030,6 +4194,7 @@ mod tests {
             &opts,
             CcusageProvider::Codex,
             CcusageCommandFlavor::Current,
+            Some("America/New_York"),
         );
         assert_eq!(
             bunx,
@@ -4044,7 +4209,9 @@ mod tests {
                 "--since",
                 "20260101",
                 "--until",
-                "20260131"
+                "20260131",
+                "--timezone",
+                "America/New_York"
             ]
         );
 
@@ -4053,6 +4220,7 @@ mod tests {
             &opts,
             CcusageProvider::Codex,
             CcusageCommandFlavor::Current,
+            Some("America/New_York"),
         );
         assert_eq!(
             npm_exec,
@@ -4070,7 +4238,9 @@ mod tests {
                 "--since",
                 "20260101",
                 "--until",
-                "20260131"
+                "20260131",
+                "--timezone",
+                "America/New_York"
             ]
         );
 
@@ -4079,6 +4249,7 @@ mod tests {
             &opts,
             CcusageProvider::Codex,
             CcusageCommandFlavor::Current,
+            Some("America/New_York"),
         );
         assert_eq!(
             npx,
@@ -4093,7 +4264,9 @@ mod tests {
                 "--since",
                 "20260101",
                 "--until",
-                "20260131"
+                "20260131",
+                "--timezone",
+                "America/New_York"
             ]
         );
     }
@@ -4113,6 +4286,7 @@ mod tests {
             &opts,
             CcusageProvider::Claude,
             CcusageCommandFlavor::Legacy,
+            Some("America/New_York"),
         );
         assert_eq!(
             claude,
@@ -4135,6 +4309,7 @@ mod tests {
             &opts,
             CcusageProvider::Codex,
             CcusageCommandFlavor::Legacy,
+            Some("America/New_York"),
         );
         assert_eq!(
             codex_npm,
@@ -4154,6 +4329,84 @@ mod tests {
                 "20260131"
             ]
         );
+    }
+
+    #[test]
+    fn is_valid_timezone_param_accepts_iana_zone_shapes() {
+        for tz in [
+            "UTC",
+            "Europe/Istanbul",
+            "America/New_York",
+            "America/Argentina/Buenos_Aires",
+            "Etc/GMT+3",
+            "Etc/GMT-14",
+        ] {
+            assert!(is_valid_timezone_param(tz), "{tz} should be accepted");
+        }
+    }
+
+    #[test]
+    fn is_valid_timezone_param_rejects_flag_and_shell_injection() {
+        let too_long = "x".repeat(65);
+        for tz in [
+            "",
+            " ",
+            "--since",
+            "-flag",
+            "Europe/Istanbul; rm -rf /",
+            "Europe/Istanbul && echo pwned",
+            "Europe/Istanbul\n--until",
+            "$(reboot)",
+            too_long.as_str(),
+        ] {
+            assert!(!is_valid_timezone_param(tz), "{tz:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn ccusage_runner_args_omit_timezone_when_missing_or_invalid() {
+        let opts = CcusageQueryOpts::default();
+
+        let missing = ccusage_runner_args(
+            CcusageRunnerKind::Bunx,
+            &opts,
+            CcusageProvider::Claude,
+            CcusageCommandFlavor::Current,
+            None,
+        );
+        assert!(
+            !missing.iter().any(|a| a == "--timezone"),
+            "no timezone arg expected when none derived, got: {:?}",
+            missing
+        );
+
+        let injected = ccusage_runner_args(
+            CcusageRunnerKind::Bunx,
+            &opts,
+            CcusageProvider::Claude,
+            CcusageCommandFlavor::Current,
+            Some("Europe/Istanbul; rm -rf /"),
+        );
+        assert!(
+            !injected.iter().any(|a| a == "--timezone"),
+            "invalid timezone must be dropped, got: {:?}",
+            injected
+        );
+        assert!(
+            !injected.iter().any(|a| a.contains("rm -rf")),
+            "injection payload must never reach the command line, got: {:?}",
+            injected
+        );
+    }
+
+    #[test]
+    fn local_iana_timezone_yields_value_safe_for_command_line() {
+        if let Some(tz) = local_iana_timezone() {
+            assert!(
+                is_valid_timezone_param(&tz),
+                "local zone {tz:?} must pass the strict charset validator"
+            );
+        }
     }
 
     #[test]
@@ -4554,7 +4807,7 @@ esac
         );
 
         let calls = std::fs::read_to_string(&args_path).expect("read args log");
-        assert!(calls.contains("ccusage@20.0.2 codex daily"));
+        assert!(calls.contains("ccusage@20.0.14 codex daily"));
         assert!(calls.contains("@ccusage/codex@18.0.11 daily"));
 
         let _ = std::fs::remove_dir_all(&dir);

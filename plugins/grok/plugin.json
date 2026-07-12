@@ -10,7 +10,7 @@
     { "label": "Usage", "url": "https://grok.com/?_s=usage" }
   ],
   "lines": [
-    { "type": "progress", "label": "Credits used", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Weekly limit", "scope": "overview", "primaryOrder": 1 },
     { "type": "badge", "label": "Pay as you go", "scope": "detail" }
   ]
 }

@@ -111,6 +111,15 @@ const mockHttp = (ctx) => {
   })
 }
 
+const mockQuotaBody = (ctx, quota) => {
+  ctx.host.http.request.mockImplementation((opts) => {
+    if (opts.url.includes("subscription")) {
+      return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+    }
+    return { status: 200, bodyText: JSON.stringify(quota) }
+  })
+}
+
 describe("zai plugin", () => {
   beforeEach(() => {
     delete globalThis.__openusage_plugin
@@ -393,7 +402,7 @@ describe("zai plugin", () => {
     expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
   })
 
-  it("supports quota payloads where limits are top-level and optional fields are non-numeric", async () => {
+  it("supports top-level limits arrays and coerces numeric-string quota values", async () => {
     const ctx = makeCtx()
     mockEnvWithKey(ctx, "test-key")
     ctx.host.http.request.mockImplementation((opts) => {
@@ -413,9 +422,101 @@ describe("zai plugin", () => {
     const result = plugin.probe(ctx)
     const session = result.lines.find((l) => l.label === "Session")
     const web = result.lines.find((l) => l.label === "Web Searches")
-    expect(session.used).toBe(0)
-    expect(web.used).toBe(0)
-    expect(web.limit).toBe(0)
+    expect(session.used).toBe(10)
+    expect(web.used).toBe(1095)
+    expect(web.limit).toBe(4000)
+  })
+
+  it("throws when session percentage is missing", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    mockQuotaBody(ctx, {
+      data: { limits: [{ type: "TOKENS_LIMIT", nextResetTime: 1738368000000, unit: 3 }] },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
+  })
+
+  it("throws when session percentage is non-numeric", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    mockQuotaBody(ctx, {
+      data: { limits: [{ type: "TOKENS_LIMIT", percentage: "unavailable", unit: 3 }] },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
+  })
+
+  it("throws when session percentage is a JSON boolean", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    mockQuotaBody(ctx, {
+      data: { limits: [{ type: "TOKENS_LIMIT", percentage: true, unit: 3 }] },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
+  })
+
+  it("throws when session percentage is negative", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    mockQuotaBody(ctx, {
+      data: { limits: [{ type: "TOKENS_LIMIT", percentage: -5, unit: 3 }] },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
+  })
+
+  it("throws when weekly percentage is malformed", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    mockQuotaBody(ctx, {
+      data: {
+        limits: [
+          { type: "TOKENS_LIMIT", percentage: 10, unit: 3 },
+          { type: "TOKENS_LIMIT", percentage: null, unit: 6 },
+        ],
+      },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
+  })
+
+  it("throws when Web Searches currentValue is missing or non-numeric", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    mockQuotaBody(ctx, {
+      data: {
+        limits: [
+          { type: "TOKENS_LIMIT", percentage: 10, unit: 3 },
+          { type: "TIME_LIMIT", currentValue: "n/a", usage: 4000 },
+        ],
+      },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
+  })
+
+  it("throws when Web Searches values are negative", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    mockQuotaBody(ctx, {
+      data: {
+        limits: [
+          { type: "TOKENS_LIMIT", percentage: 10, unit: 3 },
+          { type: "TIME_LIMIT", currentValue: -1, usage: 4000 },
+        ],
+      },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
   })
 
   it("shows no-usage badge when token limit entry is missing", async () => {

@@ -598,7 +598,17 @@
     }))
   }
 
-  function pushDayUsageLine(lines, ctx, label, dayEntry) {
+  function latestReportedDayKey(daily) {
+    let latest = null
+    for (let i = 0; i < daily.length; i++) {
+      const key = dayKeyFromUsageDate(daily[i] && daily[i].date)
+      // Day keys are zero-padded yyyy-MM-dd, so lexical > is chronological.
+      if (key && (latest === null || key > latest)) latest = key
+    }
+    return latest
+  }
+
+  function pushDayUsageLine(lines, ctx, label, dayEntry, dayKey, latestReportedDay) {
     const tokens = Number(dayEntry && dayEntry.totalTokens) || 0
     const cost = usageCostUsd(dayEntry)
     if (tokens > 0) {
@@ -606,6 +616,14 @@
         label: label,
         value: costAndTokensLabel({ tokens: tokens, costUSD: cost })
       }))
+      return
+    }
+
+    // ccusage omits idle days and can lag a Codex CLI format change, so a day newer than the
+    // latest day it actually reported is unknown, not a measured zero — skip the line instead of
+    // fabricating "$0.00 · 0 tokens". An absent day within the reported range stays a real zero,
+    // and an empty report (no days at all) is a genuine all-zero result, not a coverage gap.
+    if (!dayEntry && latestReportedDay !== null && dayKey > latestReportedDay) {
       return
     }
 
@@ -732,51 +750,40 @@
           ? data.code_review_rate_limit.primary_window
           : null
 
-      const headerPrimary = readPercent(resp.headers["x-codex-primary-used-percent"])
-      const headerSecondary = readPercent(resp.headers["x-codex-secondary-used-percent"])
+      // The body's rate_limit windows are authoritative: the x-codex-*-used-percent headers go
+      // stale right after a window reset. Headers only fill a window missing from the body.
+      const bodyPrimary = primaryWindow && typeof primaryWindow.used_percent === "number"
+        ? primaryWindow.used_percent
+        : null
+      const bodySecondary = secondaryWindow && typeof secondaryWindow.used_percent === "number"
+        ? secondaryWindow.used_percent
+        : null
+      const sessionUsed = bodyPrimary !== null
+        ? bodyPrimary
+        : readPercent(resp.headers["x-codex-primary-used-percent"])
+      const weeklyUsed = bodySecondary !== null
+        ? bodySecondary
+        : readPercent(resp.headers["x-codex-secondary-used-percent"])
 
-      if (headerPrimary !== null) {
+      if (sessionUsed !== null) {
         lines.push(ctx.line.progress({
           label: "Session",
-          used: headerPrimary,
+          used: sessionUsed,
           limit: 100,
           format: { kind: "percent" },
           resetsAt: getResetsAtIso(ctx, nowSec, primaryWindow),
           periodDurationMs: PERIOD_SESSION_MS
         }))
       }
-      if (headerSecondary !== null) {
+      if (weeklyUsed !== null) {
         lines.push(ctx.line.progress({
           label: "Weekly",
-          used: headerSecondary,
+          used: weeklyUsed,
           limit: 100,
           format: { kind: "percent" },
           resetsAt: getResetsAtIso(ctx, nowSec, secondaryWindow),
           periodDurationMs: PERIOD_WEEKLY_MS
         }))
-      }
-
-      if (lines.length === 0 && data.rate_limit) {
-        if (data.rate_limit.primary_window && typeof data.rate_limit.primary_window.used_percent === "number") {
-          lines.push(ctx.line.progress({
-            label: "Session",
-            used: data.rate_limit.primary_window.used_percent,
-            limit: 100,
-            format: { kind: "percent" },
-            resetsAt: getResetsAtIso(ctx, nowSec, primaryWindow),
-            periodDurationMs: PERIOD_SESSION_MS
-          }))
-        }
-        if (data.rate_limit.secondary_window && typeof data.rate_limit.secondary_window.used_percent === "number") {
-          lines.push(ctx.line.progress({
-            label: "Weekly",
-            used: data.rate_limit.secondary_window.used_percent,
-            limit: 100,
-            format: { kind: "percent" },
-            resetsAt: getResetsAtIso(ctx, nowSec, secondaryWindow),
-            periodDurationMs: PERIOD_WEEKLY_MS
-          }))
-        }
       }
 
       if (Array.isArray(data.additional_rate_limits)) {
@@ -880,8 +887,9 @@
           }
         }
 
-        pushDayUsageLine(lines, ctx, "Today", todayEntry)
-        pushDayUsageLine(lines, ctx, "Yesterday", yesterdayEntry)
+        const latestReportedDay = latestReportedDayKey(tokenUsage.daily)
+        pushDayUsageLine(lines, ctx, "Today", todayEntry, todayKey, latestReportedDay)
+        pushDayUsageLine(lines, ctx, "Yesterday", yesterdayEntry, yesterdayKey, latestReportedDay)
 
         let totalTokens = 0
         let totalCostNanos = 0

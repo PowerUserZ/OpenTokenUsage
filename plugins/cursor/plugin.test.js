@@ -491,6 +491,92 @@ describe("cursor plugin", () => {
     expect(result.lines.find((line) => line.label === "On-demand")).toBeTruthy()
   })
 
+  it("prefers explicit positive spend over zero used and limit minus remaining for On-demand", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            planUsage: { limit: 40000, totalPercentUsed: 20 },
+            spendLimitUsage: {
+              individualLimit: 5000,
+              individualRemaining: 4500,
+              individualUsed: 0,
+              totalSpend: 1200,
+            },
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const onDemandLine = result.lines.find((line) => line.label === "On-demand")
+    expect(onDemandLine).toBeTruthy()
+    expect(onDemandLine.type).toBe("progress")
+    expect(onDemandLine.used).toBe(12)
+    expect(onDemandLine.limit).toBe(50)
+  })
+
+  it("uses explicit used field for On-demand when remaining is missing", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            planUsage: { totalSpend: 1200, limit: 2400 },
+            spendLimitUsage: { individualLimit: 5000, individualUsed: 1000 },
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const onDemandLine = result.lines.find((line) => line.label === "On-demand")
+    expect(onDemandLine).toBeTruthy()
+    // Missing remaining must not display the full limit ($50) as spent.
+    expect(onDemandLine.used).toBe(10)
+    expect(onDemandLine.limit).toBe(50)
+  })
+
+  it("renders zero-limit On-demand spend as a text row", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            planUsage: { limit: 40000, totalPercentUsed: 26.346, totalSpend: 52692 },
+            spendLimitUsage: {
+              individualUsed: 16474,
+              limitType: "user",
+              totalSpend: 16474,
+            },
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const onDemandLine = result.lines.find((line) => line.label === "On-demand")
+    expect(onDemandLine).toBeTruthy()
+    expect(onDemandLine.type).toBe("text")
+    expect(onDemandLine.value).toBe("$164.74 spent")
+  })
+
   it("throws on token expired", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
@@ -1094,8 +1180,9 @@ describe("cursor plugin", () => {
     const creditsLine = result.lines.find((line) => line.label === "Credits")
 
     expect(creditsLine).toBeTruthy()
-    expect(creditsLine.used).toBeCloseTo(2647.29, 2)
-    expect(creditsLine.limit).toBeCloseTo(19915.44, 2)
+    expect(creditsLine.type).toBe("text")
+    // grants 10000 - used 2647.29 + stripe 9915.44 = 17268.15 left
+    expect(creditsLine.value).toBe("$17268.15 left")
   })
 
   it("shows Credits line from Stripe balance when grants are unavailable", async () => {
@@ -1136,8 +1223,8 @@ describe("cursor plugin", () => {
 
     expect(result.lines[0].label).toBe("Credits")
     expect(creditsLine).toBeTruthy()
-    expect(creditsLine.used).toBe(0)
-    expect(creditsLine.limit).toBe(500)
+    expect(creditsLine.type).toBe("text")
+    expect(creditsLine.value).toBe("$500 left")
   })
 
   it("accepts Stripe customer balance when returned as numeric string", async () => {
@@ -1178,8 +1265,8 @@ describe("cursor plugin", () => {
 
     expect(result.lines[0].label).toBe("Credits")
     expect(creditsLine).toBeTruthy()
-    expect(creditsLine.used).toBe(0)
-    expect(creditsLine.limit).toBe(500)
+    expect(creditsLine.type).toBe("text")
+    expect(creditsLine.value).toBe("$500 left")
   })
 
   it("outputs Total usage first when Credits not available", async () => {

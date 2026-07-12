@@ -114,8 +114,20 @@
     });
   }
 
+  // A quota_snapshots bucket -> percent-used meter, or null to suppress. Suppressed for:
+  // a missing bucket; an unlimited bucket or GitHub's -1 entitlement/remaining sentinel
+  // (since the 2026-06-01 switch to AI-credits billing, paid chat & completions carry no
+  // real meter, so they're hidden rather than shown as a misleading 0%); and a
+  // zero-entitlement placeholder (org-managed Business seat, or Credits on free).
   function makeProgressLine(ctx, label, snapshot, resetDate) {
     if (!snapshot || typeof snapshot.percent_remaining !== "number")
+      return null;
+    if (
+      snapshot.unlimited === true ||
+      snapshot.entitlement === -1 ||
+      snapshot.remaining === -1 ||
+      snapshot.entitlement === 0
+    )
       return null;
     const usedPercent = Math.min(100, Math.max(0, 100 - snapshot.percent_remaining));
     return ctx.line.progress({
@@ -126,6 +138,20 @@
       resetsAt: ctx.util.toIso(resetDate),
       periodDurationMs: 30 * 24 * 60 * 60 * 1000,
     });
+  }
+
+  // "Extra Usage" - premium interactions consumed beyond the included Credits pool.
+  // Only emitted once the user has enabled overage spend (overage_permitted); a real
+  // zero is then shown. Callers must pair it with a real Credits meter: an org-managed
+  // placeholder can carry overage_permitted: true on a zero-entitlement bucket, and
+  // rendering "0" for it would be meaningless.
+  function makeOverageLine(ctx, snapshot) {
+    if (!snapshot || snapshot.overage_permitted !== true) return null;
+    const overage =
+      typeof snapshot.overage_count === "number"
+        ? Math.max(0, snapshot.overage_count)
+        : 0;
+    return ctx.line.text({ label: "Extra Usage", value: String(overage) });
   }
 
   function makeLimitedProgressLine(ctx, label, remaining, total, resetDate) {
@@ -214,16 +240,21 @@
       plan = ctx.fmt.planLabel(data.copilot_plan);
     }
 
-    // Paid tier: quota_snapshots
+    // The metered premium pool is shown as "Credits" (AI-credits billing); overage
+    // beyond it as "Extra Usage", tied to the Credits meter (see makeOverageLine).
     const snapshots = data.quota_snapshots;
     if (snapshots) {
-      const premiumLine = makeProgressLine(
+      const creditsLine = makeProgressLine(
         ctx,
-        "Premium",
+        "Credits",
         snapshots.premium_interactions,
         data.quota_reset_date,
       );
-      if (premiumLine) lines.push(premiumLine);
+      if (creditsLine) {
+        lines.push(creditsLine);
+        const extraLine = makeOverageLine(ctx, snapshots.premium_interactions);
+        if (extraLine) lines.push(extraLine);
+      }
 
       const chatLine = makeProgressLine(
         ctx,
@@ -232,10 +263,21 @@
         data.quota_reset_date,
       );
       if (chatLine) lines.push(chatLine);
+
+      const completionsLine = makeProgressLine(
+        ctx,
+        "Completions",
+        snapshots.completions,
+        data.quota_reset_date,
+      );
+      if (completionsLine) lines.push(completionsLine);
     }
 
-    // Free tier: limited_user_quotas
-    if (data.limited_user_quotas && data.monthly_quotas) {
+    // Legacy free-tier shape (predates quota_snapshots). Gated on nothing else having
+    // been produced - otherwise a paid account (Credits present, chat/completions
+    // suppressed as unlimited) that still carried limited_user_quotas would wrongly
+    // show free-tier meters alongside Credits.
+    if (lines.length === 0 && data.limited_user_quotas && data.monthly_quotas) {
       const lq = data.limited_user_quotas;
       const mq = data.monthly_quotas;
       const resetDate = data.limited_user_reset_date;

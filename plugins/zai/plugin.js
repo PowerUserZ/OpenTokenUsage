@@ -78,6 +78,29 @@
     return data
   }
 
+  // Ports upstream ProviderParse.number: finite numbers and numeric strings parse,
+  // everything else (booleans, null, non-numeric strings) is null.
+  function parseNumber(value) {
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : null
+    }
+    if (typeof value === "string" && value.trim() !== "") {
+      const parsed = Number(value.trim())
+      return Number.isFinite(parsed) ? parsed : null
+    }
+    return null
+  }
+
+  // Required quota values must be non-negative numbers; anything else is a malformed
+  // payload and must fail loud instead of rendering a misleading 0%.
+  function requireQuotaValue(value) {
+    const parsed = parseNumber(value)
+    if (parsed === null || parsed < 0) {
+      throw "Usage response invalid. Try again later."
+    }
+    return parsed
+  }
+
   function findLimit(limits, type, unit) {
     let fallback = null
     for (let i = 0; i < limits.length; i++) {
@@ -124,7 +147,7 @@
       return { plan, lines }
     }
 
-    const used = typeof tokenLimit.percentage === "number" ? tokenLimit.percentage : 0
+    const used = requireQuotaValue(tokenLimit.percentage)
     const resetsAt = tokenLimit.nextResetTime ? ctx.util.toIso(tokenLimit.nextResetTime) : undefined
 
     const progressOpts = {
@@ -141,7 +164,7 @@
 
     const weeklyTokenLimit = findLimit(limits, "TOKENS_LIMIT", 6)
     if (weeklyTokenLimit) {
-      const weeklyUsed = Number.isFinite(weeklyTokenLimit.percentage) ? weeklyTokenLimit.percentage : 0
+      const weeklyUsed = requireQuotaValue(weeklyTokenLimit.percentage)
       const weeklyResetsAt = weeklyTokenLimit.nextResetTime ? ctx.util.toIso(weeklyTokenLimit.nextResetTime) : undefined
 
       const weeklyOpts = {
@@ -160,8 +183,8 @@
     const timeLimit = findLimit(limits, "TIME_LIMIT")
 
     if (timeLimit) {
-      const webUsed = typeof timeLimit.currentValue === "number" ? timeLimit.currentValue : 0
-      const webTotal = typeof timeLimit.usage === "number" ? timeLimit.usage : 0
+      const webUsed = requireQuotaValue(timeLimit.currentValue)
+      const webTotal = requireQuotaValue(timeLimit.usage)
       const now = new Date()
       const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
       const webResetsAt = timeLimit.nextResetTime

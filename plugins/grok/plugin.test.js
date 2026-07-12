@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
 const AUTH_PATH = "~/.grok/auth.json"
-const BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing"
+const BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
 const SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings"
 const REFRESH_URL = "https://auth.x.ai/oauth2/token"
 
@@ -21,27 +21,18 @@ function writeAuth(ctx, entry) {
   ctx.host.fs.writeText(AUTH_PATH, JSON.stringify(auth))
 }
 
+// Shape observed live from `cli-chat-proxy.grok.com/v1/billing?format=credits`: the
+// `GetGrokCreditsConfig` proto message serialized as JSON, so zero-valued fields are omitted.
 function billingData(overrides) {
   const config = Object.assign({
-    monthlyLimit: { val: 60000 },
-    used: { val: 4277 },
-    onDemandCap: { val: 0 },
-    billingPeriodStart: "2026-05-01T00:00:00+00:00",
-    billingPeriodEnd: "2026-06-01T00:00:00+00:00",
-    history: [
-      {
-        billingCycle: { year: 2026, month: 4 },
-        includedUsed: { val: 1234 },
-        onDemandUsed: { val: 200 },
-        totalUsed: { val: 1434 },
-      },
-      {
-        billingCycle: { year: 2026, month: 3 },
-        includedUsed: { val: 0 },
-        onDemandUsed: { val: 0 },
-        totalUsed: { val: 0 },
-      },
-    ],
+    creditUsagePercent: 99.0,
+    currentPeriod: {
+      type: "USAGE_PERIOD_TYPE_WEEKLY",
+      start: "2026-01-30T04:01:09.238389+00:00",
+      end: "2026-02-06T04:01:09.238389+00:00",
+    },
+    onDemandCap: { val: 2500 },
+    isUnifiedBillingUser: true,
   }, overrides || {})
   return { config }
 }
@@ -272,20 +263,53 @@ describe("grok plugin", () => {
     expect(call.headers.Accept).toBe("application/json")
   })
 
-  it("renders credits used as percent progress", async () => {
+  it("renders the weekly shared pool as percent progress", async () => {
     const ctx = makeCtx()
     writeAuth(ctx)
     mockGrokApi(ctx)
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const line = result.lines.find((l) => l.label === "Credits used")
+    const line = result.lines.find((l) => l.label === "Weekly limit")
 
     expect(line.type).toBe("progress")
-    expect(line.used).toBeCloseTo(7.128, 3)
+    expect(line.used).toBe(99)
     expect(line.limit).toBe(100)
     expect(line.format).toEqual({ kind: "percent" })
-    expect(line.resetsAt).toBe("2026-06-01T00:00:00.000Z")
+    expect(line.resetsAt).toBe("2026-02-06T04:01:09.238Z")
+    expect(line.periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
+  })
+
+  it("treats an absent creditUsagePercent as zero (proto-JSON omits zero fields)", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    const data = billingData()
+    delete data.config.creditUsagePercent
+    mockGrokApi(ctx, data)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Weekly limit")
+
+    expect(line.used).toBe(0)
+  })
+
+  it("omits the weekly line when the current period is not weekly", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx, billingData({
+      currentPeriod: {
+        type: "USAGE_PERIOD_TYPE_MONTHLY",
+        start: "2026-01-06T04:01:09.238389+00:00",
+        end: "2026-02-06T04:01:09.238389+00:00",
+      },
+    }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((l) => l.label === "Weekly limit")).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Pay as you go")).toBeDefined()
   })
 
   it("does not render duplicate reset or billing detail rows", async () => {
@@ -328,19 +352,44 @@ describe("grok plugin", () => {
     expect(line.color).toBe("#22c55e")
   })
 
+  it("treats an absent onDemandCap as disabled (proto-JSON omits zero fields)", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    const data = billingData()
+    delete data.config.onDemandCap
+    mockGrokApi(ctx, data)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Pay as you go")
+
+    expect(line.text).toBe("Disabled")
+    expect(line.color).toBe("#a3a3a3")
+  })
+
+  it("treats an onDemandCap object without val as disabled", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx, billingData({ onDemandCap: {} }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((l) => l.label === "Pay as you go").text).toBe("Disabled")
+  })
+
   it("parses billing values provided as strings", async () => {
     const ctx = makeCtx()
     writeAuth(ctx)
     mockGrokApi(ctx, billingData({
-      monthlyLimit: { val: "10000" },
-      used: { val: "2500" },
+      creditUsagePercent: "25",
       onDemandCap: { val: "0" },
     }))
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines.find((l) => l.label === "Credits used").used).toBe(25)
+    expect(result.lines.find((l) => l.label === "Weekly limit").used).toBe(25)
     expect(result.lines.find((l) => l.label === "Current period")).toBeUndefined()
   })
 
@@ -413,10 +462,50 @@ describe("grok plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Grok billing response changed.")
   })
 
-  it("throws on unexpected billing response shape", async () => {
+  it("throws on the legacy monthly billing shape (no currentPeriod)", async () => {
     const ctx = makeCtx()
     writeAuth(ctx)
-    mockGrokApi(ctx, { config: { used: { val: 1 } } })
+    mockGrokApi(ctx, {
+      config: {
+        monthlyLimit: { val: 60000 },
+        used: { val: 4277 },
+        onDemandCap: { val: 0 },
+        billingPeriodEnd: "2026-06-01T00:00:00+00:00",
+      },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Grok billing response changed.")
+  })
+
+  it("throws when the current period does not move forward", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx, billingData({
+      currentPeriod: {
+        type: "USAGE_PERIOD_TYPE_WEEKLY",
+        start: "2026-02-06T04:01:09.238389+00:00",
+        end: "2026-02-06T04:01:09.238389+00:00",
+      },
+    }))
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Grok billing response changed.")
+  })
+
+  it("throws when creditUsagePercent is present but not numeric", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx, billingData({ creditUsagePercent: "lots" }))
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Grok billing response changed.")
+  })
+
+  it("throws when onDemandCap is present but not an object", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx, billingData({ onDemandCap: 2500 }))
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Grok billing response changed.")

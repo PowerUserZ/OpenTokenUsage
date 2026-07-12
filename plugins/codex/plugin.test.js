@@ -238,6 +238,67 @@ describe("codex plugin", () => {
     expect(credits).not.toHaveProperty("limit")
   })
 
+  it("prefers body rate_limit used_percent over stale headers (regression)", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    // Headers go stale right after a window reset: they still read the pre-reset
+    // percent while the body already reports the fresh window.
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {
+        "x-codex-primary-used-percent": "99",
+        "x-codex-secondary-used-percent": "88",
+      },
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { reset_after_seconds: 60, used_percent: 0 },
+          secondary_window: { reset_after_seconds: 120, used_percent: 12 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const session = result.lines.find((line) => line.label === "Session")
+    expect(session).toBeTruthy()
+    expect(session.used).toBe(0)
+    const weekly = result.lines.find((line) => line.label === "Weekly")
+    expect(weekly).toBeTruthy()
+    expect(weekly.used).toBe(12)
+  })
+
+  it("fills windows missing from the body from the headers", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {
+        "x-codex-primary-used-percent": "99",
+        "x-codex-secondary-used-percent": "44",
+      },
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { reset_after_seconds: 60, used_percent: 7 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const session = result.lines.find((line) => line.label === "Session")
+    expect(session).toBeTruthy()
+    expect(session.used).toBe(7)
+    const weekly = result.lines.find((line) => line.label === "Weekly")
+    expect(weekly).toBeTruthy()
+    expect(weekly.used).toBe(44)
+  })
+
   it("maps prolite plan to Pro 5x", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
@@ -544,7 +605,7 @@ describe("codex plugin", () => {
     expect(yesterdayLine.value).toContain("0 tokens")
   })
 
-  it("shows empty Today when history exists but today is missing (regression)", async () => {
+  it("skips Today/Yesterday when they are newer than ccusage's last reported day (regression)", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
       tokens: { access_token: "token" },
@@ -555,6 +616,8 @@ describe("codex plugin", () => {
       headers: { "x-codex-primary-used-percent": "10" },
       bodyText: JSON.stringify({}),
     })
+    // ccusage's coverage ends months before today: an uncaptured recent day is
+    // unknown, not a measured zero — no fabricated "$0.00 · 0 tokens" line.
     ctx.host.ccusage.query.mockReturnValue({
       status: "ok",
       data: {
@@ -567,19 +630,51 @@ describe("codex plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    const todayLine = result.lines.find((l) => l.label === "Today")
-    expect(todayLine).toBeTruthy()
-    expect(todayLine.value).toContain("$0.00")
-    expect(todayLine.value).toContain("0 tokens")
-    const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
-    expect(yesterdayLine).toBeTruthy()
-    expect(yesterdayLine.value).toContain("$0.00")
-    expect(yesterdayLine.value).toContain("0 tokens")
+    expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Yesterday")).toBeUndefined()
 
     const last30 = result.lines.find((l) => l.label === "Last 30 Days")
     expect(last30).toBeTruthy()
     expect(last30.value).toContain("300 tokens")
     expect(last30.value).toContain("$1.00")
+  })
+
+  it("keeps a real zero for an idle day within ccusage's reported range (regression)", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    // Today anchors coverage, so yesterday's absent entry is a measured zero.
+    const now = new Date()
+    const month = now.toLocaleString("en-US", { month: "short" })
+    const day = String(now.getDate()).padStart(2, "0")
+    const year = now.getFullYear()
+    const todayKey = month + " " + day + ", " + year
+    ctx.host.ccusage.query.mockReturnValue({
+      status: "ok",
+      data: {
+        daily: [
+        { date: todayKey, totalTokens: 150, costUSD: 0.75 },
+        ],
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const todayLine = result.lines.find((l) => l.label === "Today")
+    expect(todayLine).toBeTruthy()
+    expect(todayLine.value).toContain("150 tokens")
+    const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
+    expect(yesterdayLine).toBeTruthy()
+    expect(yesterdayLine.value).toContain("$0.00")
+    expect(yesterdayLine.value).toContain("0 tokens")
   })
 
   it("adds Yesterday line from codex ccusage format", async () => {
