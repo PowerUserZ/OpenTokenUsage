@@ -2380,6 +2380,32 @@ describe("claude plugin", () => {
     })
   })
 
+  it("logs loudly and still probes when credential fingerprint hashing throws", async () => {
+    const ctx = makeCtx()
+    ctx.host.crypto.sha256Hex.mockImplementation(() => {
+      throw new Error("hash backend unavailable")
+    })
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // The failure is surfaced (no silent catch), and the in-memory raw-pair fallback
+    // still lets the probe work.
+    expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
+    expect(ctx.host.log.error).toHaveBeenCalledWith(
+      expect.stringContaining("credential fingerprint hashing failed")
+    )
+  })
+
   it("declares Status badge (overview) and Fable progress (detail) lines in the manifest", () => {
     // The overview page filters runtime lines to manifest overview-scope labels, so the
     // rate-limited Status badge must be declared with scope "overview" or a rate-limited
