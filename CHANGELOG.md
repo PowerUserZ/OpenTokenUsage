@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.6.29
+
+First fork-native release: upstream retired the Tauri app at v0.7.0 (macOS-only Swift rewrite), so this release ports the applicable provider-correctness fixes from upstream Swift v0.7.0–v0.7.4 to the Windows fork.
+
+### Bug Fixes
+- claude: track model-scoped weekly limits from the `limits[]` array (e.g. the Fable weekly limit was invisible)
+- claude: prefer a profile-scoped stored login over an inference-only `CLAUDE_CODE_OAUTH_TOKEN` env token — considering every stored credential source
+- claude: reset the usage cache and rate-limit state when the login changes (no more stale data after account switch)
+- claude: rate-limited state shows a Status badge instead of a silent blank card
+- codex: prefer the response body's per-window used percent over stale `x-codex-*` headers after a window reset
+- devin: fix inverted weekly-from-daily quota (fully unused quota rendered as 100% consumed)
+- zai: malformed quota payloads fail loudly instead of rendering 0%; out-of-range percentages clamp to 0–100
+- grok: migrate billing to the weekly shared-pool credits endpoint; monthly-billing accounts keep an overview-visible Credits meter
+- copilot: handle GitHub's AI-credits billing — suppress unlimited/placeholder meters, label Credits, gate Extra Usage
+- cursor: On-demand spend prefers explicit used fields; zero-limit spend renders as text; Credits shown as remaining balance
+- antigravity: adopt the merged Gemini pool + weekly limits (RetrieveUserQuotaSummary); never fabricate 100%-used from missing data; bind the cached derived token to its minting credential
+- ccusage spend tiles: pass the local timezone (UTC day-bucket skew fixed), bump pinned ccusage to 20.0.14, no fabricated $0.00 for unreported days
+
+### Chores
+- host API: redaction coverage for all newly-read provider fields; `credentialFingerprint` added to sensitive keys
+
+---
+
+**Ported from**: [openusage v0.7.0–v0.7.4](https://github.com/robinebers/openusage/releases) (Swift) provider fixes, adapted to the Tauri/Windows plugin architecture. Independently reviewed (3 Medium, 3 Low findings — all fixed and re-verified).
+
 ## v0.6.28
 
 ### New Features
