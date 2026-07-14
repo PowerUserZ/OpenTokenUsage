@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makePluginTestContext } from "../test-helpers.js";
 
@@ -488,6 +489,14 @@ describe("copilot plugin", () => {
     const result = plugin.probe(ctx);
     expect(result.lines.find((l) => l.label === "Extra Usage")).toBeFalsy();
     expect(result.lines[0].text).toBe("No usage data");
+  });
+
+  it("declares the Status badge as an overview line in the manifest", () => {
+    // Unlimited/org-managed accounts can suppress every quota meter, leaving only the
+    // Status badge — the overview filter drops undeclared labels, so without this
+    // declaration those accounts render a blank overview card.
+    const manifest = JSON.parse(readFileSync("plugins/copilot/plugin.json", "utf8"));
+    expect(manifest.lines).toContainEqual({ type: "badge", label: "Status", scope: "overview" });
   });
 
   it("does not render limited_user_quotas when quota_snapshots produced lines", async () => {

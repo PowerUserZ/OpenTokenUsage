@@ -460,11 +460,42 @@ describe("zai plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
   })
 
-  it("throws when session percentage is negative", async () => {
+  it("clamps a negative session percentage to 0 instead of erroring (upstream clampPercent)", async () => {
     const ctx = makeCtx()
     mockEnvWithKey(ctx, "test-key")
     mockQuotaBody(ctx, {
       data: { limits: [{ type: "TOKENS_LIMIT", percentage: -5, unit: 3 }] },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const session = result.lines.find((l) => l.label === "Session")
+    expect(session).toBeTruthy()
+    expect(session.used).toBe(0)
+  })
+
+  it("clamps an over-100 session percentage to 100 (upstream clampPercent)", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    mockQuotaBody(ctx, {
+      data: { limits: [{ type: "TOKENS_LIMIT", percentage: 130, unit: 3 }] },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Session").used).toBe(100)
+  })
+
+  it("still throws when a web-search count is negative", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    mockQuotaBody(ctx, {
+      data: {
+        limits: [
+          { type: "TOKENS_LIMIT", percentage: 10, unit: 3 },
+          { type: "TIME_LIMIT", currentValue: -1, usage: 100 },
+        ],
+      },
     })
 
     const plugin = await loadPlugin()

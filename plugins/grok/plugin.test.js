@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs"
 import { beforeEach, describe, expect, it } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
@@ -294,7 +295,10 @@ describe("grok plugin", () => {
     expect(line.used).toBe(0)
   })
 
-  it("omits the weekly line when the current period is not weekly", async () => {
+  it("renders a Credits used meter instead of the weekly line when the period is not weekly", async () => {
+    // A monthly-billing account must keep an overview-visible credits meter — before the
+    // weekly-pool migration this was the provider's primary line, and dropping it entirely
+    // would blank the overview card for still-unmigrated accounts.
     const ctx = makeCtx()
     writeAuth(ctx)
     mockGrokApi(ctx, billingData({
@@ -309,7 +313,23 @@ describe("grok plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.lines.find((l) => l.label === "Weekly limit")).toBeUndefined()
+    const creditsLine = result.lines.find((l) => l.label === "Credits used")
+    expect(creditsLine).toBeTruthy()
+    expect(creditsLine.limit).toBe(100)
     expect(result.lines.find((l) => l.label === "Pay as you go")).toBeDefined()
+  })
+
+  it("declares both conditional credits meters as overview lines in the manifest", () => {
+    // The overview filter drops runtime lines whose labels are not declared with scope
+    // "overview" — both the weekly and the monthly meter must be declared or one of the
+    // two account types gets a blank overview card.
+    const manifest = JSON.parse(readFileSync("plugins/grok/plugin.json", "utf8"))
+    expect(manifest.lines).toContainEqual(
+      { type: "progress", label: "Weekly limit", scope: "overview", primaryOrder: 1 }
+    )
+    expect(manifest.lines).toContainEqual(
+      { type: "progress", label: "Credits used", scope: "overview", primaryOrder: 2 }
+    )
   })
 
   it("does not render duplicate reset or billing detail rows", async () => {

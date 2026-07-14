@@ -319,13 +319,23 @@
     const data = parseBilling(ctx, billingResp)
     const credits = decodeCreditsConfig(ctx, data)
 
-    // The weekly line is omitted when the current period isn't weekly — an account still on the
-    // old monthly-only billing has no weekly pool, and mislabeling its percent would be worse
-    // than an honest blank.
+    // Weekly-pool accounts get the "Weekly limit" meter; accounts still on the old
+    // monthly-only billing keep their credits meter under the period-neutral
+    // "Credits used" label (the fork's pre-weekly label) so the overview never goes
+    // blank for a valid response. Exactly one of the two lines is emitted.
     const lines = []
     if (credits.periodType === WEEKLY_PERIOD_TYPE) {
       lines.push(ctx.line.progress({
         label: "Weekly limit",
+        used: clampPercent(credits.usedPercent),
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: credits.periodEndIso,
+        periodDurationMs: credits.periodDurationMs,
+      }))
+    } else {
+      lines.push(ctx.line.progress({
+        label: "Credits used",
         used: clampPercent(credits.usedPercent),
         limit: 100,
         format: { kind: "percent" },

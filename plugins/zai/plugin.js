@@ -101,6 +101,17 @@
     return parsed
   }
 
+  // Percentages follow upstream ProviderParse.clampPercent: non-numeric/missing fails
+  // loud, but an out-of-range number is clamped into 0-100 rather than erroring the
+  // whole provider.
+  function requireQuotaPercent(value) {
+    const parsed = parseNumber(value)
+    if (parsed === null) {
+      throw "Usage response invalid. Try again later."
+    }
+    return Math.min(100, Math.max(0, parsed))
+  }
+
   function findLimit(limits, type, unit) {
     let fallback = null
     for (let i = 0; i < limits.length; i++) {
@@ -147,7 +158,7 @@
       return { plan, lines }
     }
 
-    const used = requireQuotaValue(tokenLimit.percentage)
+    const used = requireQuotaPercent(tokenLimit.percentage)
     const resetsAt = tokenLimit.nextResetTime ? ctx.util.toIso(tokenLimit.nextResetTime) : undefined
 
     const progressOpts = {
@@ -164,7 +175,7 @@
 
     const weeklyTokenLimit = findLimit(limits, "TOKENS_LIMIT", 6)
     if (weeklyTokenLimit) {
-      const weeklyUsed = requireQuotaValue(weeklyTokenLimit.percentage)
+      const weeklyUsed = requireQuotaPercent(weeklyTokenLimit.percentage)
       const weeklyResetsAt = weeklyTokenLimit.nextResetTime ? ctx.util.toIso(weeklyTokenLimit.nextResetTime) : undefined
 
       const weeklyOpts = {

@@ -312,7 +312,8 @@
 
   function loadStoredCredentials(ctx, suppressMissingWarn) {
     // Recent Claude Code versions keep the current macOS session in Keychain and
-    // can leave a stale credentials file behind, so Keychain must win when valid.
+    // can leave a stale credentials file behind, so Keychain must win when valid —
+    // and the file is not even read then (a stale file must not trigger refreshes).
     const keychainCredentials = loadKeychainCredentials(ctx)
     if (keychainCredentials) return keychainCredentials
 
@@ -327,19 +328,27 @@
 
   function loadCredentials(ctx) {
     const envAccessToken = readEnvText(ctx, "CLAUDE_CODE_OAUTH_TOKEN")
-    const stored = loadStoredCredentials(ctx, !!envAccessToken)
     if (!envAccessToken) {
-      return stored
+      return loadStoredCredentials(ctx, false)
     }
 
     // CLAUDE_CODE_OAUTH_TOKEN is inference-only (typically a `claude setup-token` token) and
     // cannot read the usage endpoint. It also reaches us when merely ambiently exported, so it
-    // must not shadow a stored profile-scoped login that CAN fetch live usage — prefer the
-    // stored login, and use the env token only when no live-capable stored login exists.
-    if (hasProfileScope(stored)) {
+    // must not shadow a stored profile-scoped login that CAN fetch live usage. Every stored
+    // candidate is considered: a profile-scoped file login must not be shadowed by a
+    // scope-less keychain entry, so the file is consulted when the keychain candidate
+    // cannot fetch live usage (upstream #865).
+    const keychainCredentials = loadKeychainCredentials(ctx)
+    if (hasProfileScope(keychainCredentials)) {
       ctx.host.log.info("preferring stored profile-scoped login over CLAUDE_CODE_OAUTH_TOKEN")
-      return stored
+      return keychainCredentials
     }
+    const fileCredentials = loadFileCredentials(ctx)
+    if (hasProfileScope(fileCredentials)) {
+      ctx.host.log.info("preferring stored profile-scoped login over CLAUDE_CODE_OAUTH_TOKEN")
+      return fileCredentials
+    }
+    const stored = keychainCredentials || fileCredentials
 
     const oauth = stored && stored.oauth ? Object.assign({}, stored.oauth) : {}
     oauth.accessToken = envAccessToken
@@ -370,7 +379,9 @@
     if (typeof sha256Hex === "function") {
       try {
         return sha256Hex(raw)
-      } catch {}
+      } catch (e) {
+        ctx.host.log.error("credential fingerprint hashing failed: " + String(e))
+      }
     }
     return raw // kept in module memory only, never logged
   }
@@ -792,10 +803,19 @@
       if (entry.kind !== "weekly_scoped") continue
       const model = entry.scope && entry.scope.model
       if (!model || model.display_name !== modelName) continue
-      if (typeof entry.percent !== "number") continue
+      // The API may serialize percent as a numeric string — accept both, like
+      // upstream's ProviderParse.number.
+      let percent = null
+      if (typeof entry.percent === "number" && Number.isFinite(entry.percent)) {
+        percent = entry.percent
+      } else if (typeof entry.percent === "string" && entry.percent.trim() !== "") {
+        const parsed = Number(entry.percent.trim())
+        if (Number.isFinite(parsed)) percent = parsed
+      }
+      if (percent === null) continue
       lines.push(ctx.line.progress({
         label: label,
-        used: entry.percent,
+        used: percent,
         limit: 100,
         format: { kind: "percent" },
         resetsAt: ctx.util.toIso(entry.resets_at),

@@ -458,6 +458,46 @@ describe("claude plugin", () => {
     )
   })
 
+  it("prefers a profile-scoped file login over a scope-less keychain entry when an env token is set (upstream #865)", async () => {
+    const ctx = makeCtx()
+    // Keychain wins normally, but this entry cannot read live usage…
+    ctx.host.keychain.readGenericPassword.mockReturnValue(
+      JSON.stringify({
+        claudeAiOauth: { accessToken: "keychain-token", scopes: ["user:inference"] },
+      })
+    )
+    // …while the credentials file holds a profile-scoped login that can.
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "file-token",
+          scopes: ["user:inference", "user:profile"],
+          subscriptionType: "pro",
+        },
+      })
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "CLAUDE_CODE_OAUTH_TOKEN" ? "env-oauth-token" : null
+    )
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // Every stored candidate must be considered — not just the first (keychain) one.
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(ctx.host.http.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer file-token" }),
+      })
+    )
+  })
+
   it("falls back to the env token when the stored login lacks user:profile scope", async () => {
     const ctx = makeCtx()
     ctx.host.fs.exists = () => true
@@ -750,7 +790,7 @@ describe("claude plugin", () => {
           // Different model — not the Fable bucket.
           { kind: "weekly_scoped", percent: 12, scope: { model: { display_name: "Sonnet" } } },
           // Non-numeric percent is skipped.
-          { kind: "weekly_scoped", percent: "7", scope: { model: { display_name: "Fable" } } },
+          { kind: "weekly_scoped", percent: "n/a", scope: { model: { display_name: "Fable" } } },
         ],
       }),
     })
@@ -759,6 +799,28 @@ describe("claude plugin", () => {
     const result = plugin.probe(ctx)
     expect(result.lines.find((l) => l.label === "Fable")).toBeUndefined()
     expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
+  })
+
+  it("accepts a numeric-string percent for the scoped weekly limit (upstream ProviderParse.number)", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "max" } })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        limits: [
+          { kind: "weekly_scoped", percent: "7", scope: { model: { display_name: "Fable" } } },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const fableLine = result.lines.find((l) => l.label === "Fable")
+    expect(fableLine).toBeTruthy()
+    expect(fableLine.used).toBe(7)
   })
 
   it("omits extra usage line when used credits are zero and no limit exists", async () => {

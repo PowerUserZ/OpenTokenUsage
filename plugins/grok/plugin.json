@@ -11,6 +11,7 @@
   ],
   "lines": [
     { "type": "progress", "label": "Weekly limit", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Credits used", "scope": "overview", "primaryOrder": 2 },
     { "type": "badge", "label": "Pay as you go", "scope": "detail" }
   ]
 }
