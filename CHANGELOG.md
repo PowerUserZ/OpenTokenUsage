@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.7.0
+
+A Windows 11 redesign with new ways to watch your limits from the taskbar, 11 languages, and a security hardening pass.
+
+### New Features
+- Windows 11 look: Mica backdrop, rounded corners, your accent color and a new app logo
+- 11 languages: English, Deutsch, Español (España and Latinoamérica), Français, Italiano, 日本語, 한국어, Português (Brasil), Türkçe and 简体中文. Provider errors are translated too
+- Tray: one icon per provider, as a number or as the provider's logo inside a usage ring (colored or plain); a "Most used" tray provider; one Metric setting for every tray style
+- Taskbar strip (experimental): provider logos with session and weekly usage inside the taskbar, with its own provider list and order (up to 6), fonts, sizes, text color and color scales that warm up as you use more
+- Notifications at 80% and 95%, when you're on pace to run out before a reset, and when a limit resets
+- Pace on every limit: ahead or behind, and when it runs out at this rate
+- Service status badge on a provider's card when its status page reports an incident
+- One-click fixes under errors: run the login command in a terminal, or open the provider's API key page and Windows' Environment Variables. A key added while the app runs is picked up on the next refresh
+- Keep a provider in the panel but out of the tray (eye toggle); enabled providers are listed first
+
+### Changes
+- Themes are now Dark (pure black, the default) and Light. The old Windows, Dark and OLED choices move to Dark
+- The panel opens without a taskbar button
+
+### Bug Fixes
+- Provider fixes ported from upstream OpenUsage 0.7.5–0.7.13
+- Cursor, Kiro and Devin work on Windows (process discovery, SQLite, %APPDATA% paths)
+- The panel stays anchored just above the taskbar, with no empty gap under short views
+- The tray's "Weekly" metric no longer shows the session value
+- A provider is never refreshed twice at once and always reports a result; Claude reports rate limits instead of showing stale data
+
+### Security
+- Release builds only run the bundled provider plugins; a plugins folder next to the app is no longer loaded
+- Strict Content Security Policy for the app window
+- Provider responses are capped at 8 MB; TLS checks can only be skipped for local language servers
+- Plugin ids and the files a plugin manifest names are validated
+- The local HTTP API refuses browser requests (cross-site reads and DNS rebinding)
+- Removed the analytics ping inherited from upstream, which reported to the original project's account. The app sends no telemetry
+- Updated h2 and rustls (RUSTSEC-2026-0258, RUSTSEC-2026-0285) and undici (tests only)
+- Release pipeline: every GitHub Action pinned to a commit, Bun pinned, lockfile enforced
+
 ## v0.6.29
 
 First fork-native release: upstream retired the Tauri app at v0.7.0 (macOS-only Swift rewrite), so this release ports the applicable provider-correctness fixes from upstream Swift v0.7.0–v0.7.4 to the Windows fork.
