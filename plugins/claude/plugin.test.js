@@ -757,6 +757,50 @@ describe("claude plugin", () => {
     expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
   })
 
+  it("reads Sonnet from the limits array when the legacy key is null, versioned names included", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "max" } })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        seven_day_sonnet: null,
+        limits: [
+          { kind: "weekly_scoped", percent: 31, resets_at: "2099-01-08T00:00:00.000Z", scope: { model: { display_name: "Sonnet 5.5" } } },
+          // "Sonnets" is another name, not a Sonnet version.
+          { kind: "weekly_scoped", percent: 99, scope: { model: { display_name: "Sonnets" } } },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const sonnet = plugin.probe(ctx).lines.filter((l) => l.label === "Sonnet")
+    expect(sonnet).toHaveLength(1)
+    expect(sonnet[0].used).toBe(31)
+    expect(sonnet[0].resetsAt).toBe("2099-01-08T00:00:00.000Z")
+  })
+
+  it("prefers the legacy seven_day_sonnet over a scoped Sonnet entry", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "max" } })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        seven_day_sonnet: { utilization: 5, resets_at: "2099-01-08T00:00:00.000Z" },
+        limits: [{ kind: "weekly_scoped", percent: 31, scope: { model: { display_name: "Sonnet" } } }],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const sonnet = plugin.probe(ctx).lines.filter((l) => l.label === "Sonnet")
+    expect(sonnet.map((l) => l.used)).toEqual([5])
+  })
+
   it("accepts a numeric-string percent for the scoped weekly limit (upstream ProviderParse.number)", async () => {
     const ctx = makeCtx()
     ctx.host.fs.exists = () => true

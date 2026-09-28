@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+- Claude: the Sonnet weekly limit is also read from Anthropic's newer per-model limits list (with versioned names like "Sonnet 5.5"), so the row stays if Anthropic moves it there as it did with Fable
+
 ## v0.7.1
 
 Notification sounds, the usage levels that notify you, a pin to keep the panel on top and a remembered position, plus fixes for the tray icon, the taskbar strip and light taskbars.

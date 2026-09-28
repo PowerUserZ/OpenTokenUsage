@@ -898,6 +898,7 @@
   // `scope.model.display_name` naming the model (e.g. "Fable"). Anthropic moved the per-model
   // weekly windows off the legacy top-level `seven_day_<model>` keys (which now come back null)
   // and into this array, so each scoped row is read by display name. `percent` is 0-100.
+  // A versioned name ("Sonnet 5.5") counts as the family ("Sonnet").
   function pushScopedWeeklyLimitLine(lines, ctx, limits, modelName, label) {
     if (!Array.isArray(limits)) return
     for (let i = 0; i < limits.length; i++) {
@@ -905,7 +906,8 @@
       if (!entry || typeof entry !== "object") continue
       if (entry.kind !== "weekly_scoped") continue
       const model = entry.scope && entry.scope.model
-      if (!model || model.display_name !== modelName) continue
+      const name = model && typeof model.display_name === "string" ? model.display_name : ""
+      if (name !== modelName && name.indexOf(modelName + " ") !== 0) continue
       const percent = parseNumber(entry.percent)
       if (percent === null) continue
       lines.push(ctx.line.progress({
@@ -1098,6 +1100,9 @@
           resetsAt: ctx.util.toIso(data.seven_day_sonnet.resets_at),
           periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
         }))
+      } else {
+        // Once Sonnet's window moves into `limits` like Fable's did, the legacy key comes back null.
+        pushScopedWeeklyLimitLine(lines, ctx, data.limits, "Sonnet", "Sonnet")
       }
       if (data.seven_day_omelette && typeof data.seven_day_omelette.utilization === "number") {
         lines.push(ctx.line.progress({
