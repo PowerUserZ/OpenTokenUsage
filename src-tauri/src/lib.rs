@@ -197,6 +197,46 @@ pub struct ProbeBatchComplete {
     pub batch_id: String,
 }
 
+/// Marks a plugin as probing until dropped (also on panic), so overlapping batches can't run two
+/// probes that spend the same one-time refresh token (invalid_grant).
+struct InFlightProbe(String);
+
+fn probes_in_flight() -> &'static Mutex<HashSet<String>> {
+    static IN_FLIGHT: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    IN_FLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+impl InFlightProbe {
+    fn claim(plugin_id: &str) -> Option<Self> {
+        let mut in_flight = probes_in_flight()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        in_flight
+            .insert(plugin_id.to_string())
+            .then(|| Self(plugin_id.to_string()))
+    }
+}
+
+impl Drop for InFlightProbe {
+    fn drop(&mut self) {
+        probes_in_flight()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&self.0);
+    }
+}
+
+/// A panicking probe still has to produce a result, or the UI spinner never stops.
+fn catch_probe_panic(
+    plugin: &plugin_engine::manifest::LoadedPlugin,
+    probe: impl FnOnce() -> plugin_engine::runtime::PluginOutput,
+) -> plugin_engine::runtime::PluginOutput {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(probe)).unwrap_or_else(|_| {
+        log::error!("probe {} panicked", plugin.manifest.id);
+        plugin_engine::runtime::error_output(plugin, "Probe crashed".to_string())
+    })
+}
+
 #[tauri::command]
 fn init_panel(app_handle: tauri::AppHandle) {
     panel::init(&app_handle).expect("Failed to initialize panel");
@@ -292,9 +332,26 @@ async fn start_probe_batch(
         None => plugins,
     };
 
+    // A plugin still probing from an earlier batch is skipped here; that probe's result (emitted
+    // under its own batch id) clears the loading state for it.
+    let selected_plugins: Vec<_> = selected_plugins
+        .into_iter()
+        .filter_map(|plugin| match InFlightProbe::claim(&plugin.manifest.id) {
+            Some(in_flight) => Some((plugin, in_flight)),
+            None => {
+                log::info!(
+                    "probe {} already in flight; skipped in batch {}",
+                    plugin.manifest.id,
+                    batch_id
+                );
+                None
+            }
+        })
+        .collect();
+
     let response_plugin_ids: Vec<String> = selected_plugins
         .iter()
-        .map(|plugin| plugin.manifest.id.clone())
+        .map(|(plugin, _)| plugin.manifest.id.clone())
         .collect();
 
     log::info!(
@@ -351,42 +408,36 @@ async fn start_probe_batch(
                     queue.pop_front()
                 };
 
-                let Some(plugin) = plugin else {
+                let Some((plugin, in_flight)) = plugin else {
                     break;
                 };
 
                 let plugin_id = plugin.manifest.id.clone();
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let output = catch_probe_panic(&plugin, || {
                     plugin_engine::runtime::run_probe(&plugin, &data_dir, &version)
-                }));
-
-                match result {
-                    Ok(output) => {
-                        let has_error = output.lines.iter().any(|line| {
-                            matches!(line, plugin_engine::runtime::MetricLine::Badge { label, .. } if label == "Error")
-                        });
-                        if has_error {
-                            log::warn!("probe {} completed with error", plugin_id);
-                        } else {
-                            log::info!(
-                                "probe {} completed ok ({} lines)",
-                                plugin_id,
-                                output.lines.len()
-                            );
-                            local_http_api::cache_successful_output(&output);
-                        }
-                        let _ = handle.emit(
-                            "probe:result",
-                            ProbeResult {
-                                batch_id: bid.clone(),
-                                output,
-                            },
-                        );
-                    }
-                    Err(_) => {
-                        log::error!("probe {} panicked", plugin_id);
-                    }
+                });
+                let has_error = output.lines.iter().any(|line| {
+                    matches!(line, plugin_engine::runtime::MetricLine::Badge { label, .. } if label == "Error")
+                });
+                if has_error {
+                    log::warn!("probe {} completed with error", plugin_id);
+                } else {
+                    log::info!(
+                        "probe {} completed ok ({} lines)",
+                        plugin_id,
+                        output.lines.len()
+                    );
+                    local_http_api::cache_successful_output(&output);
                 }
+                // Release before emitting, so a refresh the UI starts on this result isn't skipped.
+                drop(in_flight);
+                let _ = handle.emit(
+                    "probe:result",
+                    ProbeResult {
+                        batch_id: bid.clone(),
+                        output,
+                    },
+                );
 
                 if counter.fetch_sub(1, Ordering::SeqCst) == 1 {
                     log::info!("probe batch {} complete", completion_bid);
@@ -753,8 +804,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        DAILY_ACTIVE_TRACKED_DAY_KEY, MAX_CONCURRENT_PROBES, probe_worker_count,
-        seconds_until_next_utc_day, should_track_daily_active,
+        DAILY_ACTIVE_TRACKED_DAY_KEY, InFlightProbe, MAX_CONCURRENT_PROBES, catch_probe_panic,
+        probe_worker_count, seconds_until_next_utc_day, should_track_daily_active,
     };
     use time::{Date, Month, PrimitiveDateTime, Time};
 
@@ -789,6 +840,52 @@ mod tests {
         .assume_utc();
 
         assert_eq!(seconds_until_next_utc_day(now), 10);
+    }
+
+    #[test]
+    fn probe_panic_still_yields_an_error_result() {
+        use crate::plugin_engine::manifest::{LoadedPlugin, PluginManifest};
+        use crate::plugin_engine::runtime::MetricLine;
+
+        let plugin = LoadedPlugin {
+            manifest: PluginManifest {
+                schema_version: 1,
+                id: "crashy".to_string(),
+                name: "Crashy".to_string(),
+                version: "0.0.0".to_string(),
+                entry: "plugin.js".to_string(),
+                icon: "icon.svg".to_string(),
+                brand_color: None,
+                lines: vec![],
+                links: vec![],
+            },
+            plugin_dir: std::path::PathBuf::from("."),
+            entry_script: String::new(),
+            icon_data_url: String::new(),
+        };
+
+        let output = catch_probe_panic(&plugin, || panic!("host bug"));
+
+        assert_eq!(output.provider_id, "crashy");
+        assert!(matches!(
+            output.lines.as_slice(),
+            [MetricLine::Badge { label, text, .. }] if label == "Error" && text == "Probe crashed"
+        ));
+    }
+
+    #[test]
+    fn in_flight_probe_is_released_on_drop_and_on_panic() {
+        let first = InFlightProbe::claim("in-flight-test").expect("first claim");
+        assert!(InFlightProbe::claim("in-flight-test").is_none());
+        assert!(InFlightProbe::claim("other-plugin-test").is_some());
+        drop(first);
+
+        let crashed = std::panic::catch_unwind(|| {
+            let _in_flight = InFlightProbe::claim("in-flight-test").expect("claim after drop");
+            panic!("probe crashed");
+        });
+        assert!(crashed.is_err());
+        assert!(InFlightProbe::claim("in-flight-test").is_some());
     }
 
     #[test]

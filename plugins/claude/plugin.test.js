@@ -1,6 +1,6 @@
 import crypto from "node:crypto"
 import { readFileSync } from "node:fs"
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
 // Helpers for keychain hash regression tests.
@@ -9,22 +9,16 @@ const expectedHash = (path) =>
 const TEST_CONFIG_DIR = "/Users/test/.claude"
 const HASHED_CONFIG_SERVICE = "Claude Code-credentials-" + expectedHash(TEST_CONFIG_DIR)
 
-let plugin = null
-
-beforeAll(async () => {
-  await import("./plugin.js")
-  plugin = globalThis.__openusage_plugin
-})
-
-beforeEach(() => {
-  // Reset module-scope rate-limit state so tests don't bleed into each other
-  plugin?._resetState()
-})
-
-const loadPlugin = async () => plugin
+// The host runs every probe in a fresh runtime, so each load evaluates plugin.js anew:
+// module-scope state can't leak between tests (or between probes that reload).
+let loads = 0
+const loadPlugin = async () => {
+  await import("./plugin.js?fresh=" + loads++)
+  return globalThis.__openusage_plugin
+}
 
 // Counts /api/oauth/usage requests only: a successful fetch is followed by one
-// /api/oauth/profile lookup per token (live plan badge), which throttle tests don't care about.
+// /api/oauth/profile lookup per token (live plan badge), which these counts ignore.
 const usageRequestCount = (ctx) =>
   ctx.host.http.request.mock.calls.filter((call) => String(call[0]?.url).includes("/api/oauth/usage")).length
 
@@ -606,67 +600,22 @@ describe("claude plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Token expired")
   })
 
-  it("shows rate limited badge on 429 without throwing", async () => {
+  // A 429 throws so the app keeps the previous bars under the message; the host gates the
+  // follow-up requests (plugin module state does not survive between probes).
+  it.each([
+    [{}, "Rate limited by Anthropic, try again later"],
+    [{ "Retry-After": "0" }, "Rate limited by Anthropic, try again later"],
+    [{ "Retry-After": "600" }, "Rate limited by Anthropic, retry in ~10m"],
+    [{ "retry-after": "61" }, "Rate limited by Anthropic, retry in ~2m"],
+  ])("throws a rate-limit error on 429 (headers %j)", async (headers, message) => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
     ctx.host.fs.exists = () => true
-    ctx.host.http.request.mockReturnValue({ status: 429, bodyText: "", headers: {} })
+    ctx.host.http.request.mockReturnValue({ status: 429, bodyText: "", headers: headers })
     const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-    const statusLine = result.lines.find((line) => line.label === "Status")
-    expect(statusLine).toBeTruthy()
-    expect(statusLine.text).toContain("Rate limited")
-    expect(result.lines.find((line) => line.label === "Note")).toBeTruthy()
-  })
-
-  it("shows Retry-After info on 429 when header is present", async () => {
-    const ctx = makeCtx()
-    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
-    ctx.host.fs.exists = () => true
-    ctx.host.http.request.mockReturnValue({
-      status: 429,
-      bodyText: "",
-      headers: { "Retry-After": "600" }, // 10 minutes
-    })
-    const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-    const statusLine = result.lines.find((line) => line.label === "Status")
-    expect(statusLine).toBeTruthy()
-    expect(statusLine.text).toContain("10m")
-    const noteLine = result.lines.find((line) => line.label === "Note")
-    expect(noteLine).toBeTruthy()
-    expect(noteLine.value).toContain("10m")
-  })
-
-  it("shows generic rate limited message when Retry-After is missing", async () => {
-    const ctx = makeCtx()
-    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
-    ctx.host.fs.exists = () => true
-    ctx.host.http.request.mockReturnValue({ status: 429, bodyText: "", headers: {} })
-    const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-    const statusLine = result.lines.find((line) => line.label === "Status")
-    expect(statusLine).toBeTruthy()
-    expect(statusLine.text).toContain("try again later")
-  })
-
-  it("shows retry-now when Retry-After: 0", async () => {
-    const ctx = makeCtx()
-    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
-    ctx.host.fs.exists = () => true
-    ctx.host.http.request.mockReturnValue({
-      status: 429,
-      bodyText: "",
-      headers: { "Retry-After": "0" },
-    })
-    const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-    const statusLine = result.lines.find((line) => line.label === "Status")
-    expect(statusLine).toBeTruthy()
-    expect(statusLine.text).toContain("~now")
-    const noteLine = result.lines.find((line) => line.label === "Note")
-    expect(noteLine).toBeTruthy()
-    expect(noteLine.value).toContain("~now")
+    expect(() => plugin.probe(ctx)).toThrow(message)
+    expect(usageRequestCount(ctx)).toBe(1)
+    expect(ctx.host.ccusage.query).not.toHaveBeenCalled()
   })
 
   it("uses keychain credentials", async () => {
@@ -1052,8 +1001,6 @@ describe("claude plugin", () => {
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("HTTP 500")
 
-    // Reset lastUsageFetchMs so the second probe is not throttled by min-interval guard
-    plugin._resetState()
     ctx.host.http.request.mockReturnValueOnce({ status: 200, bodyText: "not-json" })
     expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
   })
@@ -2049,344 +1996,25 @@ describe("claude plugin", () => {
       expect(todayLine.value).toContain("1.5K tokens")
       expect(last30.value).toContain("12K tokens")
     })
+  })
 
-    it("shows rate limited status after all retries exhausted", async () => {
-      const todayKey = localDayKey(new Date())
-      const ctx = makeProbeCtx({
-        ccusageResult: okUsage([
-          { date: todayKey, inputTokens: 100, outputTokens: 50, totalTokens: 150, totalCost: 0.25 },
-        ]),
-      })
-      // All calls return 429
+  it("parses an HTTP-date Retry-After on 429", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+    try {
+      const ctx = makeCtx()
+      ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+      ctx.host.fs.exists = () => true
       ctx.host.http.request.mockReturnValue({
         status: 429,
-        bodyText: '{"error":"rate limited"}',
-        headers: { "Retry-After": "1200" }, // 20 minutes
+        bodyText: "",
+        headers: { "Retry-After": "Tue, 14 Apr 2026 10:15:00 GMT" },
       })
       const plugin = await loadPlugin()
-      const result = plugin.probe(ctx)
-      expect(result.lines.find((line) => line.label === "Today")).toBeTruthy()
-      const statusLine = result.lines.find((line) => line.label === "Status")
-      expect(statusLine).toBeTruthy()
-      expect(statusLine.text).toContain("20m")
-      const noteLine = result.lines.find((line) => line.label === "Note")
-      expect(noteLine).toBeTruthy()
-      expect(noteLine.value).toContain("20m")
-    })
-  })
-
-  describe("rate limiting (429)", () => {
-    it("parses Retry-After HTTP-date header", async () => {
-      // Freeze time so HTTP-date parsing is deterministic
-      const frozenNow = new Date("2026-04-14T10:00:00.000Z")
-      vi.useFakeTimers()
-      vi.setSystemTime(frozenNow)
-      try {
-        const ctx = makeCtx()
-        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
-        ctx.host.fs.exists = () => true
-        // 15 minutes after frozenNow → expect "~15m"
-        ctx.host.http.request.mockReturnValue({
-          status: 429,
-          bodyText: "",
-          headers: { "Retry-After": "Mon, 14 Apr 2026 10:15:00 GMT" },
-        })
-        const plugin = await loadPlugin()
-        const result = plugin.probe(ctx)
-        const noteLine = result.lines.find((line) => line.label === "Note")
-        expect(noteLine).toBeTruthy()
-        expect(noteLine.value).toBe("Live usage rate limited — retry in ~15m")
-      } finally {
-        vi.useRealTimers()
-      }
-    })
-
-    it("does not call API again while rate-limit window is active", async () => {
-      vi.useFakeTimers()
-      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
-      try {
-        const ctx = makeCtx()
-        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
-        ctx.host.fs.exists = () => true
-        ctx.host.http.request.mockReturnValue({
-          status: 429,
-          bodyText: "",
-          headers: { "Retry-After": "300" }, // 5 minutes
-        })
-        const plugin = await loadPlugin()
-
-        // First probe — gets 429, stores rateLimitedUntilMs
-        plugin.probe(ctx)
-        expect(usageRequestCount(ctx)).toBe(1)
-
-        // Second probe 60 s later — still within window, must NOT call API
-        vi.setSystemTime(new Date("2026-04-14T10:01:00.000Z"))
-        const result2 = plugin.probe(ctx)
-        expect(usageRequestCount(ctx)).toBe(1) // no new request
-        const statusLine = result2.lines.find((l) => l.label === "Status")
-        expect(statusLine).toBeTruthy()
-        expect(statusLine.text).toMatch(/4m/) // ~4 minutes remaining
-      } finally {
-        vi.useRealTimers()
-      }
-    })
-
-    it("resumes API calls after rate-limit window expires", async () => {
-      vi.useFakeTimers()
-      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
-      try {
-        const ctx = makeCtx()
-        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
-        ctx.host.fs.exists = () => true
-        const usageBody = JSON.stringify({ five_hour: { utilization: 50, resets_at: null } })
-        ctx.host.http.request
-          .mockReturnValueOnce({ status: 429, bodyText: "", headers: { "Retry-After": "60" } })
-          .mockReturnValue({ status: 200, bodyText: usageBody, headers: {} })
-        const plugin = await loadPlugin()
-
-        // First probe → 429
-        plugin.probe(ctx)
-        expect(usageRequestCount(ctx)).toBe(1)
-
-        // 90 s later — window expired, should attempt API again
-        vi.setSystemTime(new Date("2026-04-14T10:01:30.000Z"))
-        const result2 = plugin.probe(ctx)
-        expect(usageRequestCount(ctx)).toBe(2)
-        // No rate-limited badge after success (amber color = rate-limited)
-        expect(result2.lines.find((l) => l.label === "Status" && l.color === "#f59e0b")).toBeUndefined()
-      } finally {
-        vi.useRealTimers()
-      }
-    })
-
-    it("skips API call when minimum fetch interval has not elapsed", async () => {
-      vi.useFakeTimers()
-      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
-      try {
-        const ctx = makeCtx()
-        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
-        ctx.host.fs.exists = () => true
-        ctx.host.http.request.mockReturnValue({ status: 200, bodyText: "{}", headers: {} })
-        const plugin = await loadPlugin()
-
-        // First probe — succeeds
-        plugin.probe(ctx)
-        expect(usageRequestCount(ctx)).toBe(1)
-
-        // 30 s later — within MIN_USAGE_FETCH_INTERVAL_MS (5 min), no new request
-        vi.setSystemTime(new Date("2026-04-14T10:00:30.000Z"))
-        plugin.probe(ctx)
-        expect(usageRequestCount(ctx)).toBe(1)
-
-        // 5+ minutes later — interval elapsed, should fetch again
-        vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
-        plugin.probe(ctx)
-        expect(usageRequestCount(ctx)).toBe(2)
-      } finally {
-        vi.useRealTimers()
-      }
-    })
-
-    it("shows cached plan data while rate-limited", async () => {
-      vi.useFakeTimers()
-      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
-      try {
-        const successBody = JSON.stringify({
-          five_hour: { utilization: 42, resets_at: null },
-        })
-        const ctx = makeCtx()
-        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
-        ctx.host.fs.exists = () => true
-        ctx.host.http.request
-          .mockReturnValueOnce({ status: 200, bodyText: successBody, headers: {} })
-          .mockReturnValue({ status: 429, bodyText: "", headers: { "Retry-After": "300" } })
-        const plugin = await loadPlugin()
-
-        // First probe succeeds → data cached
-        const result1 = plugin.probe(ctx)
-        expect(result1.lines.find((l) => l.label === "Session")).toBeTruthy()
-
-        // Second probe — 429, but cached data is shown alongside rate-limit badge
-        vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z")) // past min interval
-        const result2 = plugin.probe(ctx)
-        expect(result2.lines.find((l) => l.label === "Session")).toBeTruthy()
-        expect(result2.lines.find((l) => l.label === "Status")).toBeTruthy()
-      } finally {
-        vi.useRealTimers()
-      }
-    })
-
-    it("uses default 5-minute backoff when no Retry-After header on 429", async () => {
-      vi.useFakeTimers()
-      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
-      try {
-        const ctx = makeCtx()
-        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
-        ctx.host.fs.exists = () => true
-        ctx.host.http.request
-          .mockReturnValueOnce({ status: 429, bodyText: "", headers: {} }) // no Retry-After
-          .mockReturnValue({ status: 200, bodyText: "{}", headers: {} })
-        const plugin = await loadPlugin()
-
-        plugin.probe(ctx)
-        expect(usageRequestCount(ctx)).toBe(1)
-
-        // 4 min 59 s later — default 5 min backoff still active
-        vi.setSystemTime(new Date("2026-04-14T10:04:59.000Z"))
-        plugin.probe(ctx)
-        expect(usageRequestCount(ctx)).toBe(1)
-
-        // 5 min 1 s later — backoff expired
-        vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
-        plugin.probe(ctx)
-        expect(usageRequestCount(ctx)).toBe(2)
-      } finally {
-        vi.useRealTimers()
-      }
-    })
-  })
-
-  describe("login isolation (regression for upstream #953)", () => {
-    const FAR_EXPIRY = new Date("2026-04-15T00:00:00.000Z").getTime()
-
-    const credsJson = (suffix) =>
-      JSON.stringify({
-        claudeAiOauth: {
-          accessToken: "token-" + suffix,
-          refreshToken: "refresh-" + suffix,
-          expiresAt: FAR_EXPIRY,
-          subscriptionType: "pro",
-        },
-      })
-
-    it("refetches usage instead of serving the previous login's cache after account switch", async () => {
-      vi.useFakeTimers()
-      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
-      try {
-        const ctx = makeCtx()
-        ctx.host.fs.exists = () => true
-        let creds = credsJson("a")
-        ctx.host.fs.readText = () => creds
-        ctx.host.http.request
-          .mockReturnValueOnce({
-            status: 200,
-            bodyText: JSON.stringify({ five_hour: { utilization: 42, resets_at: null } }),
-            headers: {},
-          })
-          .mockReturnValue({
-            status: 200,
-            bodyText: JSON.stringify({ five_hour: { utilization: 7, resets_at: null } }),
-            headers: {},
-          })
-        const plugin = await loadPlugin()
-
-        const result1 = plugin.probe(ctx)
-        expect(result1.lines.find((l) => l.label === "Session")?.used).toBe(42)
-        expect(usageRequestCount(ctx)).toBe(1)
-
-        // Switch account 60 s later — well within the 5-minute min-fetch interval, which must
-        // not serve the previous login's cached usage.
-        creds = credsJson("b")
-        vi.setSystemTime(new Date("2026-04-14T10:01:00.000Z"))
-        const result2 = plugin.probe(ctx)
-        expect(usageRequestCount(ctx)).toBe(2)
-        expect(result2.lines.find((l) => l.label === "Session")?.used).toBe(7)
-      } finally {
-        vi.useRealTimers()
-      }
-    })
-
-    it("does not inherit the previous login's rate-limit cooldown after account switch", async () => {
-      vi.useFakeTimers()
-      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
-      try {
-        const ctx = makeCtx()
-        ctx.host.fs.exists = () => true
-        let creds = credsJson("a")
-        ctx.host.fs.readText = () => creds
-        ctx.host.http.request
-          .mockReturnValueOnce({ status: 429, bodyText: "", headers: { "Retry-After": "300" } })
-          .mockReturnValue({
-            status: 200,
-            bodyText: JSON.stringify({ five_hour: { utilization: 5, resets_at: null } }),
-            headers: {},
-          })
-        const plugin = await loadPlugin()
-
-        // First probe — account A is rate limited for 5 minutes.
-        const result1 = plugin.probe(ctx)
-        expect(result1.lines.find((l) => l.label === "Status")).toBeTruthy()
-        expect(usageRequestCount(ctx)).toBe(1)
-
-        // Switch account 60 s later — the new login must not sit out A's cooldown.
-        creds = credsJson("b")
-        vi.setSystemTime(new Date("2026-04-14T10:01:00.000Z"))
-        const result2 = plugin.probe(ctx)
-        expect(usageRequestCount(ctx)).toBe(2)
-        expect(result2.lines.find((l) => l.label === "Session")?.used).toBe(5)
-        expect(result2.lines.find((l) => l.label === "Status" && l.color === "#f59e0b")).toBeUndefined()
-      } finally {
-        vi.useRealTimers()
-      }
-    })
-
-    it("does not treat a token rotation for the same login as an account switch", async () => {
-      vi.useFakeTimers()
-      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
-      try {
-        const ctx = makeCtx()
-        ctx.host.fs.exists = () => true
-        // Expired token forces a proactive refresh on the first probe, which rotates the pair
-        // and persists it via fs.writeText (the makeCtx in-memory file store).
-        const files = new Map()
-        files.set("cred", JSON.stringify({
-          claudeAiOauth: {
-            accessToken: "old-token",
-            refreshToken: "old-refresh",
-            expiresAt: new Date("2026-04-14T09:00:00.000Z").getTime(),
-            subscriptionType: "pro",
-          },
-        }))
-        ctx.host.fs.readText = () => files.get("cred")
-        ctx.host.fs.writeText = vi.fn((path, text) => {
-          if (String(path).endsWith(".credentials.json")) files.set("cred", text)
-        })
-        ctx.host.http.request.mockImplementation((opts) => {
-          if (String(opts.url).includes("/v1/oauth/token")) {
-            return {
-              status: 200,
-              bodyText: JSON.stringify({
-                access_token: "new-token",
-                refresh_token: "new-refresh",
-                expires_in: 3600,
-              }),
-            }
-          }
-          return {
-            status: 200,
-            bodyText: JSON.stringify({ five_hour: { utilization: 42, resets_at: null } }),
-            headers: {},
-          }
-        })
-        const plugin = await loadPlugin()
-
-        plugin.probe(ctx)
-        const usageCalls = () =>
-          ctx.host.http.request.mock.calls.filter((call) =>
-            String(call[0]?.url).includes("/api/oauth/usage")
-          ).length
-        expect(usageCalls()).toBe(1)
-
-        // Second probe 60 s later reloads the ROTATED credentials — same login, so the cached
-        // usage stands and the min-fetch interval keeps the API untouched.
-        vi.setSystemTime(new Date("2026-04-14T10:01:00.000Z"))
-        const result2 = plugin.probe(ctx)
-        expect(usageCalls()).toBe(1)
-        expect(result2.lines.find((l) => l.label === "Session")?.used).toBe(42)
-      } finally {
-        vi.useRealTimers()
-      }
-    })
+      expect(() => plugin.probe(ctx)).toThrow("Rate limited by Anthropic, retry in ~15m")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("logs loudly and still probes when credential fingerprint hashing throws", async () => {
@@ -2407,17 +2035,18 @@ describe("claude plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    // The failure is surfaced (no silent catch), and the in-memory raw-pair fallback
-    // still lets the probe work.
+    // The failure is surfaced (no silent catch), the probe still works, and without a hash the
+    // live-plan cache is skipped so the raw token pair never reaches disk.
     expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
     expect(ctx.host.log.error).toHaveBeenCalledWith(
       expect.stringContaining("credential fingerprint hashing failed")
     )
+    expect(ctx.host.fs.writeText).not.toHaveBeenCalledWith(expect.stringContaining("live-plan.json"), expect.anything())
   })
 
   it("declares Status badge, Fable (overview, below Weekly) and Rate Limit Resets in the manifest", () => {
     // The overview page filters runtime lines to manifest overview-scope labels, so the
-    // rate-limited / not-logged-in Status badge must be declared with scope "overview" or those
+    // not-logged-in / no-usage-data Status badge must be declared with scope "overview" or those
     // cards render a silent blank (regression for upstream #849). Fable is always visible directly
     // below Weekly (upstream #1141).
     const manifest = JSON.parse(readFileSync("plugins/claude/plugin.json", "utf8"))
@@ -2477,25 +2106,15 @@ describe("claude plugin", () => {
     })
 
     it("looks the profile up at most once per token, even after a failure", async () => {
-      vi.useFakeTimers()
-      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
-      try {
-        const ctx = makeCtx()
-        ctx.host.fs.writeText("~/.claude/.credentials.json", STORED)
-        routeRequests(ctx, () => ({ status: 500, bodyText: "" }))
-        const plugin = await loadPlugin()
-        plugin.probe(ctx)
-        // The host runs each probe in a fresh runtime: module state is gone, pluginDataDir is not.
-        plugin._resetState()
-        vi.setSystemTime(new Date("2026-04-14T10:06:00.000Z")) // past the min fetch interval
-        const result = plugin.probe(ctx)
-        expect(ctx.host.fs.readText("/tmp/openusage-test/plugin/live-plan.json")).toContain('"plan":null')
-        expect(usageRequestCount(ctx)).toBe(2)
-        expect(profileCalls(ctx)).toHaveLength(1)
-        expect(result.plan).toBe("Max 5x")
-      } finally {
-        vi.useRealTimers()
-      }
+      const ctx = makeCtx()
+      ctx.host.fs.writeText("~/.claude/.credentials.json", STORED)
+      routeRequests(ctx, () => ({ status: 500, bodyText: "" }))
+      ;(await loadPlugin()).probe(ctx)
+      const result = (await loadPlugin()).probe(ctx) // fresh runtime: only pluginDataDir carries over
+      expect(ctx.host.fs.readText("/tmp/openusage-test/plugin/live-plan.json")).toContain('"plan":null')
+      expect(usageRequestCount(ctx)).toBe(2)
+      expect(profileCalls(ctx)).toHaveLength(1)
+      expect(result.plan).toBe("Max 5x")
     })
 
     it("skips the profile lookup when the usage fetch is rate limited", async () => {
@@ -2503,9 +2122,9 @@ describe("claude plugin", () => {
       ctx.host.fs.exists = () => true
       ctx.host.fs.readText = () => STORED
       ctx.host.http.request.mockReturnValue({ status: 429, bodyText: "", headers: {} })
-      const result = (await loadPlugin()).probe(ctx)
+      const plugin = await loadPlugin()
+      expect(() => plugin.probe(ctx)).toThrow("Rate limited")
       expect(profileCalls(ctx)).toHaveLength(0)
-      expect(result.plan).toBe("Max 5x")
     })
   })
 

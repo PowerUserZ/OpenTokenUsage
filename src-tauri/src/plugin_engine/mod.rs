@@ -1,4 +1,5 @@
 pub mod host_api;
+mod http_gate;
 pub mod manifest;
 pub mod runtime;
 

@@ -77,13 +77,22 @@ impl ProbeDeadline {
             .filter(|remaining| *remaining >= MIN_BLOCKING_TIMEOUT)?;
         Some(requested.min(remaining))
     }
+
+    /// Like `clamp_duration`, but keeps `reserve` of the budget for the plugin to finish its probe.
+    fn clamp_duration_reserving(self, requested: Duration, reserve: Duration) -> Option<Duration> {
+        let Some(expires_at) = self.expires_at else {
+            return Some(requested);
+        };
+        Self::at(expires_at.checked_sub(reserve)?).clamp_duration(requested)
+    }
 }
 
-fn log_probe_deadline_skip(plugin_id: &str, operation: &str) {
+fn log_ccusage_budget_skip(plugin_id: &str, operation: &str) {
     log::warn!(
-        "[plugin:{}] {} skipped: probe timed out",
+        "[plugin:{}] {} skipped: less than {}s of probe time left",
         plugin_id,
-        operation
+        operation,
+        CCUSAGE_PROBE_RESERVE.as_secs()
     );
 }
 
@@ -706,6 +715,50 @@ fn inject_log<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquic
     Ok(())
 }
 
+/// Write via a temp file + rename so a crash mid-write can't leave a half-written credential file
+/// (e.g. a revoked refresh token). If the rename fails (Windows: target locked by another
+/// process, or no POSIX-rename support on that volume), write in place like before. `rename` is
+/// `std::fs::rename` outside tests.
+fn write_text_atomic(
+    path: &Path,
+    content: &str,
+    rename: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    use std::io::Write as _;
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+    let Some(file_name) = path.file_name() else {
+        return std::fs::write(path, content);
+    };
+    let mut tmp_name = OsString::from(".");
+    tmp_name.push(file_name);
+    tmp_name.push(format!(
+        ".{}-{}.tmp",
+        std::process::id(),
+        COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    let tmp_path = path.with_file_name(tmp_name);
+
+    let written = std::fs::File::create(&tmp_path).and_then(|mut file| {
+        #[cfg(unix)]
+        if let Ok(meta) = std::fs::metadata(path) {
+            file.set_permissions(meta.permissions())?; // keep a 0600 credential file 0600
+        }
+        file.write_all(content.as_bytes())?;
+        file.sync_all()
+    });
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e);
+    }
+    if let Err(e) = rename(&tmp_path, path) {
+        log::warn!("atomic write rename failed ({}); writing in place", e);
+        let _ = std::fs::remove_file(&tmp_path);
+        return std::fs::write(path, content);
+    }
+    Ok(())
+}
+
 fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
     let fs_obj = Object::new(ctx.clone())?;
 
@@ -735,8 +788,10 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, path: String, content: String| -> rquickjs::Result<()> {
                 let expanded = expand_path(&path);
-                std::fs::write(&expanded, &content)
-                    .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))
+                write_text_atomic(Path::new(&expanded), &content, |from, to| {
+                    std::fs::rename(from, to)
+                })
+                .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))
             },
         )?,
     )?;
@@ -862,6 +917,25 @@ fn inject_http<'js>(
 
                 let method_str = req.method.as_deref().unwrap_or("GET");
                 let redacted_url = redact_url(&req.url);
+
+                if let Some(wait) = super::http_gate::remaining(&pid, &req.url, Instant::now()) {
+                    let secs = wait.as_secs() + u64::from(wait.subsec_nanos() > 0);
+                    log::info!(
+                        "[plugin:{}] HTTP {} {} skipped: rate limited (429) for {}s more",
+                        pid,
+                        method_str,
+                        redacted_url,
+                        secs
+                    );
+                    let resp = HttpRespParams {
+                        status: 429,
+                        headers: HashMap::from([("retry-after".to_string(), secs.to_string())]),
+                        body_text: String::new(),
+                    };
+                    return serde_json::to_string(&resp)
+                        .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()));
+                }
+
                 log::info!("[plugin:{}] HTTP {} {}", pid, method_str, redacted_url);
 
                 let mut header_map = reqwest::header::HeaderMap::new();
@@ -936,6 +1010,20 @@ fn inject_http<'js>(
                         )
                     })?;
                     resp_headers.insert(key.to_string(), header_value.to_string());
+                }
+                if status == 429 {
+                    let wait = super::http_gate::record_429(
+                        &pid,
+                        &req.url,
+                        resp_headers.get("retry-after").map(String::as_str),
+                        Instant::now(),
+                    );
+                    log::info!(
+                        "[plugin:{}] HTTP 429 from {}; holding requests for {}s",
+                        pid,
+                        redacted_url,
+                        wait.as_secs()
+                    );
                 }
                 let body = response
                     .text()
@@ -1664,6 +1752,9 @@ const CCUSAGE_LEGACY_CODEX_PACKAGE_NAME: &str = "@ccusage/codex";
 const CCUSAGE_LEGACY_CODEX_BIN_NAME: &str = "ccusage-codex";
 const CCUSAGE_TIMEOUT_SECS: u64 = 15;
 const CCUSAGE_POLL_INTERVAL_MS: u64 = 100;
+/// Probe time kept back from ccusage so a slow run can't turn an already-fetched API result into
+/// "probe timed out".
+const CCUSAGE_PROBE_RESERVE: Duration = Duration::from_secs(5);
 
 #[derive(Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -2007,8 +2098,23 @@ where
     runners
 }
 
+fn collect_ccusage_runners_once<F>(
+    cache: &OnceLock<Vec<(CcusageRunnerKind, String)>>,
+    resolver: F,
+) -> Vec<(CcusageRunnerKind, String)>
+where
+    F: FnMut(CcusageRunnerKind) -> Option<String>,
+{
+    cache
+        .get_or_init(|| collect_ccusage_runners_with(resolver))
+        .clone()
+}
+
+// ponytail: discovered once per app process (up to ~13 `--version` spawns); installing a runner
+// later needs an app restart.
 fn collect_ccusage_runners() -> Vec<(CcusageRunnerKind, String)> {
-    collect_ccusage_runners_with(resolve_ccusage_runner_binary)
+    static RUNNERS: OnceLock<Vec<(CcusageRunnerKind, String)>> = OnceLock::new();
+    collect_ccusage_runners_once(&RUNNERS, resolve_ccusage_runner_binary)
 }
 
 /// Validate a date string is strictly YYYYMMDD (8 ASCII digits).
@@ -2209,9 +2315,22 @@ fn kill_ccusage_on_timeout(child: &mut std::process::Child) -> std::io::Result<(
         kill_ccusage_process_group(child.id())
     }
 
+    // `child.kill()` only stops the runner (bunx/pnpm); its node grandchild would keep running and
+    // hold our stdout/stderr pipes open. Kill the whole tree.
     #[cfg(not(unix))]
     {
-        child.kill()
+        let status = silent_command("taskkill")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()?;
+        if status.success() {
+            return Ok(());
+        }
+        Err(std::io::Error::other(format!(
+            "taskkill exited with {}",
+            status
+        )))
     }
 }
 
@@ -2256,9 +2375,14 @@ fn run_ccusage_with_runner_deadline(
         return CcusageRunnerResult::TimedOut;
     }
 
-    let Some(current_timeout) = deadline.clamp_duration(Duration::from_secs(CCUSAGE_TIMEOUT_SECS))
-    else {
-        log_probe_deadline_skip(plugin_id, "ccusage");
+    let ccusage_budget = || {
+        deadline.clamp_duration_reserving(
+            Duration::from_secs(CCUSAGE_TIMEOUT_SECS),
+            CCUSAGE_PROBE_RESERVE,
+        )
+    };
+    let Some(current_timeout) = ccusage_budget() else {
+        log_ccusage_budget_skip(plugin_id, "ccusage");
         return CcusageRunnerResult::TimedOut;
     };
 
@@ -2274,10 +2398,8 @@ fn run_ccusage_with_runner_deadline(
     match current {
         CcusageRunnerResult::Failed if deadline.has_elapsed() => CcusageRunnerResult::TimedOut,
         CcusageRunnerResult::Failed => {
-            let Some(legacy_timeout) =
-                deadline.clamp_duration(Duration::from_secs(CCUSAGE_TIMEOUT_SECS))
-            else {
-                log_probe_deadline_skip(plugin_id, "ccusage legacy fallback");
+            let Some(legacy_timeout) = ccusage_budget() else {
+                log_ccusage_budget_skip(plugin_id, "ccusage legacy fallback");
                 return CcusageRunnerResult::TimedOut;
             };
             run_ccusage_with_runner_timeout(
@@ -2401,8 +2523,8 @@ fn run_ccusage_with_runner_timeout(
                         let _ = child.kill();
                     }
                     let _ = child.wait();
-                    let _ = stdout_reader.take().and_then(|reader| reader.join().ok());
-                    let _ = stderr_reader.take().and_then(|reader| reader.join().ok());
+                    // Pipe readers are not joined: a surviving descendant could keep the pipes
+                    // open past the probe deadline. The detached threads end once they close.
                     log::warn!(
                         "[plugin:{}] ccusage timed out after {} for {}",
                         plugin_id,
@@ -4990,6 +5112,163 @@ wait
             "descendant process should be killed with ccusage process group"
         );
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn fresh_temp_dir(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "openusage-{}-{}",
+            label,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[test]
+    fn http_request_returns_synthetic_429_while_gated_without_network() {
+        // Port 9 on loopback is closed: a real request would throw instead of returning 429.
+        let url = "http://127.0.0.1:9/gated-usage";
+        super::super::http_gate::record_429("gate-js", url, Some("90"), Instant::now());
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            inject_host_api(&ctx, "gate-js", &std::env::temp_dir(), "0.0.0")
+                .expect("inject host api");
+            let json: String = ctx
+                .eval(format!(
+                    r#"__openusage_ctx.host.http._requestRaw(JSON.stringify({{ url: "{}?q=1" }}))"#,
+                    url
+                ))
+                .expect("gated request resolves");
+            let resp: serde_json::Value = serde_json::from_str(&json).expect("response json");
+            assert_eq!(resp["status"], 429);
+            assert_eq!(resp["bodyText"], "");
+            let secs: u64 = resp["headers"]["retry-after"]
+                .as_str()
+                .expect("retry-after header")
+                .parse()
+                .expect("retry-after seconds");
+            assert!((89..=90).contains(&secs), "retry-after was {}", secs);
+        });
+    }
+
+    #[test]
+    fn write_text_atomic_replaces_content_and_leaves_no_temp_file() {
+        let dir = fresh_temp_dir("atomic-write");
+        let path = dir.join(".credentials.json");
+        std::fs::write(&path, "old content that is longer").expect("seed file");
+
+        write_text_atomic(&path, "new", |a, b| std::fs::rename(a, b)).expect("atomic write");
+
+        assert_eq!(std::fs::read_to_string(&path).expect("read back"), "new");
+        assert_eq!(std::fs::read_dir(&dir).expect("list dir").count(), 1);
+        assert!(
+            write_text_atomic(&dir.join("missing/x.json"), "x", |a, b| std::fs::rename(
+                a, b
+            ))
+            .is_err()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_text_atomic_writes_in_place_when_rename_fails() {
+        fn locked(_: &Path, _: &Path) -> std::io::Result<()> {
+            Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+        }
+        let dir = fresh_temp_dir("atomic-write-locked");
+        let path = dir.join(".credentials.json");
+        std::fs::write(&path, "old").expect("seed file");
+
+        write_text_atomic(&path, "new", locked).expect("in-place fallback write");
+
+        assert_eq!(std::fs::read_to_string(&path).expect("read back"), "new");
+        assert_eq!(std::fs::read_dir(&dir).expect("list dir").count(), 1);
+        // The fallback's own failure is returned, not swallowed.
+        assert!(write_text_atomic(&dir, "x", locked).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ccusage_runner_discovery_runs_once() {
+        let cache = OnceLock::new();
+        let mut resolves = 0;
+        let first = collect_ccusage_runners_once(&cache, |kind| {
+            resolves += 1;
+            (kind == CcusageRunnerKind::Npx).then(|| "npx".to_string())
+        });
+        let second = collect_ccusage_runners_once(&cache, |_| panic!("must use the cache"));
+
+        assert_eq!(resolves, ccusage_runner_order().len());
+        assert_eq!(first, vec![(CcusageRunnerKind::Npx, "npx".to_string())]);
+        assert_eq!(second, first);
+    }
+
+    #[test]
+    fn ccusage_budget_keeps_probe_reserve() {
+        let reserve = Duration::from_secs(5);
+        let deadline = ProbeDeadline::at(Instant::now() + Duration::from_secs(8));
+        let budget = deadline
+            .clamp_duration_reserving(Duration::from_secs(15), reserve)
+            .expect("3s of budget left");
+        assert!(budget <= Duration::from_secs(3) && budget > Duration::from_secs(2));
+
+        let nearly_done = ProbeDeadline::at(Instant::now() + Duration::from_secs(4));
+        assert_eq!(
+            nearly_done.clamp_duration_reserving(Duration::from_secs(15), reserve),
+            None
+        );
+        assert_eq!(
+            ProbeDeadline::none().clamp_duration_reserving(Duration::from_secs(15), reserve),
+            Some(Duration::from_secs(15))
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn ccusage_timeout_kills_windows_process_tree_without_blocking_on_pipes() {
+        use std::time::{Duration, Instant};
+
+        let dir = fresh_temp_dir("ccusage-timeout-win");
+        let script_path = dir.join("fake-runner.cmd");
+        let marker_path = dir.join("survived.txt");
+        // The runner (cmd.exe) starts a grandchild that inherits stdout and writes a marker
+        // after ~5s, like bunx -> node. Only a tree kill stops the grandchild.
+        std::fs::write(
+            &script_path,
+            format!(
+                "@echo off\r\ncmd /c \"ping -n 6 127.0.0.1 & echo survived> \"{}\"\"\r\n",
+                marker_path.display()
+            ),
+        )
+        .expect("write script");
+
+        let start = Instant::now();
+        let result = run_ccusage_with_runner_timeout(
+            CcusageRunnerKind::Bunx,
+            script_path.to_string_lossy().as_ref(),
+            &CcusageQueryOpts::default(),
+            CcusageProvider::Codex,
+            "codex",
+            CcusageCommandFlavor::Current,
+            Duration::from_millis(500),
+        );
+
+        assert_eq!(result, CcusageRunnerResult::TimedOut);
+        assert!(
+            start.elapsed() < Duration::from_secs(3),
+            "timeout cleanup should not wait on inherited pipes (took {:?})",
+            start.elapsed()
+        );
+        std::thread::sleep(Duration::from_secs(7).saturating_sub(start.elapsed()));
+        assert!(
+            !marker_path.exists(),
+            "grandchild survived the timeout kill"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
