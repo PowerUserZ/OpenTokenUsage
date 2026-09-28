@@ -1,6 +1,7 @@
 pub mod host_api;
 pub mod manifest;
 pub mod runtime;
+mod sqlite;
 
 use manifest::LoadedPlugin;
 use std::path::{Path, PathBuf};
