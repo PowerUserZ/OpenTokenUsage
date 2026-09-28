@@ -18,6 +18,9 @@ export default defineConfig(async () => ({
 
   test: {
     environment: "jsdom",
+    // The first test in a file pays the cold transform/jsdom cost; under full-suite load on Windows
+    // that alone can pass 5s and fail a correct test.
+    testTimeout: 20_000,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}", "plugins/**/*.test.js"],
     exclude: ["**/node_modules/**", "**/src-tauri/target/**"],

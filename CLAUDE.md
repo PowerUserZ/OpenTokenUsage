@@ -36,8 +36,8 @@ This file holds the project facts that are easy to get wrong.
 
 ## Verify before committing
 - `bunx tsc --noEmit` · `bun run test` (src + plugins) · `cd src-tauri && cargo test --lib`.
-- Under full-suite load the first test of a heavy file can hit the 5 s timeout; rerun that file
-  alone before treating it as a failure.
+- Vitest `testTimeout` is 20 s on purpose (cold transform of a file's first test is slow on
+  Windows under load); don't lower it to "fix" speed — a timeout there is not a logic failure.
 
 ## Dependencies & releases
 - `bunfig.toml` has `minimumReleaseAge` (7 days): don't force newer packages.
