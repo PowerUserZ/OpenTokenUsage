@@ -31,6 +31,9 @@ OpenTokenUsage lives in your system tray and shows you how much of your AI codin
 - **Plugin-based.** New providers get added without updating the whole app.
 - **[Local HTTP API](docs/local-http-api.md).** Other apps can read your usage data from `127.0.0.1:6736`.
 - **[Proxy support](docs/proxy.md).** Route provider HTTP requests through a SOCKS5 or HTTP proxy.
+- **Windows 11 native.** Mica, your accent color, light / dark / OLED themes, 11 languages.
+- **Notifications.** At 80% and 95%, when you're on pace to run out before a reset, and when a limit resets.
+- **Service status.** A badge on the card when the provider's status page reports an incident.
 
 ## Supported Providers
 

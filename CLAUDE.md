@@ -32,6 +32,15 @@ This file holds the project facts that are easy to get wrong.
   Never compare translated text in logic. The native tray menu gets its labels from the frontend
   (`set_tray_menu_labels`).
 - Tray metric: one setting, `trayMetric` (auto | Session | Weekly), drives bars, percent and tooltip.
+  Tray provider `tightest` = "Most used" line across providers. `trayHiddenPlugins` keeps a provider
+  in the nav but out of the tray. The tray icon color follows the *taskbar* theme, not the app theme.
+- Themes: system | light | dark | oled (`.oled` = opaque pure black, even over Mica).
+- Notifications (`src/lib/usage-alerts.ts`, pure + tested): 80/95%, pace, reset; each once per
+  provider+line+window, keys persisted in settings (`sentUsageAlerts`).
+- Status badge: optional `statusPageUrl` in plugin.json (Atlassian Statuspage `/api/v2/status.json`
+  only — verify the URL returns that JSON before adding one).
+- Local HTTP API (127.0.0.1:6736) is loopback-only: no CORS, Host/Origin must be loopback. Don't add
+  `Access-Control-Allow-Origin` back (any website could read usage).
 - Keyboard: Ctrl (not Cmd/Win) shortcuts; show Ctrl/Alt in the UI.
 
 ## Verify before committing
