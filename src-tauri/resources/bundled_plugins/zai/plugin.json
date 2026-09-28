@@ -6,6 +6,9 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#2D2D2D",
+  "links": [
+    { "label": "API keys", "url": "https://z.ai/manage-apikey/apikey-list" }
+  ],
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview", "period": "weekly" },
