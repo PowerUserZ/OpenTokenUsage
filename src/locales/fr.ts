@@ -62,10 +62,12 @@ export const fr: Messages = {
   "settings.tray.colorTitle": "Couleur du texte du pourcentage",
   "settings.tray.auto": "Automatique",
   "settings.theme.title": "Thème",
-  "settings.theme.desc": "Clair, sombre ou selon Windows",
-  "settings.theme.system": "Système",
+  "settings.theme.desc": "Comme Windows, clair, sombre ou noir pur pour écrans OLED",
+  "settings.theme.system": "Windows",
   "settings.theme.light": "Clair",
   "settings.theme.dark": "Sombre",
+  "settings.theme.oled": "OLED",
+  "settings.theme.oledHint": "Fond noir pur, idéal pour les écrans OLED",
   "settings.language.title": "Langue",
   "settings.language.desc": "Langue d'affichage de l'application",
   "settings.language.system": "Langue de Windows",
@@ -81,6 +83,8 @@ export const fr: Messages = {
   "settings.startOnLogin.label": "Lancer à la connexion",
   "settings.plugins.title": "Fournisseurs",
   "settings.plugins.desc": "Activez, désactivez ou faites glisser pour réorganiser",
+  "settings.plugins.inTray": "Affiché dans l'icône de la zone de notification",
+  "settings.plugins.notInTray": "Masqué dans l'icône de la zone de notification",
 
   "overview.noProviders": "Aucun fournisseur activé",
 
@@ -105,6 +109,7 @@ export const fr: Messages = {
   "pace.runsOutIn": "Épuisé dans {time}",
   "pace.short": "Manque {value}",
   "pace.deficit": "Déficit de {value}",
+  "pace.markerHint": "La ligne indique un rythme régulier : {percent} % de la période est écoulé",
 
   "reset.soon": "Réinitialisation imminente",
   "reset.in": "Réinitialisation dans {time}",

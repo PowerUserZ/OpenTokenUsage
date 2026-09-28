@@ -62,10 +62,12 @@ export const ko: Messages = {
   "settings.tray.colorTitle": "트레이 백분율 텍스트 색",
   "settings.tray.auto": "자동",
   "settings.theme.title": "테마",
-  "settings.theme.desc": "밝게, 어둡게 또는 Windows 설정과 같게",
-  "settings.theme.system": "시스템",
+  "settings.theme.desc": "Windows와 같게, 밝게, 어둡게 또는 OLED용 완전한 검정",
+  "settings.theme.system": "Windows",
   "settings.theme.light": "밝게",
   "settings.theme.dark": "어둡게",
+  "settings.theme.oled": "OLED",
+  "settings.theme.oledHint": "완전한 검정 배경, OLED 화면에 적합",
   "settings.language.title": "언어",
   "settings.language.desc": "앱에 표시되는 언어",
   "settings.language.system": "Windows 기본값",
@@ -81,6 +83,8 @@ export const ko: Messages = {
   "settings.startOnLogin.label": "로그인 시 시작",
   "settings.plugins.title": "공급자",
   "settings.plugins.desc": "공급자를 켜거나 끄고, 끌어서 순서 변경",
+  "settings.plugins.inTray": "알림 영역 아이콘에 표시",
+  "settings.plugins.notInTray": "알림 영역 아이콘에서 숨김",
 
   "overview.noProviders": "사용 중인 공급자 없음",
 
@@ -105,6 +109,7 @@ export const ko: Messages = {
   "pace.runsOutIn": "{time} 후 소진",
   "pace.short": "{value} 부족",
   "pace.deficit": "{value} 초과",
+  "pace.markerHint": "선은 균등한 사용 속도를 나타냅니다(기간의 {percent}% 경과)",
 
   "reset.soon": "곧 초기화",
   "reset.in": "{time} 후 초기화",

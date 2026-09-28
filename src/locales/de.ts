@@ -62,10 +62,12 @@ export const de: Messages = {
   "settings.tray.colorTitle": "Textfarbe der Prozentanzeige",
   "settings.tray.auto": "Automatisch",
   "settings.theme.title": "Design",
-  "settings.theme.desc": "Hell, dunkel oder wie in Windows",
-  "settings.theme.system": "System",
+  "settings.theme.desc": "Wie Windows, hell, dunkel oder reines Schwarz für OLED",
+  "settings.theme.system": "Windows",
   "settings.theme.light": "Hell",
   "settings.theme.dark": "Dunkel",
+  "settings.theme.oled": "OLED",
+  "settings.theme.oledHint": "Rein schwarzer Hintergrund, schont OLED-Bildschirme",
   "settings.language.title": "Sprache",
   "settings.language.desc": "Sprache der App-Texte",
   "settings.language.system": "Windows-Standard",
@@ -81,6 +83,8 @@ export const de: Messages = {
   "settings.startOnLogin.label": "Beim Anmelden starten",
   "settings.plugins.title": "Anbieter",
   "settings.plugins.desc": "Anbieter ein- oder ausschalten, zum Sortieren ziehen",
+  "settings.plugins.inTray": "Im Infobereich-Symbol angezeigt",
+  "settings.plugins.notInTray": "Im Infobereich-Symbol ausgeblendet",
 
   "overview.noProviders": "Keine Anbieter aktiviert",
 
@@ -105,6 +109,7 @@ export const de: Messages = {
   "pace.runsOutIn": "Aufgebraucht in {time}",
   "pace.short": "{value} zu wenig",
   "pace.deficit": "{value} im Defizit",
+  "pace.markerHint": "Die Linie zeigt ein gleichmäßiges Tempo: {percent} % des Zeitraums sind vorbei",
 
   "reset.soon": "Wird bald zurückgesetzt",
   "reset.in": "Wird in {time} zurückgesetzt",

@@ -51,6 +51,7 @@ export function resolveLanguage(
 ): LanguageCode {
   if (preference !== "system") return preference
   for (const tag of systemTags) {
+    if (!tag) continue // navigator.language can be undefined outside a browser
     const match = matchLanguage(tag)
     if (match) return match
   }

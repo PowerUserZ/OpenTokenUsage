@@ -51,9 +51,11 @@ export function SegmentedControl<T extends string | number>({
             role="radio"
             aria-checked={isActive}
             aria-label={label}
+            title={option.hintKey ? t(option.hintKey) : label}
             onClick={() => onChange(option.value)}
             className={cn(
-              "flex-1 min-w-0 h-7 rounded-[3px] px-1.5 text-[13px] transition-colors",
+              // nowrap + truncate: a long translation must never wrap out of the 28px pill
+              "flex-1 min-w-0 h-7 rounded-[3px] px-1.5 text-[13px] whitespace-nowrap truncate transition-colors",
               isActive
                 ? "bg-primary text-primary-foreground font-medium"
                 : "text-foreground hover:bg-accent active:bg-accent/60",

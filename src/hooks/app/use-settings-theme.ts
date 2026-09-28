@@ -4,6 +4,7 @@ import type { ThemeMode } from "@/lib/settings"
 export function useSettingsTheme(themeMode: ThemeMode) {
   useEffect(() => {
     const root = document.documentElement
+    root.classList.toggle("oled", themeMode === "oled")
     const apply = (dark: boolean) => {
       root.classList.toggle("dark", dark)
     }
@@ -12,7 +13,7 @@ export function useSettingsTheme(themeMode: ThemeMode) {
       apply(false)
       return
     }
-    if (themeMode === "dark") {
+    if (themeMode === "dark" || themeMode === "oled") {
       apply(true)
       return
     }

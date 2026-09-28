@@ -62,10 +62,12 @@ export const zhCN: Messages = {
   "settings.tray.colorTitle": "通知区域百分比文字颜色",
   "settings.tray.auto": "自动",
   "settings.theme.title": "主题",
-  "settings.theme.desc": "浅色、深色或跟随 Windows",
-  "settings.theme.system": "跟随系统",
+  "settings.theme.desc": "跟随 Windows、浅色、深色或 OLED 纯黑",
+  "settings.theme.system": "Windows",
   "settings.theme.light": "浅色",
   "settings.theme.dark": "深色",
+  "settings.theme.oled": "OLED",
+  "settings.theme.oledHint": "纯黑背景，适合 OLED 屏幕",
   "settings.language.title": "语言",
   "settings.language.desc": "应用界面的显示语言",
   "settings.language.system": "Windows 默认",
@@ -81,6 +83,8 @@ export const zhCN: Messages = {
   "settings.startOnLogin.label": "登录时启动",
   "settings.plugins.title": "提供商",
   "settings.plugins.desc": "开启或关闭提供商，拖动以调整顺序",
+  "settings.plugins.inTray": "在通知区域图标中显示",
+  "settings.plugins.notInTray": "不在通知区域图标中显示",
 
   "overview.noProviders": "未启用任何提供商",
 
@@ -105,6 +109,7 @@ export const zhCN: Messages = {
   "pace.runsOutIn": "{time}后用尽",
   "pace.short": "不足 {value}",
   "pace.deficit": "超出 {value}",
+  "pace.markerHint": "竖线表示均匀用量：本周期已过去 {percent}%",
 
   "reset.soon": "即将重置",
   "reset.in": "{time}后重置",

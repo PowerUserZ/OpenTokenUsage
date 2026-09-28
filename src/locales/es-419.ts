@@ -62,10 +62,12 @@ export const es419: Messages = {
   "settings.tray.colorTitle": "Color del texto del porcentaje en la bandeja",
   "settings.tray.auto": "Automático",
   "settings.theme.title": "Tema",
-  "settings.theme.desc": "Claro, oscuro o igual que Windows",
-  "settings.theme.system": "Sistema",
+  "settings.theme.desc": "Igual que Windows, claro, oscuro o negro puro para pantallas OLED",
+  "settings.theme.system": "Windows",
   "settings.theme.light": "Claro",
   "settings.theme.dark": "Oscuro",
+  "settings.theme.oled": "OLED",
+  "settings.theme.oledHint": "Fondo negro puro, ideal para pantallas OLED",
   "settings.language.title": "Idioma",
   "settings.language.desc": "Idioma de los textos de la aplicación",
   "settings.language.system": "Predeterminado de Windows",
@@ -81,6 +83,8 @@ export const es419: Messages = {
   "settings.startOnLogin.label": "Abrir al iniciar sesión",
   "settings.plugins.title": "Proveedores",
   "settings.plugins.desc": "Activa o desactiva proveedores y arrastra para reordenarlos",
+  "settings.plugins.inTray": "Visible en el ícono del área de notificación",
+  "settings.plugins.notInTray": "Oculto en el ícono del área de notificación",
 
   "overview.noProviders": "No hay proveedores activados",
 
@@ -105,6 +109,7 @@ export const es419: Messages = {
   "pace.runsOutIn": "Se agota en {time}",
   "pace.short": "{value} por debajo del ritmo",
   "pace.deficit": "{value} de déficit",
+  "pace.markerHint": "La línea marca un ritmo constante: ya pasó el {percent}% del período",
 
   "reset.soon": "Se restablece pronto",
   "reset.in": "Se restablece en {time}",

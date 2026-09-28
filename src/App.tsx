@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { AppShell } from "@/components/app/app-shell"
 import { useAppPluginViews } from "@/hooks/app/use-app-plugin-views"
@@ -62,6 +62,7 @@ function App() {
     setTrayMetric,
     trayPercentColor,
     setTrayPercentColor,
+    setTrayHiddenPlugins,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setTimeFormatMode,
@@ -83,6 +84,7 @@ function App() {
       setTrayMetric: state.setTrayMetric,
       trayPercentColor: state.trayPercentColor,
       setTrayPercentColor: state.setTrayPercentColor,
+      setTrayHiddenPlugins: state.setTrayHiddenPlugins,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setTimeFormatMode: state.setTimeFormatMode,
@@ -111,9 +113,19 @@ function App() {
     onProbeResult: handleProbeResult,
   })
 
+  // Providers hidden from the tray stay in the nav; for the tray they count as disabled.
+  const trayHiddenPlugins = useAppPreferencesStore((state) => state.trayHiddenPlugins)
+  const trayPluginSettings = useMemo(
+    () =>
+      pluginSettings && trayHiddenPlugins.length > 0
+        ? { ...pluginSettings, disabled: [...pluginSettings.disabled, ...trayHiddenPlugins] }
+        : pluginSettings,
+    [pluginSettings, trayHiddenPlugins]
+  )
+
   const { scheduleTrayIconUpdate, traySettingsPreview } = useTrayIcon({
     pluginsMeta,
-    pluginSettings,
+    pluginSettings: trayPluginSettings,
     pluginStates,
     displayMode,
     menubarIconStyle,
@@ -140,6 +152,7 @@ function App() {
     setTrayProvider,
     setTrayMetric,
     setTrayPercentColor,
+    setTrayHiddenPlugins,
     setResetTimerDisplayMode,
     setTimeFormatMode,
     setGlobalShortcut,

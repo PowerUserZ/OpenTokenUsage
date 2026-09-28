@@ -93,6 +93,23 @@ pub fn get_accent_color() -> Option<String> {
     }
 }
 
+/// True when the taskbar uses the light theme. The tray icon sits on the taskbar, so its color must
+/// follow this (not the app theme): a light app on a dark taskbar needs a white tray icon.
+#[tauri::command]
+pub fn get_taskbar_is_light() -> bool {
+    let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
+    let value: std::io::Result<u32> = hkcu
+        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+        .and_then(|key| key.get_value("SystemUsesLightTheme"));
+    match value {
+        Ok(dword) => dword != 0,
+        Err(e) => {
+            log::warn!("failed to read taskbar theme, assuming dark: {}", e);
+            false
+        }
+    }
+}
+
 /// DWM stores the accent as 0xAABBGGRR.
 fn accent_dword_to_hex(dword: u32) -> String {
     let [r, g, b, _a] = dword.to_le_bytes();

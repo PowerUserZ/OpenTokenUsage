@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
+import { invoke } from "@tauri-apps/api/core"
 import type { PluginMeta } from "@/lib/plugin-types"
 import type { DisplayMode, MenubarIconStyle, PluginSettings } from "@/lib/settings"
 import { getEnabledPluginIds } from "@/lib/settings"
@@ -83,7 +84,7 @@ export function useTrayIcon({
   const trayProviderRef = useRef(trayProvider)
   const trayMetricRef = useRef(trayMetric)
   const trayPercentColorRef = useRef(trayPercentColor)
-  const themeModeRef = useRef(themeMode)
+  const taskbarIsLightRef = useRef(false)
   const activeViewRef = useRef(activeView)
   const lastTrayProviderIdRef = useRef<string | null>(null)
 
@@ -119,9 +120,6 @@ export function useTrayIcon({
     trayPercentColorRef.current = trayPercentColor
   }, [trayPercentColor])
 
-  useEffect(() => {
-    themeModeRef.current = themeMode
-  }, [themeMode])
 
 
   useEffect(() => {
@@ -211,11 +209,8 @@ export function useTrayIcon({
         return
       }
 
-      // Compute tray icon color based on theme
-      const currentTheme = themeModeRef.current
-      const isDarkTheme = currentTheme === "dark" ||
-        (currentTheme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
-      const trayIconColor = isDarkTheme ? "white" : "black"
+      // The icon sits on the taskbar, so its color follows the taskbar theme, not the app theme.
+      const trayIconColor = taskbarIsLightRef.current ? "black" : "white"
 
       const style = menubarIconStyleRef.current
       const sizePx = getTrayIconSizePx(window.devicePixelRatio)
@@ -393,6 +388,24 @@ export function useTrayIcon({
     if (!trayReady) return
     scheduleTrayIconUpdate("settings", 0)
   }, [activeView, menubarIconStyle, scheduleTrayIconUpdate, trayReady])
+
+  // Taskbar theme drives the icon color; re-read it when the app theme changes (Windows mode
+  // switches usually come with one) and whenever the panel is focused.
+  useEffect(() => {
+    if (!trayReady) return
+    const refresh = () => {
+      invoke<boolean>("get_taskbar_is_light")
+        .then((isLight) => {
+          if (taskbarIsLightRef.current === isLight) return
+          taskbarIsLightRef.current = isLight
+          scheduleTrayIconUpdate("settings", 0)
+        })
+        .catch((error) => console.error("Failed to read taskbar theme:", error))
+    }
+    refresh()
+    window.addEventListener("focus", refresh)
+    return () => window.removeEventListener("focus", refresh)
+  }, [themeMode, scheduleTrayIconUpdate, trayReady])
 
   useEffect(() => {
     return () => {

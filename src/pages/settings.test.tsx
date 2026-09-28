@@ -147,8 +147,9 @@ describe("SettingsPage", () => {
   it("renders app theme section with theme options", () => {
     render(<SettingsPage {...defaultProps} />)
     expect(screen.getByText("Theme")).toBeInTheDocument()
-    expect(screen.getByText("Light, dark, or match Windows")).toBeInTheDocument()
-    expect(screen.getByText("System")).toBeInTheDocument()
+    expect(screen.getByText("Match Windows, light, dark, or pure black for OLED screens")).toBeInTheDocument()
+    expect(screen.getByText("Windows")).toBeInTheDocument()
+    expect(screen.getByText("OLED")).toBeInTheDocument()
     expect(screen.getByText("Light")).toBeInTheDocument()
     expect(screen.getByText("Dark")).toBeInTheDocument()
   })

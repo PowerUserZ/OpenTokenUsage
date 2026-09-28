@@ -62,10 +62,12 @@ export const ptBR: Messages = {
   "settings.tray.colorTitle": "Cor do texto da porcentagem",
   "settings.tray.auto": "Automático",
   "settings.theme.title": "Tema",
-  "settings.theme.desc": "Claro, escuro ou igual ao Windows",
-  "settings.theme.system": "Sistema",
+  "settings.theme.desc": "Igual ao Windows, claro, escuro ou preto puro para telas OLED",
+  "settings.theme.system": "Windows",
   "settings.theme.light": "Claro",
   "settings.theme.dark": "Escuro",
+  "settings.theme.oled": "OLED",
+  "settings.theme.oledHint": "Fundo preto puro, ideal para telas OLED",
   "settings.language.title": "Idioma",
   "settings.language.desc": "Idioma dos textos do aplicativo",
   "settings.language.system": "Padrão do Windows",
@@ -81,6 +83,8 @@ export const ptBR: Messages = {
   "settings.startOnLogin.label": "Iniciar ao entrar",
   "settings.plugins.title": "Provedores",
   "settings.plugins.desc": "Ative ou desative provedores e arraste para reordenar",
+  "settings.plugins.inTray": "Exibido no ícone da área de notificação",
+  "settings.plugins.notInTray": "Oculto do ícone da área de notificação",
 
   "overview.noProviders": "Nenhum provedor ativado",
 
@@ -105,6 +109,7 @@ export const ptBR: Messages = {
   "pace.runsOutIn": "Acaba em {time}",
   "pace.short": "Faltam {value}",
   "pace.deficit": "Déficit de {value}",
+  "pace.markerHint": "A linha marca um ritmo constante: {percent}% do período já passou",
 
   "reset.soon": "Redefine em breve",
   "reset.in": "Redefine em {time}",

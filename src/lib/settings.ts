@@ -14,7 +14,8 @@ export type PluginSettings = {
 
 export type AutoUpdateIntervalMinutes = 5 | 15 | 30 | 60;
 
-export type ThemeMode = "system" | "light" | "dark";
+/** "oled" = dark with a pure black background. */
+export type ThemeMode = "system" | "light" | "dark" | "oled";
 
 export type DisplayMode = "used" | "left";
 
@@ -45,6 +46,7 @@ const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const TRAY_PROVIDER_KEY = "trayProvider";
 const TRAY_METRIC_KEY = "trayMetric";
 const TRAY_PERCENT_COLOR_KEY = "trayPercentColor";
+const TRAY_HIDDEN_PLUGINS_KEY = "trayHiddenPlugins";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
 const LANGUAGE_KEY = "language";
@@ -62,14 +64,19 @@ export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = true;
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
-const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
+const THEME_MODES: ThemeMode[] = ["system", "light", "dark", "oled"];
 const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
 const TIME_FORMAT_MODES: TimeFormatMode[] = ["auto", "12h", "24h"];
 const MENUBAR_ICON_STYLES: MenubarIconStyle[] = ["icon", "percent", "bars"];
 
-/** A settings choice; the UI renders `t(labelKey, labelVars)`. */
-export type SettingOption<T> = { value: T; labelKey: MessageKey; labelVars?: Record<string, number> };
+/** A settings choice; the UI renders `t(labelKey, labelVars)` and shows `hintKey` on hover. */
+export type SettingOption<T> = {
+  value: T;
+  labelKey: MessageKey;
+  labelVars?: Record<string, number>;
+  hintKey?: MessageKey;
+};
 
 export const MENUBAR_ICON_STYLE_OPTIONS: SettingOption<MenubarIconStyle>[] = [
   { value: "icon", labelKey: "settings.tray.icon" },
@@ -87,6 +94,7 @@ export const AUTO_UPDATE_OPTIONS: SettingOption<AutoUpdateIntervalMinutes>[] =
 export const THEME_OPTIONS: SettingOption<ThemeMode>[] = THEME_MODES.map((value) => ({
   value,
   labelKey: `settings.theme.${value}` as const,
+  hintKey: value === "oled" ? "settings.theme.oledHint" : undefined,
 }));
 
 export const DISPLAY_MODE_OPTIONS: SettingOption<DisplayMode>[] = [
@@ -339,6 +347,17 @@ export async function loadTrayMetric(): Promise<TrayMetric> {
 
 export async function saveTrayMetric(value: TrayMetric): Promise<void> {
   await store.set(TRAY_METRIC_KEY, value);
+  await store.save();
+}
+
+/** Providers kept in the side nav but left out of the tray icon/tooltip. */
+export async function loadTrayHiddenPlugins(): Promise<string[]> {
+  const stored = await store.get<unknown>(TRAY_HIDDEN_PLUGINS_KEY);
+  return Array.isArray(stored) ? stored.filter((id): id is string => typeof id === "string") : [];
+}
+
+export async function saveTrayHiddenPlugins(ids: string[]): Promise<void> {
+  await store.set(TRAY_HIDDEN_PLUGINS_KEY, ids);
   await store.save();
 }
 

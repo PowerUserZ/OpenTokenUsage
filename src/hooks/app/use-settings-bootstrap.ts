@@ -23,6 +23,7 @@ import {
   loadMenubarIconStyle,
   loadTrayMetric,
   loadLanguage,
+  loadTrayHiddenPlugins,
   loadTrayPercentColor,
   loadTrayProvider,
   migrateLegacyTraySettings,
@@ -62,6 +63,7 @@ type UseSettingsBootstrapArgs = {
   setTrayProvider: (value: TrayProvider) => void
   setTrayMetric: (value: TrayMetric) => void
   setTrayPercentColor: (value: TrayPercentColor) => void
+  setTrayHiddenPlugins: (value: string[]) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -81,6 +83,7 @@ export function useSettingsBootstrap({
   setTrayProvider,
   setTrayMetric,
   setTrayPercentColor,
+  setTrayHiddenPlugins,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -104,6 +107,12 @@ export function useSettingsBootstrap({
     const loadSettings = async () => {
       // Language first and on its own: the UI remounts on a language switch, and a failure in the
       // plugin chain below must not keep the stored language from applying.
+      try {
+        const hidden = await loadTrayHiddenPlugins()
+        if (isMounted) setTrayHiddenPlugins(hidden)
+      } catch (error) {
+        console.error("Failed to load tray-hidden providers:", error)
+      }
       try {
         const storedLanguage = await loadLanguage()
         if (isMounted) useLocaleStore.getState().setPreference(storedLanguage)
@@ -247,6 +256,7 @@ export function useSettingsBootstrap({
     setTrayProvider,
     setTrayMetric,
     setTrayPercentColor,
+    setTrayHiddenPlugins,
     migrateWindsurfToDevin,
     migrateLegacyTraySettings,
     setPluginSettings,

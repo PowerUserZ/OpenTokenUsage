@@ -62,10 +62,12 @@ export const tr: Messages = {
   "settings.tray.colorTitle": "Bildirim alanı yüzde metni rengi",
   "settings.tray.auto": "Otomatik",
   "settings.theme.title": "Tema",
-  "settings.theme.desc": "Açık, koyu veya Windows ile aynı",
-  "settings.theme.system": "Sistem varsayılanı",
+  "settings.theme.desc": "Windows ile aynı, açık, koyu veya OLED ekranlar için tam siyah",
+  "settings.theme.system": "Windows",
   "settings.theme.light": "Açık",
   "settings.theme.dark": "Koyu",
+  "settings.theme.oled": "OLED",
+  "settings.theme.oledHint": "Tam siyah arka plan, OLED ekranlar için ideal",
   "settings.language.title": "Dil",
   "settings.language.desc": "Uygulama metinlerinin dili",
   "settings.language.system": "Windows varsayılanı",
@@ -81,6 +83,8 @@ export const tr: Messages = {
   "settings.startOnLogin.label": "Oturum açıldığında başlat",
   "settings.plugins.title": "Sağlayıcılar",
   "settings.plugins.desc": "Sağlayıcıları açıp kapatın; sıralamak için sürükleyin",
+  "settings.plugins.inTray": "Bildirim alanı simgesinde gösteriliyor",
+  "settings.plugins.notInTray": "Bildirim alanı simgesinde gizli",
 
   "overview.noProviders": "Etkin sağlayıcı yok",
 
@@ -105,6 +109,7 @@ export const tr: Messages = {
   "pace.runsOutIn": "{time} sonra tükenir",
   "pace.short": "{value} eksik",
   "pace.deficit": "{value} fazla",
+  "pace.markerHint": "Çizgi eşit kullanım temposunu gösterir: dönemin %{percent} kadarı geçti",
 
   "reset.soon": "Yakında sıfırlanır",
   "reset.in": "{time} sonra sıfırlanır",

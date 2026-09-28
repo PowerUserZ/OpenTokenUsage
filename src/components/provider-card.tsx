@@ -18,6 +18,7 @@ import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pa
 import { buildPaceDetailText, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
 import { formatResetAbsoluteLabel, formatResetRelativeLabel, formatResetTooltipText } from "@/lib/reset-tooltip"
 import { t, tLabel } from "@/lib/i18n"
+import { translatePluginError } from "@/lib/plugin-errors"
 
 interface ProviderCardProps {
   name: string
@@ -287,12 +288,12 @@ export function ProviderCard({
                   className="flex items-center gap-1.5 mb-2 text-xs text-destructive"
                 >
                   <AlertCircle className="h-3 w-3 flex-shrink-0" />
-                  <span className="truncate">{error}</span>
+                  <span className="truncate">{translatePluginError(error)}</span>
                 </div>
               )}
             />
             <TooltipContent side="top" className="max-w-xs break-words text-xs">
-              {error}
+              {translatePluginError(error)}
             </TooltipContent>
           </Tooltip>
         )}
@@ -460,13 +461,11 @@ function MetricLineRenderer({
       ? calculatePaceStatus(line.used, line.limit, resetsAtMs, periodDurationMs!, now)
       : null
     const paceStatus = paceResult?.status ?? null
+    const elapsedPercent = hasTimeMarkerContext
+      ? clamp01((now - (resetsAtMs - periodDurationMs!)) / periodDurationMs!) * 100
+      : 0
     const paceMarkerValue = hasTimeMarkerContext && paceStatus && paceStatus !== "on-track"
-      ? (() => {
-          const periodStartMs = resetsAtMs - periodDurationMs!
-          const elapsedFraction = clamp01((now - periodStartMs) / periodDurationMs!)
-          const elapsedPercent = elapsedFraction * 100
-          return displayMode === "used" ? elapsedPercent : 100 - elapsedPercent
-        })()
+      ? (displayMode === "used" ? elapsedPercent : 100 - elapsedPercent)
       : undefined
     const isLimitReached = line.used >= line.limit
     const paceDetailText =
@@ -507,12 +506,33 @@ function MetricLineRenderer({
             <PaceIndicator status={paceStatus} detailText={paceDetailText} isLimitReached={isLimitReached} />
           )}
         </div>
-        <Progress
-          value={percent}
-          indicatorColor={line.color}
-          markerValue={paceMarkerValue}
-          refreshing={refreshing}
-        />
+        {paceMarkerValue !== undefined ? (
+          // The thin marker is too small to hover, so the whole bar explains it.
+          <Tooltip>
+            <TooltipTrigger
+              render={(props) => (
+                <div {...props}>
+                  <Progress
+                    value={percent}
+                    indicatorColor={line.color}
+                    markerValue={paceMarkerValue}
+                    refreshing={refreshing}
+                  />
+                </div>
+              )}
+            />
+            <TooltipContent side="top" className="max-w-[240px] text-xs text-center">
+              {t("pace.markerHint", { percent: Math.round(elapsedPercent) })}
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <Progress
+            value={percent}
+            indicatorColor={line.color}
+            markerValue={paceMarkerValue}
+            refreshing={refreshing}
+          />
+        )}
         <div className="flex justify-between items-center mt-1.5">
           <span className="text-xs text-muted-foreground tabular-nums">
             {primaryText}

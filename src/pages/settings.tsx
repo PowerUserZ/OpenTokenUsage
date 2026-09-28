@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { Eye, EyeOff, GripVertical } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import { SegmentedControl, SettingsSection } from "@/components/settings-section";
@@ -26,6 +26,7 @@ import {
   MENUBAR_ICON_STYLE_OPTIONS,
   RESET_TIMER_DISPLAY_OPTIONS,
   saveLanguage,
+  saveTrayHiddenPlugins,
   THEME_OPTIONS,
   TIME_FORMAT_OPTIONS,
   type AutoUpdateIntervalMinutes,
@@ -40,6 +41,7 @@ import { getTimeFormatter } from "@/lib/reset-tooltip";
 import { LANGUAGES, resolveLanguage, t, useLocaleStore, type LanguagePreference } from "@/lib/i18n";
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon";
 import { cn } from "@/lib/utils";
+import { useAppPreferencesStore } from "@/stores/app-preferences-store";
 
 interface PluginConfig {
   id: string;
@@ -116,9 +118,13 @@ function TrayIconStylePreview({
 function SortablePluginItem({
   plugin,
   onToggle,
+  inTray,
+  onToggleTray,
 }: {
   plugin: PluginConfig;
   onToggle: (id: string) => void;
+  inTray: boolean;
+  onToggleTray: (id: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: plugin.id });
 
@@ -145,6 +151,25 @@ function SortablePluginItem({
       <span className={cn("flex-1 text-[13px]", !plugin.enabled && "text-muted-foreground")}>
         {plugin.name}
       </span>
+
+      {plugin.enabled && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleTray(plugin.id);
+          }}
+          title={t(inTray ? "settings.plugins.inTray" : "settings.plugins.notInTray")}
+          aria-label={t(inTray ? "settings.plugins.inTray" : "settings.plugins.notInTray")}
+          aria-pressed={inTray}
+          className={cn(
+            "inline-flex items-center justify-center size-6 rounded-md hover:bg-accent transition-colors",
+            inTray ? "text-foreground" : "text-muted-foreground/60"
+          )}
+        >
+          {inTray ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+        </button>
+      )}
 
       {/* Wrap to stop Base UI's internal input.click() from bubbling to the row div */}
       <span onClick={(e) => e.stopPropagation()}>
@@ -261,6 +286,18 @@ export function SettingsPage({
   startOnLogin,
   onStartOnLoginChange,
 }: SettingsPageProps) {
+  const trayHiddenPlugins = useAppPreferencesStore((state) => state.trayHiddenPlugins);
+  const setTrayHiddenPlugins = useAppPreferencesStore((state) => state.setTrayHiddenPlugins);
+  const handleToggleTray = (id: string) => {
+    const next = trayHiddenPlugins.includes(id)
+      ? trayHiddenPlugins.filter((hiddenId) => hiddenId !== id)
+      : [...trayHiddenPlugins, id];
+    setTrayHiddenPlugins(next);
+    void saveTrayHiddenPlugins(next).catch((error) => {
+      console.error("Failed to save tray-hidden providers:", error);
+    });
+  };
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -419,7 +456,13 @@ export function SettingsPage({
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={plugins.map((p) => p.id)} strategy={verticalListSortingStrategy}>
               {plugins.map((plugin) => (
-                <SortablePluginItem key={plugin.id} plugin={plugin} onToggle={onToggle} />
+                <SortablePluginItem
+                  key={plugin.id}
+                  plugin={plugin}
+                  onToggle={onToggle}
+                  inTray={!trayHiddenPlugins.includes(plugin.id)}
+                  onToggleTray={handleToggleTray}
+                />
               ))}
             </SortableContext>
           </DndContext>

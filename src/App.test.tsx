@@ -25,6 +25,7 @@ const state = vi.hoisted(() => ({
   saveTrayProviderMock: vi.fn(),
   loadTrayMetricMock: vi.fn(),
   saveTrayMetricMock: vi.fn(),
+  loadTrayHiddenPluginsMock: vi.fn(),
   loadTrayPercentColorMock: vi.fn(),
   saveTrayPercentColorMock: vi.fn(),
   migrateLegacyTraySettingsMock: vi.fn(),
@@ -241,6 +242,8 @@ vi.mock("@/lib/settings", async () => {
     saveTrayMetric: state.saveTrayMetricMock,
     loadTrayPercentColor: state.loadTrayPercentColorMock,
     saveTrayPercentColor: state.saveTrayPercentColorMock,
+    loadTrayHiddenPlugins: state.loadTrayHiddenPluginsMock,
+    saveTrayHiddenPlugins: vi.fn(async () => undefined),
     migrateLegacyTraySettings: state.migrateLegacyTraySettingsMock,
     loadGlobalShortcut: state.loadGlobalShortcutMock,
     saveGlobalShortcut: state.saveGlobalShortcutMock,
@@ -326,6 +329,8 @@ describe("App", () => {
     state.loadTrayProviderMock.mockResolvedValue("auto")
     state.saveTrayProviderMock.mockResolvedValue(undefined)
     state.loadTrayMetricMock.mockResolvedValue("auto")
+    state.loadTrayHiddenPluginsMock.mockReset()
+    state.loadTrayHiddenPluginsMock.mockResolvedValue([])
     state.saveTrayMetricMock.mockResolvedValue(undefined)
     state.loadTrayPercentColorMock.mockResolvedValue("#ffffff")
     state.saveTrayPercentColorMock.mockResolvedValue(undefined)
@@ -409,7 +414,7 @@ describe("App", () => {
     expect(document.documentElement.classList.contains("dark")).toBe(false)
 
     // Back to system should subscribe to matchMedia changes
-    await userEvent.click(await screen.findByRole("radio", { name: "System" }))
+    await userEvent.click(await screen.findByRole("radio", { name: "Windows" }))
     expect(mq.addEventListener).toHaveBeenCalled()
 
     mmSpy.mockRestore()
@@ -735,6 +740,43 @@ describe("App", () => {
       expect(latestCall).toBeDefined()
       expect(latestCall!.style).toBe("percent")
     })
+  })
+
+  it("keeps providers hidden from the tray out of the tray bars", async () => {
+    state.loadDisplayModeMock.mockResolvedValue("used")
+    state.loadMenubarIconStyleMock.mockResolvedValue("bars")
+    state.loadTrayHiddenPluginsMock.mockResolvedValue(["a"])
+    state.invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_plugins") {
+        return ["a", "b"].map((id) => ({
+          id,
+          name: id.toUpperCase(),
+          iconUrl: `icon-${id}`,
+          primaryCandidates: ["Session"],
+          lines: [{ type: "progress", label: "Session", scope: "overview" }],
+        }))
+      }
+      return null
+    })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
+
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    for (const [id, used] of [["a", 90], ["b", 30]] as const) {
+      state.probeHandlers?.onResult({
+        providerId: id,
+        displayName: id.toUpperCase(),
+        iconUrl: `icon-${id}`,
+        lines: [{ type: "progress", label: "Session", used, limit: 100, format: { kind: "percent" } }],
+      })
+    }
+
+    await waitFor(() => {
+      const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
+      expect(latestCall?.bars?.map((bar: { id: string }) => bar.id)).toEqual(["b"])
+    })
+    // Still in the side nav: hiding only affects the tray.
+    expect(screen.getByRole("button", { name: "A" })).toBeInTheDocument()
   })
 
   // Regression: the bars style ignored the Metric dropdown (only a second, duplicate Default/Weekly

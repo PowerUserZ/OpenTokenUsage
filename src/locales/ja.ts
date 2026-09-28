@@ -62,10 +62,12 @@ export const ja: Messages = {
   "settings.tray.colorTitle": "トレイのパーセント表示の文字色",
   "settings.tray.auto": "自動",
   "settings.theme.title": "テーマ",
-  "settings.theme.desc": "ライト、ダーク、または Windows に合わせる",
-  "settings.theme.system": "システム",
+  "settings.theme.desc": "Windows に合わせる、ライト、ダーク、または OLED 向けの純黒",
+  "settings.theme.system": "Windows",
   "settings.theme.light": "ライト",
   "settings.theme.dark": "ダーク",
+  "settings.theme.oled": "OLED",
+  "settings.theme.oledHint": "純黒の背景。OLED 画面に最適",
   "settings.language.title": "言語",
   "settings.language.desc": "アプリの表示言語",
   "settings.language.system": "Windows の既定",
@@ -81,6 +83,8 @@ export const ja: Messages = {
   "settings.startOnLogin.label": "サインイン時に起動",
   "settings.plugins.title": "プロバイダー",
   "settings.plugins.desc": "プロバイダーのオン/オフを切り替え、ドラッグで並べ替え",
+  "settings.plugins.inTray": "通知領域のアイコンに表示",
+  "settings.plugins.notInTray": "通知領域のアイコンに非表示",
 
   "overview.noProviders": "有効なプロバイダーがありません",
 
@@ -105,6 +109,7 @@ export const ja: Messages = {
   "pace.runsOutIn": "{time}後に使い切る見込み",
   "pace.short": "{value} 不足",
   "pace.deficit": "{value} 超過",
+  "pace.markerHint": "線は均等なペースの目安です（期間の {percent}% が経過）",
 
   "reset.soon": "まもなくリセット",
   "reset.in": "{time}後にリセット",

@@ -62,10 +62,12 @@ export const en = {
   "settings.tray.colorTitle": "Tray percent text color",
   "settings.tray.auto": "Auto",
   "settings.theme.title": "Theme",
-  "settings.theme.desc": "Light, dark, or match Windows",
-  "settings.theme.system": "System",
+  "settings.theme.desc": "Match Windows, light, dark, or pure black for OLED screens",
+  "settings.theme.system": "Windows",
   "settings.theme.light": "Light",
   "settings.theme.dark": "Dark",
+  "settings.theme.oled": "OLED",
+  "settings.theme.oledHint": "Pure black background, easy on OLED screens",
   "settings.language.title": "Language",
   "settings.language.desc": "Language of the app's text",
   "settings.language.system": "Windows default",
@@ -81,6 +83,8 @@ export const en = {
   "settings.startOnLogin.label": "Start on login",
   "settings.plugins.title": "Providers",
   "settings.plugins.desc": "Turn providers on or off and drag to reorder",
+  "settings.plugins.inTray": "Shown in the tray icon",
+  "settings.plugins.notInTray": "Hidden from the tray icon",
 
   "overview.noProviders": "No providers enabled",
 
@@ -105,6 +109,7 @@ export const en = {
   "pace.runsOutIn": "Runs out in {time}",
   "pace.short": "{value} short",
   "pace.deficit": "{value} in deficit",
+  "pace.markerHint": "The line marks an even pace: {percent}% of this period has passed",
 
   "reset.soon": "Resets soon",
   "reset.in": "Resets in {time}",

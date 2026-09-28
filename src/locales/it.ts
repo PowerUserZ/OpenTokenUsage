@@ -62,10 +62,12 @@ export const it: Messages = {
   "settings.tray.colorTitle": "Colore del testo della percentuale",
   "settings.tray.auto": "Automatico",
   "settings.theme.title": "Tema",
-  "settings.theme.desc": "Chiaro, scuro o come Windows",
-  "settings.theme.system": "Sistema",
+  "settings.theme.desc": "Come Windows, chiaro, scuro o nero puro per schermi OLED",
+  "settings.theme.system": "Windows",
   "settings.theme.light": "Chiaro",
   "settings.theme.dark": "Scuro",
+  "settings.theme.oled": "OLED",
+  "settings.theme.oledHint": "Sfondo nero puro, ideale per gli schermi OLED",
   "settings.language.title": "Lingua",
   "settings.language.desc": "Lingua di visualizzazione dell'app",
   "settings.language.system": "Predefinita di Windows",
@@ -81,6 +83,8 @@ export const it: Messages = {
   "settings.startOnLogin.label": "Avvia all'accesso",
   "settings.plugins.title": "Provider",
   "settings.plugins.desc": "Attiva o disattiva i provider e trascinali per riordinarli",
+  "settings.plugins.inTray": "Mostrato nell'icona dell'area di notifica",
+  "settings.plugins.notInTray": "Nascosto dall'icona dell'area di notifica",
 
   "overview.noProviders": "Nessun provider attivo",
 
@@ -105,6 +109,7 @@ export const it: Messages = {
   "pace.runsOutIn": "Si esaurisce tra {time}",
   "pace.short": "Mancano {value}",
   "pace.deficit": "{value} in deficit",
+  "pace.markerHint": "La linea indica un ritmo costante: è trascorso il {percent}% del periodo",
 
   "reset.soon": "Si azzera a breve",
   "reset.in": "Si azzera tra {time}",

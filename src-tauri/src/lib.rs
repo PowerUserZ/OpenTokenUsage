@@ -648,6 +648,7 @@ pub fn run() {
             update_global_shortcut,
             window_style::get_window_backdrop,
             window_style::get_accent_color,
+            window_style::get_taskbar_is_light,
             tray::set_tray_menu_labels
         ])
         .setup(|app| {
