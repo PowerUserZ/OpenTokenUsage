@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
+import { listen } from "@tauri-apps/api/event"
 import type { PluginState } from "@/hooks/app/types"
 import type { PluginMeta } from "@/lib/plugin-types"
 import { isPerProviderTrayStyle, type DisplayMode, type MenubarIconStyle, type PluginSettings } from "@/lib/settings"
@@ -15,7 +16,10 @@ const MAX_PROVIDER_ICONS = 12
 let appIconHidden = false
 export const isAppTrayIconHidden = () => appIconHidden
 
-/** Taskbar theme (not the app theme): the tray sits on the taskbar. Re-read on focus and theme change. */
+/**
+ * Taskbar theme (not the app theme): the tray sits on the taskbar. The host sends "taskbar:theme"
+ * when Windows switches light/dark; also re-read on focus and app theme change.
+ */
 export function useTaskbarIsLight(themeMode: string): boolean {
   const [isLight, setIsLight] = useState(false)
   useEffect(() => {
@@ -26,7 +30,11 @@ export function useTaskbarIsLight(themeMode: string): boolean {
     }
     refresh()
     window.addEventListener("focus", refresh)
-    return () => window.removeEventListener("focus", refresh)
+    const unlisten = listen<boolean>("taskbar:theme", (event) => setIsLight(event.payload))
+    return () => {
+      window.removeEventListener("focus", refresh)
+      void unlisten.then((stop) => stop()).catch(() => {})
+    }
   }, [themeMode])
   return isLight
 }

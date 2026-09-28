@@ -827,7 +827,7 @@ describe("App", () => {
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
 
-    await userEvent.selectOptions(await screen.findByRole("combobox", { name: "Tray metric" }), "Weekly")
+    await userEvent.selectOptions(await screen.findByRole("combobox", { name: "Metric" }), "Weekly")
     expect(state.saveTrayMetricMock).toHaveBeenCalledWith("Weekly")
 
     await waitFor(() => {
@@ -888,7 +888,7 @@ describe("App", () => {
 
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
-    await userEvent.selectOptions(await screen.findByRole("combobox", { name: "Tray metric" }), "Weekly")
+    await userEvent.selectOptions(await screen.findByRole("combobox", { name: "Metric" }), "Weekly")
 
     // Cursor has no weekly line -> falls back to its primary, so the list is mixed
     // and every line gets a metric tag.

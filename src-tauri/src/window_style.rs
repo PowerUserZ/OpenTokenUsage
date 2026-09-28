@@ -93,13 +93,15 @@ pub fn get_accent_color() -> Option<String> {
     }
 }
 
+const PERSONALIZE_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+
 /// True when the taskbar uses the light theme. The tray icon sits on the taskbar, so its color must
 /// follow this (not the app theme): a light app on a dark taskbar needs a white tray icon.
 #[tauri::command]
 pub fn get_taskbar_is_light() -> bool {
     let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
     let value: std::io::Result<u32> = hkcu
-        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+        .open_subkey(PERSONALIZE_KEY)
         .and_then(|key| key.get_value("SystemUsesLightTheme"));
     match value {
         Ok(dword) => dword != 0,
@@ -108,6 +110,48 @@ pub fn get_taskbar_is_light() -> bool {
             false
         }
     }
+}
+
+/// Sends "taskbar:theme" (true = light) as soon as Windows switches the taskbar between light and
+/// dark, so the tray icons and the taskbar strip change color right away, panel open or not.
+pub fn watch_taskbar_theme(app_handle: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        use tauri::Emitter;
+        use windows_sys::Win32::System::Registry::{
+            RegNotifyChangeKeyValue, REG_NOTIFY_CHANGE_LAST_SET,
+        };
+        let key = match winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+            .open_subkey_with_flags(PERSONALIZE_KEY, winreg::enums::KEY_NOTIFY)
+        {
+            Ok(key) => key,
+            Err(e) => {
+                log::warn!("cannot watch the taskbar theme: {}", e);
+                return;
+            }
+        };
+        let mut light = get_taskbar_is_light();
+        loop {
+            // Blocks until a value under the key is written (also for unrelated values).
+            let status = unsafe {
+                RegNotifyChangeKeyValue(
+                    key.raw_handle(),
+                    0,
+                    REG_NOTIFY_CHANGE_LAST_SET,
+                    std::ptr::null_mut(),
+                    0,
+                )
+            };
+            if status != 0 {
+                log::warn!("taskbar theme watch stopped (error {})", status);
+                return;
+            }
+            let now = get_taskbar_is_light();
+            if now != light {
+                light = now;
+                let _ = app_handle.emit("taskbar:theme", now);
+            }
+        }
+    });
 }
 
 /// DWM stores the accent as 0xAABBGGRR.

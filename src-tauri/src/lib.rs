@@ -591,6 +591,7 @@ pub fn run() {
             local_http_api::start_server();
 
             tray::create(app.handle())?;
+            window_style::watch_taskbar_theme(app.handle().clone());
 
             // Native auto-updater, restored to match upstream. Requires the
             // signed updater artifacts (latest.json + .sig) produced by the

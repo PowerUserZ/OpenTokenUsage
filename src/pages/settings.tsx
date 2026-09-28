@@ -644,7 +644,7 @@ export function SettingsPage({
             <label className="flex-1 text-xs text-muted-foreground">
               <span className="mb-1 block">{t("settings.tray.provider")}</span>
               <select
-                aria-label="Tray provider"
+                aria-label={t("settings.tray.provider")}
                 value={trayProvider}
                 onChange={(e) => onTrayProviderChange(e.target.value)}
                 className="fluent-control w-full"
@@ -660,7 +660,7 @@ export function SettingsPage({
             <label className="flex-1 text-xs text-muted-foreground">
               <span className="mb-1 block">{t("settings.tray.metric")}</span>
               <select
-                aria-label="Tray metric"
+                aria-label={t("settings.tray.metric")}
                 value={trayMetric}
                 onChange={(e) => onTrayMetricChange(e.target.value)}
                 className="fluent-control w-full"

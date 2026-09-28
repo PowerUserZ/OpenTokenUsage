@@ -4,6 +4,14 @@ import { AboutDialog } from "@/components/about-dialog";
 import type { UpdateStatus } from "@/hooks/use-app-update";
 import { useNowTicker } from "@/hooks/use-now-ticker";
 import { t } from "@/lib/i18n";
+import type { MessageKey } from "@/locales/en";
+
+/** Hover text for an update error; the status message is an internal (English) code. */
+const UPDATE_ERROR_TITLES: Record<string, MessageKey> = {
+  "Update check failed": "footer.updateCheckFailed",
+  "Download failed": "footer.updateDownloadFailed",
+  "Install failed": "footer.updateInstallFailed",
+};
 
 interface PanelFooterProps {
   version: string;
@@ -61,14 +69,14 @@ function VersionDisplay({
             type="button"
             onClick={onUpdateCheck}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            title={updateStatus.message}
+            title={t(UPDATE_ERROR_TITLES[updateStatus.message] ?? "footer.updateFailed")}
           >
             {t("footer.updatesSoon")}
           </button>
         );
       }
       return (
-        <span className="text-xs text-destructive" title={updateStatus.message}>
+        <span className="text-xs text-destructive" title={t(UPDATE_ERROR_TITLES[updateStatus.message] ?? "footer.updateFailed")}>
           {t("footer.updateFailed")}
         </span>
       );

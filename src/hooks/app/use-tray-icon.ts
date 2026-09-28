@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
 import { invoke } from "@tauri-apps/api/core"
+import { listen } from "@tauri-apps/api/event"
 import type { PluginMeta } from "@/lib/plugin-types"
 import type { DisplayMode, MenubarIconStyle, PluginSettings } from "@/lib/settings"
 import { getEnabledPluginIds, isPerProviderTrayStyle } from "@/lib/settings"
@@ -412,8 +413,8 @@ export function useTrayIcon({
     scheduleTrayIconUpdate("settings", 0)
   }, [activeView, menubarIconStyle, scheduleTrayIconUpdate, trayReady])
 
-  // Taskbar theme drives the icon color; re-read it when the app theme changes (Windows mode
-  // switches usually come with one) and whenever the panel is focused.
+  // Taskbar theme drives the icon color; re-read it when Windows switches light/dark (the host's
+  // "taskbar:theme"), when the app theme changes, and whenever the panel is focused.
   useEffect(() => {
     if (!trayReady) return
     const refresh = () => {
@@ -427,7 +428,11 @@ export function useTrayIcon({
     }
     refresh()
     window.addEventListener("focus", refresh)
-    return () => window.removeEventListener("focus", refresh)
+    const unlisten = listen("taskbar:theme", refresh)
+    return () => {
+      window.removeEventListener("focus", refresh)
+      void unlisten.then((stop) => stop()).catch(() => {})
+    }
   }, [themeMode, scheduleTrayIconUpdate, trayReady])
 
   useEffect(() => {

@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest"
 import type { PluginMeta } from "@/lib/plugin-types"
-import { DEFAULT_TASKBAR_STRIP_STYLE, normalizeTaskbarStripStyle, type TaskbarStripStyle } from "@/lib/settings"
-import { buildTaskbarStripItems, colorOnScale, makeTaskbarStripSvg, stripPluginSettings } from "@/lib/taskbar-strip"
+import {
+  DEFAULT_TASKBAR_STRIP_STYLE,
+  normalizeTaskbarStripStyle,
+  TASKBAR_STRIP_COLOR_SCALES,
+  type TaskbarStripStyle,
+} from "@/lib/settings"
+import {
+  buildTaskbarStripItems,
+  colorOnScale,
+  makeTaskbarStripSvg,
+  readableOnTaskbar,
+  stripPluginSettings,
+} from "@/lib/taskbar-strip"
+import { readableBrandColor } from "@/lib/tray-provider-icons"
 
 const meta = (id: string, brandColor?: string) =>
   ({ id, name: id, iconUrl: `data:image/svg+xml;base64,${id}`, brandColor }) as unknown as PluginMeta
@@ -9,7 +21,7 @@ const meta = (id: string, brandColor?: string) =>
 const pluginsMeta = [meta("claude", "#DE7356"), meta("codex", "#000000")]
 const style = (patch: Partial<TaskbarStripStyle> = {}) => ({ ...DEFAULT_TASKBAR_STRIP_STYLE, ...patch })
 
-const build = (patch: Partial<TaskbarStripStyle> = {}, displayMode: "used" | "left" = "used") =>
+const build = (patch: Partial<TaskbarStripStyle> = {}, displayMode: "used" | "left" = "used", onLightTaskbar = false) =>
   buildTaskbarStripItems({
     primaryBars: [
       { id: "claude", fraction: 0.58, label: "Session" },
@@ -20,7 +32,7 @@ const build = (patch: Partial<TaskbarStripStyle> = {}, displayMode: "used" | "le
       { id: "codex", fraction: 0.95, label: "Weekly", weekly: true },
     ],
     pluginsMeta,
-    onLightTaskbar: false,
+    onLightTaskbar,
     logoColors: true,
     displayMode,
     style: style(patch),
@@ -64,6 +76,25 @@ describe("buildTaskbarStripItems", () => {
     const [claude, codex] = build({ colorMode: "heat" })
     expect(claude!.lines[1]!.color).not.toBe("#ffffff") // 12% is already on its way to yellow
     expect(codex!.lines[0]!.color).toBe("#ef4444") // 95% = the scale's red
+  })
+
+  it("on a light taskbar: black text, and scale colors darkened until they read", () => {
+    expect(build({ colorMode: "off" }, "used", true)[0]!.lines[0]!.color).toBe("#000000")
+    const [claude] = build({ colorMode: "heat" }, "used", true)
+    const yellowish = colorOnScale(TASKBAR_STRIP_COLOR_SCALES.heat, 58, "#000000")
+    expect(readableBrandColor(yellowish, true)).toBeUndefined() // would vanish on white
+    expect(claude!.lines[0]!.color).not.toBe(yellowish)
+    expect(readableBrandColor(claude!.lines[0]!.color, true)).toBeDefined()
+  })
+})
+
+describe("readableOnTaskbar", () => {
+  it("keeps colors that already read and moves the rest toward black or white", () => {
+    expect(readableOnTaskbar("#ef4444", false)).toBe("#ef4444")
+    expect(readableOnTaskbar("#000000", true)).toBe("#000000")
+    const onWhite = readableOnTaskbar("#facc15", true)
+    expect(onWhite).not.toBe("#facc15")
+    expect(readableBrandColor(onWhite, true)).toBe(onWhite)
   })
 })
 

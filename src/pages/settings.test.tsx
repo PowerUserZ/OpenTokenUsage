@@ -281,7 +281,7 @@ describe("SettingsPage", () => {
     render(
       <SettingsPage {...defaultProps} menubarIconStyle="bars" onTrayMetricChange={onTrayMetricChange} />
     )
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Tray metric" }), "Weekly")
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Metric" }), "Weekly")
     expect(onTrayMetricChange).toHaveBeenCalledWith("Weekly")
     expect(screen.queryByRole("radio", { name: "Weekly" })).not.toBeInTheDocument()
   })

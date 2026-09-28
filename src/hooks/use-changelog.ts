@@ -58,9 +58,8 @@ export function useChangelog(currentVersion: string) {
         }
       } catch (err) {
         if (mounted) {
-          const message =
-            err instanceof Error ? err.message : "Failed to fetch releases"
-          setError(message)
+          console.error("Failed to fetch release notes:", err)
+          setError(err instanceof Error ? err.message : String(err))
         }
       } finally {
         if (mounted) {

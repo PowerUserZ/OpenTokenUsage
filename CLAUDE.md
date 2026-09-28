@@ -48,7 +48,8 @@ This file holds the project facts that are easy to get wrong.
   the registry, so a key added while the app is running works on the next refresh.
 - Tray metric: one setting, `trayMetric` (auto | Session | Weekly), drives bars, percent and tooltip.
   Tray provider `tightest` = "Most used" line across providers. `trayHiddenPlugins` keeps a provider
-  in the nav but out of the tray. The tray icon color follows the *taskbar* theme, not the app theme.
+  in the nav but out of the tray. The tray icon color follows the *taskbar* theme, not the app theme:
+  `window_style::watch_taskbar_theme` sends `taskbar:theme` the moment Windows switches it.
 - Tray styles `numbers`/`logos` = one tray icon per provider (`use-provider-tray-icons.ts` draws,
   `tray::set_provider_tray_icons` shows them and hides the app icon). Update icons in place, never
   recreate (Windows keys "show next to clock" on tray-icon's creation-counter uID). A hidden tray

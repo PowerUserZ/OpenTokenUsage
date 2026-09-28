@@ -56,7 +56,7 @@ describe("ChangelogDialog", () => {
     )
 
     expect(screen.getByText("Couldn't load release notes")).toBeInTheDocument()
-    expect(screen.getByText("something went wrong")).toBeInTheDocument()
+    expect(screen.getByText("Check your internet connection, or try again in a few minutes.")).toBeInTheDocument()
 
     const retryButton = screen.getByRole("button", { name: "Try again" })
     expect(retryButton).toBeInTheDocument()

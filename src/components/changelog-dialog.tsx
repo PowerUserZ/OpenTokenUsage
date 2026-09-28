@@ -217,7 +217,7 @@ export function ChangelogDialog({ currentVersion, onBack, onClose }: ChangelogDi
           ) : error ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-4">
               <span className="text-destructive text-sm font-medium mb-1">{t("changelog.failed")}</span>
-              <span className="text-xs text-muted-foreground mb-4">{error}</span>
+              <span className="text-xs text-muted-foreground mb-4">{t("changelog.failedHint")}</span>
               <Button size="xs" variant="outline" onClick={() => window.location.reload()}>
                 {t("changelog.tryAgain")}
               </Button>

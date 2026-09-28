@@ -10,8 +10,11 @@
 
 ### Changes
 - Checks for app updates every 6 hours instead of every 15 minutes
+- On a light taskbar, the strip's usage colors are darkened just enough to stay readable
 
 ### Bug Fixes
+- The taskbar strip and tray icons turn black as soon as Windows switches to a light taskbar (they waited for the panel to open)
+- Update errors, the release-notes error and two screen reader labels were still in English
 - The installed app's tray icon is shown next to the clock; it always landed under ^
 - Clicking the taskbar strip opens the panel right above the strip, not above the hidden icons
 - Starting the app while it runs (Start menu, installer) opens its panel instead of a second copy

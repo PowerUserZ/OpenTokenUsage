@@ -75,16 +75,38 @@ export function colorOnScale(scale: readonly (readonly [number, string])[], used
   return stops[stops.length - 1]![1]
 }
 
-function lineColor(bar: TrayPrimaryBar | undefined, base: string, style: TaskbarStripStyle, displayMode: DisplayMode) {
+/**
+ * A usage color darkened (light taskbar) or lightened (dark taskbar) just enough to read (3:1):
+ * the scales' yellow is made for a dark taskbar and vanishes on a white one.
+ */
+export function readableOnTaskbar(color: string, onLightTaskbar: boolean): string {
+  const toward = onLightTaskbar ? "#000000" : "#ffffff"
+  for (let step = 0; step <= 10; step += 1) {
+    const candidate = step === 0 ? color : mix(color, toward, step / 10)
+    if (readableBrandColor(candidate, onLightTaskbar)) return candidate
+  }
+  return toward
+}
+
+function lineColor(
+  bar: TrayPrimaryBar | undefined,
+  base: string,
+  style: TaskbarStripStyle,
+  displayMode: DisplayMode,
+  onLightTaskbar: boolean
+) {
   const fraction = bar?.fraction
   if (style.colorMode === "off" || typeof fraction !== "number") return base
   const usedPercent = (displayMode === "left" ? 1 - fraction : fraction) * 100
+  const readable = (color: string) => readableOnTaskbar(color, onLightTaskbar)
   if (style.colorMode === "thresholds") {
-    if (usedPercent >= style.criticalAt) return style.criticalColor
-    if (usedPercent >= style.warnAt) return style.warnColor
+    if (usedPercent >= style.criticalAt) return readable(style.criticalColor)
+    if (usedPercent >= style.warnAt) return readable(style.warnColor)
     return base
   }
-  return colorOnScale(TASKBAR_STRIP_COLOR_SCALES[style.colorMode], usedPercent, base)
+  const color = colorOnScale(TASKBAR_STRIP_COLOR_SCALES[style.colorMode], usedPercent, base)
+  // The text color itself stays as the user set it.
+  return color === base.toLowerCase() ? base : readable(color)
 }
 
 export function buildTaskbarStripItems(args: {
@@ -114,7 +136,7 @@ export function buildTaskbarStripItems(args: {
     const mode = style.lineModes[primary.id] ?? "both"
     // A provider with one line shows it whatever the mode (e.g. a weekly-only plan).
     const bars = !hasWeekly ? [primary] : mode === "session" ? [primary] : mode === "weekly" ? [weekly] : [primary, weekly]
-    const lines = bars.map((bar) => ({ text: text(bar), color: lineColor(bar, base, style, displayMode) }))
+    const lines = bars.map((bar) => ({ text: text(bar), color: lineColor(bar, base, style, displayMode, onLightTaskbar) }))
     return [
       {
         iconUrl: meta.iconUrl,
