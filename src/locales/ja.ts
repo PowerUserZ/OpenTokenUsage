@@ -87,6 +87,11 @@ export const ja: Messages = {
   "settings.plugins.notInTray": "通知領域のアイコンに非表示",
 
   "overview.noProviders": "有効なプロバイダーがありません",
+  "status.minor": "サービスの低下",
+  "status.major": "部分的な障害",
+  "status.critical": "重大な障害",
+  "status.maintenance": "メンテナンス",
+  "status.open": "状態ページを開く",
 
   "card.retry": "再試行",
   "card.updated": "更新: {time}",

@@ -87,6 +87,11 @@ export const fr: Messages = {
   "settings.plugins.notInTray": "Masqué dans l'icône de la zone de notification",
 
   "overview.noProviders": "Aucun fournisseur activé",
+  "status.minor": "Service dégradé",
+  "status.major": "Panne partielle",
+  "status.critical": "Panne majeure",
+  "status.maintenance": "Maintenance",
+  "status.open": "Ouvrir la page d'état",
 
   "card.retry": "Réessayer",
   "card.updated": "Mis à jour {time}",

@@ -6,6 +6,10 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#000000",
+  "statusPageUrl": "https://status.moonshot.cn",
+  "links": [
+    { "label": "Status", "url": "https://status.moonshot.cn/" }
+  ],
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview", "period": "weekly", "primaryOrder": 2 }

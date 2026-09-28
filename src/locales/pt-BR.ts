@@ -87,6 +87,11 @@ export const ptBR: Messages = {
   "settings.plugins.notInTray": "Oculto do ícone da área de notificação",
 
   "overview.noProviders": "Nenhum provedor ativado",
+  "status.minor": "Serviço degradado",
+  "status.major": "Interrupção parcial",
+  "status.critical": "Interrupção grave",
+  "status.maintenance": "Manutenção",
+  "status.open": "Abrir página de status",
 
   "card.retry": "Tentar novamente",
   "card.updated": "Atualizado {time}",

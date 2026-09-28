@@ -6,6 +6,10 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#7d5fe6",
+  "statusPageUrl": "https://status.jetbrains.cloud",
+  "links": [
+    { "label": "Status", "url": "https://status.jetbrains.cloud/" }
+  ],
   "lines": [
     { "type": "progress", "label": "Quota", "scope": "overview", "primaryOrder": 1 },
     { "type": "text", "label": "Used", "scope": "detail" },

@@ -87,6 +87,11 @@ export const ko: Messages = {
   "settings.plugins.notInTray": "알림 영역 아이콘에서 숨김",
 
   "overview.noProviders": "사용 중인 공급자 없음",
+  "status.minor": "서비스 성능 저하",
+  "status.major": "부분 중단",
+  "status.critical": "주요 중단",
+  "status.maintenance": "유지 관리",
+  "status.open": "상태 페이지 열기",
 
   "card.retry": "다시 시도",
   "card.updated": "{time} 업데이트됨",

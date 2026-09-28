@@ -6,6 +6,10 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#F34E3F",
+  "statusPageUrl": "https://ampcodestatus.com",
+  "links": [
+    { "label": "Status", "url": "https://ampcodestatus.com/" }
+  ],
   "lines": [
     { "type": "progress", "label": "Free", "scope": "overview", "primaryOrder": 1 },
     { "type": "text", "label": "Bonus", "scope": "detail" },

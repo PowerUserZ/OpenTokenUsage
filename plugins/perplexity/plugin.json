@@ -6,6 +6,10 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#20808D",
+  "statusPageUrl": "https://status.perplexity.com",
+  "links": [
+    { "label": "Status", "url": "https://status.perplexity.com/" }
+  ],
   "lines": [
     { "type": "progress", "label": "API credits", "scope": "overview", "primaryOrder": 1 },
     { "type": "text", "label": "Queries", "scope": "overview" },

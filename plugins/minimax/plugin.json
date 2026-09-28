@@ -6,6 +6,10 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#F5433C",
+  "statusPageUrl": "https://status.minimax.io",
+  "links": [
+    { "label": "Status", "url": "https://status.minimax.io/" }
+  ],
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 }
   ]

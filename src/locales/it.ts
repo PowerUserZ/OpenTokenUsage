@@ -87,6 +87,11 @@ export const it: Messages = {
   "settings.plugins.notInTray": "Nascosto dall'icona dell'area di notifica",
 
   "overview.noProviders": "Nessun provider attivo",
+  "status.minor": "Servizio ridotto",
+  "status.major": "Interruzione parziale",
+  "status.critical": "Interruzione grave",
+  "status.maintenance": "Manutenzione",
+  "status.open": "Apri la pagina di stato",
 
   "card.retry": "Riprova",
   "card.updated": "Aggiornato {time}",
