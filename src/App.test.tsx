@@ -1942,7 +1942,8 @@ describe("App", () => {
     resolveResourcePath?.("/resource/icons/tray-icon.png")
 
     await waitFor(() => expect(state.traySetIconMock).toHaveBeenCalledWith({}))
-    expect(state.traySetIconAsTemplateMock).toHaveBeenCalledWith(true)
+    // Windows has no template (monochrome) tray icons; that macOS-only call is gone.
+    expect(state.traySetIconAsTemplateMock).not.toHaveBeenCalled()
     expect(state.traySetTitleMock).toHaveBeenCalledWith("")
   })
 

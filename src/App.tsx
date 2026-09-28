@@ -15,7 +15,8 @@ import { type PluginContextAction } from "@/components/side-nav"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
-import { useLocaleStore } from "@/lib/i18n"
+import { t, useLocaleStore } from "@/lib/i18n"
+import { invoke } from "@tauri-apps/api/core"
 
 const TRAY_PROBE_DEBOUNCE_MS = 500
 const TRAY_SETTINGS_DEBOUNCE_MS = 2000
@@ -257,6 +258,20 @@ function App() {
 
   // Remount the UI on a language switch so every string (incl. helper-formatted text) re-renders.
   const locale = useLocaleStore((state) => state.locale)
+
+  // The tray menu is native (Rust); send it the labels for the current language.
+  useEffect(() => {
+    invoke("set_tray_menu_labels", {
+      labels: {
+        showStats: t("tray.showStats"),
+        goToSettings: t("tray.goToSettings"),
+        debugLevel: t("tray.debugLevel"),
+        copyLogPath: t("tray.copyLogPath"),
+        about: t("tray.about"),
+        quit: t("tray.quit"),
+      },
+    }).catch((error) => console.error("Failed to translate tray menu:", error))
+  }, [locale])
 
   return (
     <AppShell

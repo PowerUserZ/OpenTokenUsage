@@ -183,7 +183,6 @@ export function useTrayIcon({
         if (gaugePath) {
           Promise.all([
             tray.setIcon(gaugePath),
-            tray.setIconAsTemplate(true),
             setTrayTitle(""),
             setTrayTooltip("OpenTokenUsage"),
           ])
@@ -297,13 +296,8 @@ export function useTrayIcon({
       const updateTooltip = () => setTrayTooltip(tooltip)
 
       if (style === "icon") {
-        // Use theme-appropriate gauge icon
-        const gaugeName = isDarkTheme ? "icons/tray-icon-light.png" : "icons/tray-icon.png"
-        resolveResource(gaugeName).then(async (path) => {
-          await tray.setIcon(path)
-          await tray.setIconAsTemplate(true)
-        }).catch(() => restoreGaugeIcon())
-        finalizeUpdate()
+        // The app logo is full color, so one icon works on light and dark taskbars.
+        restoreGaugeIcon()
         return
       }
 
@@ -316,7 +310,6 @@ export function useTrayIcon({
         })
           .then(async (img) => {
             await tray.setIcon(img)
-            await tray.setIconAsTemplate(true)
             await setTrayTitle("")
             await updateTooltip()
           })
@@ -347,7 +340,6 @@ export function useTrayIcon({
       })
         .then(async (img) => {
           await tray.setIcon(img)
-          await tray.setIconAsTemplate(true)
           await setTrayTitle("")
           await updateTooltip()
         })
@@ -373,10 +365,7 @@ export function useTrayIcon({
         trayInitializedRef.current = true
 
         try {
-          const gaugeIconName = navigator.userAgent.includes("Macintosh")
-            ? "icons/tray-icon.png"
-            : "icons/tray-icon-light.png"
-          trayGaugeIconPathRef.current = await resolveResource(gaugeIconName)
+          trayGaugeIconPathRef.current = await resolveResource("icons/tray-icon.png")
         } catch (e) {
           console.error("Failed to resolve tray gauge icon resource:", e)
         }

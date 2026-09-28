@@ -2,6 +2,12 @@
 // enforces it). Keep {placeholders} identical across locales; a test checks that.
 export const en = {
   "app.minimize": "Minimize to tray",
+  "tray.showStats": "Show stats",
+  "tray.goToSettings": "Settings",
+  "tray.debugLevel": "Log level",
+  "tray.copyLogPath": "Copy log path",
+  "tray.about": "About OpenTokenUsage",
+  "tray.quit": "Quit",
 
   "nav.home": "Home",
   "nav.help": "Help",

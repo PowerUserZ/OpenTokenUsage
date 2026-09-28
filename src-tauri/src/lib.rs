@@ -657,7 +657,8 @@ pub fn run() {
             get_log_path,
             update_global_shortcut,
             window_style::get_window_backdrop,
-            window_style::get_accent_color
+            window_style::get_accent_color,
+            tray::set_tray_menu_labels
         ])
         .setup(|app| {
             use tauri::Manager;

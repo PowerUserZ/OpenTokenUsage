@@ -12,6 +12,44 @@ use crate::panel::show_panel;
 
 const LOG_LEVEL_STORE_KEY: &str = "logLevel";
 
+/// Handles to the translatable tray menu entries (log level names stay English).
+struct TrayMenuItems {
+    show_stats: MenuItem<tauri::Wry>,
+    go_to_settings: MenuItem<tauri::Wry>,
+    debug_level: Submenu<tauri::Wry>,
+    copy_log_path: MenuItem<tauri::Wry>,
+    about: MenuItem<tauri::Wry>,
+    quit: MenuItem<tauri::Wry>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrayMenuLabels {
+    show_stats: String,
+    go_to_settings: String,
+    debug_level: String,
+    copy_log_path: String,
+    about: String,
+    quit: String,
+}
+
+/// The frontend sends the tray menu labels in the app language (startup and language switch).
+#[tauri::command]
+pub fn set_tray_menu_labels(app_handle: AppHandle, labels: TrayMenuLabels) -> Result<(), String> {
+    let items = app_handle
+        .try_state::<TrayMenuItems>()
+        .ok_or("tray menu is not created yet")?;
+    let result = items
+        .show_stats
+        .set_text(labels.show_stats)
+        .and_then(|_| items.go_to_settings.set_text(labels.go_to_settings))
+        .and_then(|_| items.debug_level.set_text(labels.debug_level))
+        .and_then(|_| items.copy_log_path.set_text(labels.copy_log_path))
+        .and_then(|_| items.about.set_text(labels.about))
+        .and_then(|_| items.quit.set_text(labels.quit));
+    result.map_err(|e| e.to_string())
+}
+
 fn get_stored_log_level(app_handle: &AppHandle) -> log::LevelFilter {
     let store = match app_handle.store("settings.json") {
         Ok(s) => s,
@@ -49,18 +87,18 @@ fn set_stored_log_level(app_handle: &AppHandle, level: log::LevelFilter) {
 pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
     let tray_icon_path = app_handle
         .path()
-        .resolve("icons/tray-icon-light.png", BaseDirectory::Resource)?;
+        .resolve("icons/tray-icon.png", BaseDirectory::Resource)?;
     let icon = Image::from_path(tray_icon_path)?;
 
     // Load persisted log level
     let current_level = get_stored_log_level(app_handle);
     log::set_max_level(current_level);
 
-    let show_stats = MenuItem::with_id(app_handle, "show_stats", "Show Stats", true, None::<&str>)?;
+    let show_stats = MenuItem::with_id(app_handle, "show_stats", "Show stats", true, None::<&str>)?;
     let go_to_settings = MenuItem::with_id(
         app_handle,
         "go_to_settings",
-        "Go to Settings",
+        "Settings",
         true,
         None::<&str>,
     )?;
@@ -110,13 +148,13 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
     let copy_log_path = MenuItem::with_id(
         app_handle,
         "copy_log_path",
-        "Copy Log Path",
+        "Copy log path",
         true,
         None::<&str>,
     )?;
     let log_level_submenu = Submenu::with_items(
         app_handle,
-        "Debug Level",
+        "Log level",
         true,
         &[
             &log_error,
@@ -147,6 +185,15 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app_handle, "quit", "Quit", true, None::<&str>)?;
+
+    app_handle.manage(TrayMenuItems {
+        show_stats: show_stats.clone(),
+        go_to_settings: go_to_settings.clone(),
+        debug_level: log_level_submenu.clone(),
+        copy_log_path: copy_log_path.clone(),
+        about: about.clone(),
+        quit: quit.clone(),
+    });
 
     let menu = Menu::with_items(
         app_handle,
