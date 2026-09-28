@@ -86,9 +86,9 @@ export const zhCN: Messages = {
   "settings.alerts.desc": "用量达到 80% 和 95%、重置前将用完以及额度重置时通知",
   "settings.alerts.label": "用量通知",
   "settings.plugins.title": "提供商",
-  "settings.plugins.desc": "开启或关闭提供商，拖动以调整顺序",
-  "settings.plugins.inTray": "在通知区域图标中显示",
-  "settings.plugins.notInTray": "不在通知区域图标中显示",
+  "settings.plugins.desc": "勾选以启用提供商，拖动以排序。眼睛图标可在通知区域图标中显示或隐藏该提供商。",
+  "settings.plugins.inTray": "在通知区域图标中显示。点击可隐藏（侧边菜单中仍保留）。",
+  "settings.plugins.notInTray": "不在通知区域图标中显示。点击可显示。",
 
   "overview.noProviders": "未启用任何提供商",
   "status.minor": "服务降级",

@@ -86,9 +86,9 @@ export const en = {
   "settings.alerts.desc": "At 80% and 95%, when you'll run out before a reset, and when a limit resets",
   "settings.alerts.label": "Usage notifications",
   "settings.plugins.title": "Providers",
-  "settings.plugins.desc": "Turn providers on or off and drag to reorder",
-  "settings.plugins.inTray": "Shown in the tray icon",
-  "settings.plugins.notInTray": "Hidden from the tray icon",
+  "settings.plugins.desc": "Tick to turn a provider on, drag to reorder. The eye shows or hides it in the tray icon next to the clock.",
+  "settings.plugins.inTray": "Shown in the tray icon. Click to hide it there (it stays in the side menu).",
+  "settings.plugins.notInTray": "Hidden from the tray icon. Click to show it there.",
 
   "overview.noProviders": "No providers enabled",
   "status.minor": "Degraded service",

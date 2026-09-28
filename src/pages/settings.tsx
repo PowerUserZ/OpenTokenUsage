@@ -327,13 +327,17 @@ export function SettingsPage({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  // Enabled providers first (stable sort keeps the user's order inside each group); dragging works
+  // on this list, so a reorder saves the grouped order.
+  const sortedPlugins = [...plugins].sort((a, b) => Number(b.enabled) - Number(a.enabled));
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
-      const oldIndex = plugins.findIndex((item) => item.id === active.id);
-      const newIndex = plugins.findIndex((item) => item.id === over.id);
+      const oldIndex = sortedPlugins.findIndex((item) => item.id === active.id);
+      const newIndex = sortedPlugins.findIndex((item) => item.id === over.id);
       if (oldIndex === -1 || newIndex === -1) return;
-      onReorder(arrayMove(plugins, oldIndex, newIndex).map((item) => item.id));
+      onReorder(arrayMove(sortedPlugins, oldIndex, newIndex).map((item) => item.id));
     }
   };
 
@@ -481,8 +485,8 @@ export function SettingsPage({
       <SettingsSection title={t("settings.plugins.title")} description={t("settings.plugins.desc")}>
         <div className="-mx-1">
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={plugins.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-              {plugins.map((plugin) => (
+            <SortableContext items={sortedPlugins.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+              {sortedPlugins.map((plugin) => (
                 <SortablePluginItem
                   key={plugin.id}
                   plugin={plugin}

@@ -86,9 +86,9 @@ export const tr: Messages = {
   "settings.alerts.desc": "%80 ve %95'te, sıfırlanmadan önce dolacaksa ve limit sıfırlandığında",
   "settings.alerts.label": "Kullanım bildirimleri",
   "settings.plugins.title": "Sağlayıcılar",
-  "settings.plugins.desc": "Sağlayıcıları açıp kapatın; sıralamak için sürükleyin",
-  "settings.plugins.inTray": "Bildirim alanı simgesinde gösteriliyor",
-  "settings.plugins.notInTray": "Bildirim alanı simgesinde gizli",
+  "settings.plugins.desc": "Sağlayıcıyı açmak için işaretleyin, sıralamak için sürükleyin. Göz simgesi, sağlayıcıyı saatin yanındaki bildirim alanı simgesinde gösterir veya gizler.",
+  "settings.plugins.inTray": "Bildirim alanı simgesinde gösteriliyor. Oradan gizlemek için tıklayın (yan menüde kalır).",
+  "settings.plugins.notInTray": "Bildirim alanı simgesinde gizli. Göstermek için tıklayın.",
 
   "overview.noProviders": "Etkin sağlayıcı yok",
   "status.minor": "Hizmette aksama",

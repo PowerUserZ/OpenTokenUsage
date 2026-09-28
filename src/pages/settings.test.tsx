@@ -114,6 +114,22 @@ describe("SettingsPage", () => {
     expect(onReorder).toHaveBeenCalledWith(["b", "a"])
   })
 
+  it("lists enabled providers first, keeping their order", () => {
+    render(
+      <SettingsPage
+        {...defaultProps}
+        plugins={[
+          { id: "a", name: "Alpha", enabled: false },
+          { id: "b", name: "Beta", enabled: true },
+          { id: "c", name: "Gamma", enabled: false },
+          { id: "d", name: "Delta", enabled: true },
+        ]}
+      />
+    )
+    const names = screen.getAllByText(/^(Alpha|Beta|Gamma|Delta)$/).map((el) => el.textContent)
+    expect(names).toEqual(["Beta", "Delta", "Alpha", "Gamma"])
+  })
+
   it("ignores invalid drag end", () => {
     const onReorder = vi.fn()
     render(

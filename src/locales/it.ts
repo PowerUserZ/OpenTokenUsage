@@ -86,9 +86,9 @@ export const it: Messages = {
   "settings.alerts.desc": "All'80% e al 95%, se il limite verrà raggiunto prima dell'azzeramento e quando si azzera",
   "settings.alerts.label": "Notifiche di utilizzo",
   "settings.plugins.title": "Provider",
-  "settings.plugins.desc": "Attiva o disattiva i provider e trascinali per riordinarli",
-  "settings.plugins.inTray": "Mostrato nell'icona dell'area di notifica",
-  "settings.plugins.notInTray": "Nascosto dall'icona dell'area di notifica",
+  "settings.plugins.desc": "Seleziona per attivare un provider, trascina per riordinare. L'occhio lo mostra o lo nasconde nell'icona dell'area di notifica.",
+  "settings.plugins.inTray": "Mostrato nell'icona dell'area di notifica. Fai clic per nasconderlo lì (resta nel menu laterale).",
+  "settings.plugins.notInTray": "Nascosto dall'icona dell'area di notifica. Fai clic per mostrarlo.",
 
   "overview.noProviders": "Nessun provider attivo",
   "status.minor": "Servizio ridotto",

@@ -86,9 +86,9 @@ export const fr: Messages = {
   "settings.alerts.desc": "À 80 % et 95 %, si la limite sera atteinte avant la réinitialisation, et à chaque réinitialisation",
   "settings.alerts.label": "Notifications d'utilisation",
   "settings.plugins.title": "Fournisseurs",
-  "settings.plugins.desc": "Activez, désactivez ou faites glisser pour réorganiser",
-  "settings.plugins.inTray": "Affiché dans l'icône de la zone de notification",
-  "settings.plugins.notInTray": "Masqué dans l'icône de la zone de notification",
+  "settings.plugins.desc": "Cochez pour activer un fournisseur, faites glisser pour réorganiser. L'œil l'affiche ou le masque dans l'icône de la zone de notification.",
+  "settings.plugins.inTray": "Affiché dans l'icône de la zone de notification. Cliquez pour l'y masquer (il reste dans le menu latéral).",
+  "settings.plugins.notInTray": "Masqué dans l'icône de la zone de notification. Cliquez pour l'y afficher.",
 
   "overview.noProviders": "Aucun fournisseur activé",
   "status.minor": "Service dégradé",

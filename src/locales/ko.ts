@@ -86,9 +86,9 @@ export const ko: Messages = {
   "settings.alerts.desc": "80%와 95% 도달 시, 초기화 전에 소진될 때, 한도가 초기화될 때",
   "settings.alerts.label": "사용량 알림",
   "settings.plugins.title": "공급자",
-  "settings.plugins.desc": "공급자를 켜거나 끄고, 끌어서 순서 변경",
-  "settings.plugins.inTray": "알림 영역 아이콘에 표시",
-  "settings.plugins.notInTray": "알림 영역 아이콘에서 숨김",
+  "settings.plugins.desc": "체크하면 공급자가 켜지고, 끌어서 순서를 바꿉니다. 눈 아이콘은 알림 영역 아이콘에서 표시하거나 숨깁니다.",
+  "settings.plugins.inTray": "알림 영역 아이콘에 표시 중. 클릭하면 숨깁니다(사이드 메뉴에는 남음).",
+  "settings.plugins.notInTray": "알림 영역 아이콘에서 숨겨짐. 클릭하면 표시합니다.",
 
   "overview.noProviders": "사용 중인 공급자 없음",
   "status.minor": "서비스 성능 저하",

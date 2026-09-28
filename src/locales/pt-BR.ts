@@ -86,9 +86,9 @@ export const ptBR: Messages = {
   "settings.alerts.desc": "Em 80% e 95%, quando o limite vai acabar antes de redefinir e quando ele é redefinido",
   "settings.alerts.label": "Notificações de uso",
   "settings.plugins.title": "Provedores",
-  "settings.plugins.desc": "Ative ou desative provedores e arraste para reordenar",
-  "settings.plugins.inTray": "Exibido no ícone da área de notificação",
-  "settings.plugins.notInTray": "Oculto do ícone da área de notificação",
+  "settings.plugins.desc": "Marque para ativar um provedor e arraste para reordenar. O olho mostra ou oculta o provedor no ícone da área de notificação.",
+  "settings.plugins.inTray": "Exibido no ícone da área de notificação. Clique para ocultá-lo ali (ele continua no menu lateral).",
+  "settings.plugins.notInTray": "Oculto do ícone da área de notificação. Clique para exibi-lo.",
 
   "overview.noProviders": "Nenhum provedor ativado",
   "status.minor": "Serviço degradado",

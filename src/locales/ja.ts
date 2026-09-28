@@ -86,9 +86,9 @@ export const ja: Messages = {
   "settings.alerts.desc": "80% と 95% に達したとき、リセット前に上限に達しそうなとき、リセットされたときに通知",
   "settings.alerts.label": "使用状況の通知",
   "settings.plugins.title": "プロバイダー",
-  "settings.plugins.desc": "プロバイダーのオン/オフを切り替え、ドラッグで並べ替え",
-  "settings.plugins.inTray": "通知領域のアイコンに表示",
-  "settings.plugins.notInTray": "通知領域のアイコンに非表示",
+  "settings.plugins.desc": "チェックでプロバイダーを有効化、ドラッグで並べ替え。目のアイコンで通知領域のアイコンへの表示/非表示を切り替えます。",
+  "settings.plugins.inTray": "通知領域のアイコンに表示中。クリックで非表示（サイドメニューには残ります）。",
+  "settings.plugins.notInTray": "通知領域のアイコンに非表示。クリックで表示します。",
 
   "overview.noProviders": "有効なプロバイダーがありません",
   "status.minor": "サービスの低下",

@@ -86,9 +86,9 @@ export const esES: Messages = {
   "settings.alerts.desc": "Al 80 % y 95 %, cuando se agotará antes de restablecerse y cuando se restablece",
   "settings.alerts.label": "Notificaciones de uso",
   "settings.plugins.title": "Proveedores",
-  "settings.plugins.desc": "Activa o desactiva proveedores y arrastra para reordenarlos",
-  "settings.plugins.inTray": "Visible en el icono del área de notificación",
-  "settings.plugins.notInTray": "Oculto en el icono del área de notificación",
+  "settings.plugins.desc": "Marca para activar un proveedor y arrastra para reordenar. El ojo lo muestra u oculta en el icono del área de notificación.",
+  "settings.plugins.inTray": "Visible en el icono del área de notificación. Haz clic para ocultarlo ahí (sigue en el menú lateral).",
+  "settings.plugins.notInTray": "Oculto en el icono del área de notificación. Haz clic para mostrarlo.",
 
   "overview.noProviders": "No hay proveedores activados",
   "status.minor": "Servicio degradado",

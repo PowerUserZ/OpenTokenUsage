@@ -86,9 +86,9 @@ export const de: Messages = {
   "settings.alerts.desc": "Bei 80 % und 95 %, wenn das Limit vor dem Zurücksetzen erreicht wird, und beim Zurücksetzen",
   "settings.alerts.label": "Nutzungsbenachrichtigungen",
   "settings.plugins.title": "Anbieter",
-  "settings.plugins.desc": "Anbieter ein- oder ausschalten, zum Sortieren ziehen",
-  "settings.plugins.inTray": "Im Infobereich-Symbol angezeigt",
-  "settings.plugins.notInTray": "Im Infobereich-Symbol ausgeblendet",
+  "settings.plugins.desc": "Zum Aktivieren anhaken, zum Sortieren ziehen. Das Auge blendet den Anbieter im Infobereich-Symbol ein oder aus.",
+  "settings.plugins.inTray": "Wird im Infobereich-Symbol angezeigt. Klicken, um ihn dort auszublenden (bleibt im Seitenmenü).",
+  "settings.plugins.notInTray": "Im Infobereich-Symbol ausgeblendet. Klicken, um ihn dort anzuzeigen.",
 
   "overview.noProviders": "Keine Anbieter aktiviert",
   "status.minor": "Eingeschränkter Dienst",
