@@ -24,7 +24,7 @@ Returns a single cached usage snapshot for the given provider.
 
 ### Unsupported methods
 
-Any method other than `GET` or `OPTIONS` on the above routes returns **405 Method Not Allowed**.
+Any method other than `GET` on the above routes returns **405 Method Not Allowed**.
 
 Unknown routes return **404 Not Found**.
 
@@ -80,17 +80,15 @@ The `lines` array uses the same metric line types as the internal plugin output:
 - Only **successful** probe results are cached. A failed probe never overwrites a previous successful snapshot.
 - The single-provider endpoint (`/v1/usage/:providerId`) works for any known provider, including disabled ones.
 
-## CORS
+## Browser access
 
-All responses include permissive CORS headers:
+Not allowed. The API is for local, non-browser clients (curl, scripts, Rainmeter, status-line tools).
 
-```
-Access-Control-Allow-Origin: *
-Access-Control-Allow-Methods: GET, OPTIONS
-Access-Control-Allow-Headers: Content-Type
-```
+- No CORS headers are sent and `OPTIONS` preflight is not supported, so a web page cannot read the response.
+- The `Host` header must be `127.0.0.1`, `localhost` or `[::1]` (optionally with `:6736`). Anything else, or a missing `Host`, returns **403 Forbidden**. This blocks DNS-rebinding pages.
+- A request with an `Origin` header other than `http://127.0.0.1:6736`, `http://localhost:6736` or `http://[::1]:6736` (port optional) returns **403 Forbidden**.
 
-`OPTIONS` requests return **204 No Content** with these headers for preflight support.
+Why: usage data shows your plans and spend. Without these checks any website open in your browser could read it.
 
 ## Error Responses
 
@@ -102,6 +100,8 @@ Error responses use this shape:
 }
 ```
 
-Possible error codes: `provider_not_found`, `not_found`, `method_not_allowed`, `server_busy`.
+Possible error codes: `forbidden`, `provider_not_found`, `not_found`, `method_not_allowed`, `server_busy`.
+
+`forbidden` returns **403 Forbidden** when the `Host` or `Origin` header is not loopback (see [Browser access](#browser-access)).
 
 `server_busy` returns **503 Service Unavailable** when the local API is already handling the maximum number of concurrent connections. Clients should back off and retry later.
