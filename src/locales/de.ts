@@ -129,6 +129,7 @@ export const de: Messages = {
   "settings.alerts.chooseFile": "Eigenen Ton verwenden…",
   "settings.alerts.fileHint": "MP3, WAV, OGG oder M4A. Längere Töne werden nach {seconds} Sekunden abgeschnitten.",
   "settings.alerts.fileError": "Diese Datei lässt sich nicht abspielen. Versuchen Sie eine MP3- oder WAV-Datei.",
+  "settings.alerts.fileTooLarge": "Diese Datei ist größer als {mb} MB. Wählen Sie einen kürzeren Ton.",
   "sound.windows": "Windows-Standard",
   "sound.chime": "Glockenspiel",
   "sound.glass": "Glas",

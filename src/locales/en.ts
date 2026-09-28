@@ -129,6 +129,7 @@ export const en = {
   "settings.alerts.chooseFile": "Use my own sound…",
   "settings.alerts.fileHint": "MP3, WAV, OGG or M4A. Longer sounds are cut at {seconds} seconds.",
   "settings.alerts.fileError": "This file can't be played. Try an MP3 or WAV file.",
+  "settings.alerts.fileTooLarge": "This file is bigger than {mb} MB. Pick a shorter sound.",
   "sound.windows": "Windows default",
   "sound.chime": "Chime",
   "sound.glass": "Glass",

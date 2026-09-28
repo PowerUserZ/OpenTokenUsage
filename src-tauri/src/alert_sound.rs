@@ -55,7 +55,15 @@ pub fn save_custom_alert_sound(app_handle: AppHandle, wav: String) -> Result<(),
     }
     let bytes = BASE64_STANDARD.decode(wav).map_err(|e| e.to_string())?;
     check_wav(&bytes)?;
-    std::fs::write(custom_path(&app_handle)?, bytes).map_err(|e| e.to_string())
+    // Write aside and swap in, so a failed write never leaves a half file to be played later.
+    let path = custom_path(&app_handle)?;
+    let partial = path.with_extension("wav.tmp");
+    std::fs::write(&partial, bytes)
+        .and_then(|()| std::fs::rename(&partial, &path))
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&partial);
+            e.to_string()
+        })
 }
 
 fn custom_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
@@ -68,7 +76,8 @@ fn custom_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
 }
 
 /// Only the plain layout the frontend writes: RIFF/WAVE, a 16-byte PCM `fmt ` chunk (16-bit,
-/// 1-2 channels, 8-96 kHz), then `data` up to the end. Anything else never reaches PlaySound.
+/// 1-2 channels, 8-96 kHz, consistent sizes), then `data` up to the end. Anything else never
+/// reaches PlaySound.
 fn check_wav(bytes: &[u8]) -> Result<(), String> {
     let u16_at = |i: usize| u16::from_le_bytes([bytes[i], bytes[i + 1]]);
     let u32_at =
@@ -80,11 +89,18 @@ fn check_wav(bytes: &[u8]) -> Result<(), String> {
     {
         return Err("not a WAV file".to_string());
     }
+    let (channels, rate) = (u16_at(22), u32_at(24));
     let pcm_16 = u32_at(16) == 16 && u16_at(20) == 1 && u16_at(34) == 16;
-    let channels_ok = matches!(u16_at(22), 1 | 2);
-    let rate_ok = (8_000..=96_000).contains(&u32_at(24));
-    let length_ok = u32_at(40) as usize == bytes.len() - 44;
-    if pcm_16 && channels_ok && rate_ok && length_ok {
+    let channels_ok = matches!(channels, 1 | 2);
+    let rate_ok = (8_000..=96_000).contains(&rate);
+    // Checked after the ranges above, so these products are small.
+    let frame_ok = channels_ok
+        && rate_ok
+        && u16_at(32) == channels * 2
+        && u32_at(28) == rate * channels as u32 * 2;
+    let length_ok =
+        u32_at(4) as usize == bytes.len() - 8 && u32_at(40) as usize == bytes.len() - 44;
+    if pcm_16 && channels_ok && rate_ok && frame_ok && length_ok {
         Ok(())
     } else {
         Err("only 16-bit PCM WAV is accepted".to_string())
@@ -153,8 +169,8 @@ mod tests {
         bytes.extend_from_slice(&1u16.to_le_bytes());
         bytes.extend_from_slice(&channels.to_le_bytes());
         bytes.extend_from_slice(&rate.to_le_bytes());
-        bytes.extend_from_slice(&(rate * 2).to_le_bytes());
-        bytes.extend_from_slice(&2u16.to_le_bytes());
+        bytes.extend_from_slice(&rate.wrapping_mul(channels as u32 * 2).to_le_bytes());
+        bytes.extend_from_slice(&(channels * 2).to_le_bytes());
         bytes.extend_from_slice(&bits.to_le_bytes());
         bytes.extend_from_slice(b"data");
         bytes.extend_from_slice(&(data as u32).to_le_bytes());
@@ -179,6 +195,17 @@ mod tests {
         let mut not_wave = wav(1, 44_100, 16, 100);
         not_wave[8..12].copy_from_slice(b"AVI ");
         assert!(check_wav(&not_wave).is_err());
+        // Inconsistent sizes that winmm would otherwise have to cope with.
+        let broken = |offset: usize, value: &[u8]| {
+            let mut bytes = wav(1, 44_100, 16, 100);
+            bytes[offset..offset + value.len()].copy_from_slice(value);
+            check_wav(&bytes).is_err()
+        };
+        assert!(broken(4, &u32::MAX.to_le_bytes())); // RIFF size
+        assert!(broken(28, &0u32.to_le_bytes())); // byte rate
+        assert!(broken(32, &0u16.to_le_bytes())); // block align
+        assert!(broken(24, &u32::MAX.to_le_bytes())); // absurd rate: refused, no overflow
+        assert!(check_wav(&wav(2, 48_000, 16, 100)).is_ok()); // stereo is fine
     }
 
     #[test]

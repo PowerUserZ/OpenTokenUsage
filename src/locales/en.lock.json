@@ -123,6 +123,7 @@
   "settings.alerts.chooseFile": "3acb22e73a",
   "settings.alerts.fileHint": "acd5795a4f",
   "settings.alerts.fileError": "305d897541",
+  "settings.alerts.fileTooLarge": "33c184fc7c",
   "sound.windows": "8b0b8f5d1a",
   "sound.chime": "3bb8c51f1c",
   "sound.glass": "745b5a4818",

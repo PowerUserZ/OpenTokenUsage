@@ -129,6 +129,7 @@ export const ptBR: Messages = {
   "settings.alerts.chooseFile": "Usar meu próprio som…",
   "settings.alerts.fileHint": "MP3, WAV, OGG ou M4A. Sons mais longos são cortados em {seconds} segundos.",
   "settings.alerts.fileError": "Não é possível tocar este arquivo. Tente um arquivo MP3 ou WAV.",
+  "settings.alerts.fileTooLarge": "Este arquivo tem mais de {mb} MB. Escolha um som mais curto.",
   "sound.windows": "Padrão do Windows",
   "sound.chime": "Carrilhão",
   "sound.glass": "Vidro",

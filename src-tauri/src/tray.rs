@@ -435,15 +435,42 @@ pub fn set_provider_tray_icons(
 /// the user asked for) as shown next to the clock, like Settings > Taskbar > Other system tray
 /// icons does. Only entries without a user choice yet: an icon the user turned off stays off.
 /// Explorer writes an icon's entry some time after the icon appears (longer on a first run or at
-/// sign-in), so look a few times.
+/// sign-in), so look a few times. One thread does the looking; a new request only tops up its passes.
 pub fn promote_tray_icons_later() {
     #[cfg(windows)]
-    std::thread::spawn(|| {
-        for _ in 0..10 {
-            std::thread::sleep(std::time::Duration::from_secs(3));
-            promote_unset_tray_icons();
+    {
+        const PASSES: u32 = 10;
+        // (passes left, thread running), updated together so no request is lost.
+        static STATE: Mutex<(u32, bool)> = Mutex::new((0, false));
+        let Ok(mut state) = STATE.lock() else {
+            return;
+        };
+        state.0 = PASSES;
+        if state.1 {
+            return;
         }
-    });
+        state.1 = true;
+        drop(state);
+        let spawned = std::thread::Builder::new()
+            .name("tray-promote".into())
+            .spawn(|| loop {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                promote_unset_tray_icons();
+                let Ok(mut state) = STATE.lock() else {
+                    return;
+                };
+                state.0 = state.0.saturating_sub(1);
+                if state.0 == 0 {
+                    state.1 = false;
+                    return;
+                }
+            });
+        if spawned.is_err() {
+            if let Ok(mut state) = STATE.lock() {
+                state.1 = false;
+            }
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -513,8 +540,15 @@ fn remember_position_store(
 fn remembered_position(window: &tauri::WebviewWindow) -> Option<(i32, i32)> {
     let store = remember_position_store(window.app_handle())?;
     let saved = store.get(PANEL_POSITION_KEY)?;
-    let x = i32::try_from(saved.get("x")?.as_i64()?).ok()?;
-    let y = i32::try_from(saved.get("y")?.as_i64()?).ok()?;
+    // settings.json is writable from the webview: take only values a screen can have, which also
+    // keeps the math below far from overflowing.
+    let coordinate = |key: &str| {
+        let value = saved.get(key)?.as_i64()?;
+        (-1_000_000..=1_000_000)
+            .contains(&value)
+            .then_some(value as i32)
+    };
+    let (x, y) = (coordinate("x")?, coordinate("y")?);
     let width = window.outer_size().ok()?.width as i32;
     let title_bar = (x + width / 2, y + 8);
     window

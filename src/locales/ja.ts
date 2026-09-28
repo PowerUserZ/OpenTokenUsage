@@ -129,6 +129,7 @@ export const ja: Messages = {
   "settings.alerts.chooseFile": "自分のサウンドを使う…",
   "settings.alerts.fileHint": "MP3、WAV、OGG、M4A に対応。長いサウンドは {seconds} 秒で切り取られます。",
   "settings.alerts.fileError": "このファイルは再生できません。MP3 または WAV ファイルをお試しください。",
+  "settings.alerts.fileTooLarge": "このファイルは {mb} MB を超えています。もっと短いサウンドを選んでください。",
   "sound.windows": "Windows の既定",
   "sound.chime": "チャイム",
   "sound.glass": "グラス",

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
-import { CUSTOM_SOUND_MAX_SECONDS, encodeWav, toShortMono } from "@/lib/alert-sound"
+import { audioFileToWav, CUSTOM_SOUND_MAX_MB, CUSTOM_SOUND_MAX_SECONDS, encodeWav, SoundFileTooLargeError, toShortMono } from "@/lib/alert-sound"
 import { ALERT_SOUNDS } from "@/lib/settings"
 
 describe("encodeWav", () => {
@@ -32,6 +32,13 @@ describe("toShortMono", () => {
     expect(mono.length).toBe(CUSTOM_SOUND_MAX_SECONDS * rate)
     expect(mono[0]).toBe(1)
     expect(mono[mono.length - 1]).toBe(0)
+  })
+})
+
+describe("audioFileToWav", () => {
+  it("refuses a big file before reading or decoding it", async () => {
+    const file = { name: "podcast.mp3", size: (CUSTOM_SOUND_MAX_MB + 1) * 1024 * 1024 } as File
+    await expect(audioFileToWav(file)).rejects.toBeInstanceOf(SoundFileTooLargeError)
   })
 })
 

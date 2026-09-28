@@ -129,6 +129,7 @@ export const tr: Messages = {
   "settings.alerts.chooseFile": "Kendi sesimi kullan…",
   "settings.alerts.fileHint": "MP3, WAV, OGG veya M4A. Daha uzun sesler {seconds} saniyede kesilir.",
   "settings.alerts.fileError": "Bu dosya çalınamıyor. MP3 veya WAV dosyası deneyin.",
+  "settings.alerts.fileTooLarge": "Bu dosya {mb} MB'tan büyük. Daha kısa bir ses seçin.",
   "sound.windows": "Windows varsayılanı",
   "sound.chime": "Zil",
   "sound.glass": "Cam",

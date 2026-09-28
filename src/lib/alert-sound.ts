@@ -1,7 +1,12 @@
 /** A custom notification sound is kept short and small: mono, 44.1 kHz, at most this long. */
 export const CUSTOM_SOUND_MAX_SECONDS = 5
-/** Bigger files are refused before decoding (a notification sound is a few hundred KB). */
-export const CUSTOM_SOUND_MAX_FILE_BYTES = 30 * 1024 * 1024
+/**
+ * Bigger files are refused before decoding: the whole file is decoded before the 5 s cut, and a long
+ * low-bitrate file would decode to gigabytes. Any 5 s clip, and most songs, fit.
+ */
+export const CUSTOM_SOUND_MAX_MB = 5
+
+export class SoundFileTooLargeError extends Error {}
 const SAMPLE_RATE = 44_100
 const FADE_OUT_SECONDS = 0.05
 
@@ -44,7 +49,7 @@ export function toShortMono(channels: Float32Array[], sampleRate: number): Float
 
 /** Any audio file the webview can decode (mp3, wav, ogg, m4a, flac...) as our WAV. */
 export async function audioFileToWav(file: File): Promise<Uint8Array> {
-  if (file.size > CUSTOM_SOUND_MAX_FILE_BYTES) throw new Error("file too large")
+  if (file.size > CUSTOM_SOUND_MAX_MB * 1024 * 1024) throw new SoundFileTooLargeError(file.name)
   // Decoding on a 44.1 kHz context also resamples to 44.1 kHz.
   const decoded = await new OfflineAudioContext(1, 1, SAMPLE_RATE).decodeAudioData(await file.arrayBuffer())
   const channels = Array.from({ length: decoded.numberOfChannels }, (_, i) => decoded.getChannelData(i))

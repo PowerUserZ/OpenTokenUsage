@@ -129,6 +129,7 @@ export const it: Messages = {
   "settings.alerts.chooseFile": "Usa un mio suono…",
   "settings.alerts.fileHint": "MP3, WAV, OGG o M4A. I suoni più lunghi vengono tagliati a {seconds} secondi.",
   "settings.alerts.fileError": "Impossibile riprodurre questo file. Prova con un file MP3 o WAV.",
+  "settings.alerts.fileTooLarge": "Questo file supera i {mb} MB. Scegli un suono più breve.",
   "sound.windows": "Predefinito di Windows",
   "sound.chime": "Campanello",
   "sound.glass": "Vetro",

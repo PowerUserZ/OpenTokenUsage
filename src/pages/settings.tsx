@@ -23,7 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import { TaskbarStripSection } from "@/components/taskbar-strip-section";
 import { SegmentedControl, SettingsSection } from "@/components/settings-section";
-import { audioFileToWav, CUSTOM_SOUND_MAX_SECONDS } from "@/lib/alert-sound";
+import { audioFileToWav, CUSTOM_SOUND_MAX_MB, CUSTOM_SOUND_MAX_SECONDS, SoundFileTooLargeError } from "@/lib/alert-sound";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
 import { bytesToBase64 } from "@/lib/tray-provider-icons";
 import {
@@ -291,7 +291,7 @@ function playAlertSound(sound: AlertSound) {
 function AlertOptions() {
   const settings = useAppPreferencesStore((state) => state.alertSettings);
   const setSettings = useAppPreferencesStore((state) => state.setAlertSettings);
-  const [fileError, setFileError] = useState(false);
+  const [fileError, setFileError] = useState<"tooLarge" | "unreadable" | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const update = (next: AlertSettings) => {
@@ -310,7 +310,7 @@ function AlertOptions() {
     playAlertSound(sound);
   };
   const applySoundFile = async (file: File) => {
-    setFileError(false);
+    setFileError(null);
     try {
       const wav = await audioFileToWav(file);
       await invoke("save_custom_alert_sound", { wav: bytesToBase64(wav) });
@@ -318,7 +318,7 @@ function AlertOptions() {
       playAlertSound("custom");
     } catch (error) {
       console.error("Failed to use the sound file:", error);
-      setFileError(true);
+      setFileError(error instanceof SoundFileTooLargeError ? "tooLarge" : "unreadable");
     }
   };
 
@@ -397,7 +397,11 @@ function AlertOptions() {
           }}
         />
         <p className={cn("mt-0.5 text-xs", fileError ? "text-destructive" : "text-muted-foreground")}>
-          {fileError ? t("settings.alerts.fileError") : t("settings.alerts.fileHint", { seconds: CUSTOM_SOUND_MAX_SECONDS })}
+          {fileError === "tooLarge"
+            ? t("settings.alerts.fileTooLarge", { mb: CUSTOM_SOUND_MAX_MB })
+            : fileError
+              ? t("settings.alerts.fileError")
+              : t("settings.alerts.fileHint", { seconds: CUSTOM_SOUND_MAX_SECONDS })}
         </p>
       </div>
     </div>

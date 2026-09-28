@@ -129,6 +129,7 @@ export const ko: Messages = {
   "settings.alerts.chooseFile": "내 소리 사용…",
   "settings.alerts.fileHint": "MP3, WAV, OGG, M4A를 지원합니다. 긴 소리는 {seconds}초에서 잘립니다.",
   "settings.alerts.fileError": "이 파일은 재생할 수 없습니다. MP3나 WAV 파일을 사용해 보세요.",
+  "settings.alerts.fileTooLarge": "이 파일은 {mb}MB보다 큽니다. 더 짧은 소리를 선택하세요.",
   "sound.windows": "Windows 기본값",
   "sound.chime": "차임",
   "sound.glass": "유리",

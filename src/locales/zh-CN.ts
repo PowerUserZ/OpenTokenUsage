@@ -129,6 +129,7 @@ export const zhCN: Messages = {
   "settings.alerts.chooseFile": "使用自己的声音…",
   "settings.alerts.fileHint": "支持 MP3、WAV、OGG 或 M4A。较长的声音会在 {seconds} 秒处截断。",
   "settings.alerts.fileError": "无法播放此文件。请尝试 MP3 或 WAV 文件。",
+  "settings.alerts.fileTooLarge": "此文件超过 {mb} MB。请选择更短的声音。",
   "sound.windows": "Windows 默认",
   "sound.chime": "钟声",
   "sound.glass": "玻璃",

@@ -129,6 +129,7 @@ export const esES: Messages = {
   "settings.alerts.chooseFile": "Usar mi propio sonido…",
   "settings.alerts.fileHint": "MP3, WAV, OGG o M4A. Los sonidos más largos se cortan a los {seconds} segundos.",
   "settings.alerts.fileError": "No se puede reproducir este archivo. Prueba con un MP3 o un WAV.",
+  "settings.alerts.fileTooLarge": "Este archivo ocupa más de {mb} MB. Elige un sonido más corto.",
   "sound.windows": "Predeterminado de Windows",
   "sound.chime": "Carillón",
   "sound.glass": "Cristal",
