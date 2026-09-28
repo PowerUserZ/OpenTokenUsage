@@ -27,8 +27,6 @@ const state = vi.hoisted(() => ({
   saveTrayMetricMock: vi.fn(),
   loadTrayPercentColorMock: vi.fn(),
   saveTrayPercentColorMock: vi.fn(),
-  loadMenubarMetricMock: vi.fn(),
-  saveMenubarMetricMock: vi.fn(),
   migrateLegacyTraySettingsMock: vi.fn(),
   loadGlobalShortcutMock: vi.fn(),
   saveGlobalShortcutMock: vi.fn(),
@@ -243,8 +241,6 @@ vi.mock("@/lib/settings", async () => {
     saveTrayMetric: state.saveTrayMetricMock,
     loadTrayPercentColor: state.loadTrayPercentColorMock,
     saveTrayPercentColor: state.saveTrayPercentColorMock,
-    loadMenubarMetric: state.loadMenubarMetricMock,
-    saveMenubarMetric: state.saveMenubarMetricMock,
     migrateLegacyTraySettings: state.migrateLegacyTraySettingsMock,
     loadGlobalShortcut: state.loadGlobalShortcutMock,
     saveGlobalShortcut: state.saveGlobalShortcutMock,
@@ -289,8 +285,6 @@ describe("App", () => {
     state.saveTrayMetricMock.mockReset()
     state.loadTrayPercentColorMock.mockReset()
     state.saveTrayPercentColorMock.mockReset()
-    state.loadMenubarMetricMock.mockReset()
-    state.saveMenubarMetricMock.mockReset()
     state.migrateLegacyTraySettingsMock.mockReset()
     state.loadGlobalShortcutMock.mockReset()
     state.saveGlobalShortcutMock.mockReset()
@@ -335,8 +329,6 @@ describe("App", () => {
     state.saveTrayMetricMock.mockResolvedValue(undefined)
     state.loadTrayPercentColorMock.mockResolvedValue("#ffffff")
     state.saveTrayPercentColorMock.mockResolvedValue(undefined)
-    state.loadMenubarMetricMock.mockResolvedValue("default")
-    state.saveMenubarMetricMock.mockResolvedValue(undefined)
     state.migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     state.loadGlobalShortcutMock.mockResolvedValue(null)
     state.saveGlobalShortcutMock.mockResolvedValue(undefined)
@@ -745,8 +737,11 @@ describe("App", () => {
     })
   })
 
-  it("settings UI persists menubar metric change and re-renders the tray", async () => {
+  // Regression: the bars style ignored the Metric dropdown (only a second, duplicate Default/Weekly
+  // control reached it), so picking Weekly kept showing Session in the tray.
+  it("bars style follows the Metric dropdown", async () => {
     state.loadDisplayModeMock.mockResolvedValue("used")
+    state.loadMenubarIconStyleMock.mockResolvedValue("bars")
     state.invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_plugins") {
         return [
@@ -783,12 +778,13 @@ describe("App", () => {
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
 
-    await userEvent.click(await screen.findByRole("radio", { name: "Weekly" }))
-    expect(state.saveMenubarMetricMock).toHaveBeenCalledWith("weekly")
+    await userEvent.selectOptions(await screen.findByRole("combobox", { name: "Tray metric" }), "Weekly")
+    expect(state.saveTrayMetricMock).toHaveBeenCalledWith("Weekly")
 
     await waitFor(() => {
       const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
       expect(latestCall).toBeDefined()
+      expect(latestCall!.style).toBe("bars")
       expect(latestCall!.bars?.[0]?.fraction).toBe(0.6)
     })
   })
@@ -843,7 +839,7 @@ describe("App", () => {
 
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
-    await userEvent.click(await screen.findByRole("radio", { name: "Weekly" }))
+    await userEvent.selectOptions(await screen.findByRole("combobox", { name: "Tray metric" }), "Weekly")
 
     // Cursor has no weekly line -> falls back to its primary, so the list is mixed
     // and every line gets a metric tag.

@@ -16,7 +16,6 @@ const {
   loadTrayMetricMock,
   loadTrayPercentColorMock,
   loadTrayProviderMock,
-  loadMenubarMetricMock,
   loadPluginSettingsMock,
   loadResetTimerDisplayModeMock,
   loadStartOnLoginMock,
@@ -41,7 +40,6 @@ const {
   loadTrayMetricMock: vi.fn(),
   loadTrayPercentColorMock: vi.fn(),
   loadTrayProviderMock: vi.fn(),
-  loadMenubarMetricMock: vi.fn(),
   loadPluginSettingsMock: vi.fn(),
   loadResetTimerDisplayModeMock: vi.fn(),
   loadStartOnLoginMock: vi.fn(),
@@ -83,7 +81,6 @@ vi.mock("@/lib/settings", () => ({
   loadTrayMetric: loadTrayMetricMock,
   loadTrayPercentColor: loadTrayPercentColorMock,
   loadTrayProvider: loadTrayProviderMock,
-  loadMenubarMetric: loadMenubarMetricMock,
   loadPluginSettings: loadPluginSettingsMock,
   loadResetTimerDisplayMode: loadResetTimerDisplayModeMock,
   loadStartOnLogin: loadStartOnLoginMock,
@@ -112,7 +109,6 @@ function createArgs() {
     setTrayProvider: vi.fn(),
     setTrayMetric: vi.fn(),
     setTrayPercentColor: vi.fn(),
-    setMenubarMetric: vi.fn(),
     setLoadingForPlugins: vi.fn(),
     setErrorForPlugins: vi.fn(),
     startBatch: vi.fn().mockResolvedValue(undefined),
@@ -135,7 +131,6 @@ describe("useSettingsBootstrap", () => {
     loadTrayMetricMock.mockReset()
     loadTrayPercentColorMock.mockReset()
     loadTrayProviderMock.mockReset()
-    loadMenubarMetricMock.mockReset()
     loadPluginSettingsMock.mockReset()
     loadResetTimerDisplayModeMock.mockReset()
     loadStartOnLoginMock.mockReset()
@@ -171,7 +166,6 @@ describe("useSettingsBootstrap", () => {
     loadTrayProviderMock.mockResolvedValue("auto")
     loadTrayMetricMock.mockResolvedValue("auto")
     loadTrayPercentColorMock.mockResolvedValue("#ffffff")
-    loadMenubarMetricMock.mockResolvedValue("default")
     loadStartOnLoginMock.mockResolvedValue(true)
     migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     migrateWindsurfToDevinMock.mockImplementation((settings) => settings)
@@ -203,33 +197,6 @@ describe("useSettingsBootstrap", () => {
         resetModeError
       )
       expect(args.setResetTimerDisplayMode).toHaveBeenCalledWith("relative")
-    })
-
-    errorSpy.mockRestore()
-  })
-
-  it("applies the stored menubar metric", async () => {
-    loadMenubarMetricMock.mockResolvedValueOnce("weekly")
-    const args = createArgs()
-
-    renderHook(() => useSettingsBootstrap(args))
-
-    await waitFor(() => {
-      expect(args.setMenubarMetric).toHaveBeenCalledWith("weekly")
-    })
-  })
-
-  it("falls back to default menubar metric when loading fails", async () => {
-    const metricError = new Error("menubar metric unavailable")
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-    loadMenubarMetricMock.mockRejectedValueOnce(metricError)
-    const args = createArgs()
-
-    renderHook(() => useSettingsBootstrap(args))
-
-    await waitFor(() => {
-      expect(errorSpy).toHaveBeenCalledWith("Failed to load menubar metric:", metricError)
-      expect(args.setMenubarMetric).toHaveBeenCalledWith("default")
     })
 
     errorSpy.mockRestore()

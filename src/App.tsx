@@ -59,8 +59,6 @@ function App() {
     setTrayMetric,
     trayPercentColor,
     setTrayPercentColor,
-    menubarMetric,
-    setMenubarMetric,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setTimeFormatMode,
@@ -82,8 +80,6 @@ function App() {
       setTrayMetric: state.setTrayMetric,
       trayPercentColor: state.trayPercentColor,
       setTrayPercentColor: state.setTrayPercentColor,
-      menubarMetric: state.menubarMetric,
-      setMenubarMetric: state.setMenubarMetric,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setTimeFormatMode: state.setTimeFormatMode,
@@ -122,7 +118,6 @@ function App() {
     trayMetric,
     trayPercentColor,
     themeMode,
-    menubarMetric,
     activeView,
   })
 
@@ -142,7 +137,6 @@ function App() {
     setTrayProvider,
     setTrayMetric,
     setTrayPercentColor,
-    setMenubarMetric,
     setResetTimerDisplayMode,
     setTimeFormatMode,
     setGlobalShortcut,
@@ -164,7 +158,6 @@ function App() {
     handleTrayProviderChange,
     handleTrayMetricChange,
     handleTrayPercentColorChange,
-    handleMenubarMetricChange,
   } = useSettingsDisplayActions({
     setThemeMode,
     setDisplayMode,
@@ -175,7 +168,6 @@ function App() {
     setTrayProvider,
     setTrayMetric,
     setTrayPercentColor,
-    setMenubarMetric,
     scheduleTrayIconUpdate,
   })
 
@@ -287,7 +279,6 @@ function App() {
         onTrayProviderChange: handleTrayProviderChange,
         onTrayMetricChange: handleTrayMetricChange,
         onTrayPercentColorChange: handleTrayPercentColorChange,
-        onMenubarMetricChange: handleMenubarMetricChange,
         traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,

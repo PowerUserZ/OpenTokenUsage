@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
 import type { PluginMeta } from "@/lib/plugin-types"
-import type { DisplayMode, MenubarIconStyle, MenubarMetric, PluginSettings } from "@/lib/settings"
+import type { DisplayMode, MenubarIconStyle, PluginSettings } from "@/lib/settings"
 import { getEnabledPluginIds } from "@/lib/settings"
 import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
 import { getTrayPrimaryBars, type TrayPrimaryBar } from "@/lib/tray-primary-progress"
@@ -21,7 +21,6 @@ type UseTrayIconArgs = {
   trayMetric: string
   trayPercentColor: string
   themeMode: string
-  menubarMetric: MenubarMetric
   activeView: string
 }
 
@@ -64,7 +63,6 @@ export function useTrayIcon({
   trayMetric,
   trayPercentColor,
   themeMode,
-  menubarMetric,
   activeView,
 }: UseTrayIconArgs) {
   const trayRef = useRef<TrayIcon | null>(null)
@@ -86,7 +84,6 @@ export function useTrayIcon({
   const trayMetricRef = useRef(trayMetric)
   const trayPercentColorRef = useRef(trayPercentColor)
   const themeModeRef = useRef(themeMode)
-  const menubarMetricRef = useRef(menubarMetric)
   const activeViewRef = useRef(activeView)
   const lastTrayProviderIdRef = useRef<string | null>(null)
 
@@ -126,9 +123,6 @@ export function useTrayIcon({
     themeModeRef.current = themeMode
   }, [themeMode])
 
-  useEffect(() => {
-    menubarMetricRef.current = menubarMetric
-  }, [menubarMetric])
 
   useEffect(() => {
     activeViewRef.current = activeView
@@ -225,7 +219,6 @@ export function useTrayIcon({
       const trayIconColor = isDarkTheme ? "white" : "black"
 
       const style = menubarIconStyleRef.current
-      const preferWeekly = menubarMetricRef.current === "weekly"
       const sizePx = getTrayIconSizePx(window.devicePixelRatio)
       const nextActiveView = activeViewRef.current
       const activeProviderId =
@@ -248,7 +241,10 @@ export function useTrayIcon({
         trayProviderId = enabledPluginIds[0] ?? null
       }
 
+      // One Metric setting drives every style (bars, percent, tooltip). "Weekly" also falls back to a
+      // provider's declared weekly line when it isn't literally labelled "Weekly".
       const preferredMetric = trayMetricSetting !== "auto" ? trayMetricSetting : undefined
+      const preferWeekly = trayMetricSetting === "Weekly"
 
       const barsForPreview = getTrayPrimaryBars({
         pluginsMeta: pluginsMetaRef.current,
@@ -256,6 +252,7 @@ export function useTrayIcon({
         pluginStates: pluginStatesRef.current,
         maxBars: 4,
         displayMode: displayModeRef.current,
+        preferredMetric,
         preferWeekly,
       })
 
@@ -293,6 +290,7 @@ export function useTrayIcon({
         pluginStates: pluginStatesRef.current,
         maxBars: 20, // Show more in tooltip
         displayMode: displayModeRef.current,
+        preferredMetric,
         preferWeekly,
       })
       const tooltip = formatTrayTooltip(tooltipBars, pluginsMetaRef.current, preferWeekly)
@@ -405,7 +403,7 @@ export function useTrayIcon({
   useEffect(() => {
     if (!trayReady) return
     scheduleTrayIconUpdate("settings", 0)
-  }, [activeView, menubarIconStyle, menubarMetric, scheduleTrayIconUpdate, trayReady])
+  }, [activeView, menubarIconStyle, scheduleTrayIconUpdate, trayReady])
 
   useEffect(() => {
     return () => {

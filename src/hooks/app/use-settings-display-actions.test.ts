@@ -3,14 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
   saveDisplayModeMock,
-  saveMenubarMetricMock,
   saveResetTimerDisplayModeMock,
   saveThemeModeMock,
   saveTimeFormatModeMock,
 } = vi.hoisted(() => ({
   saveThemeModeMock: vi.fn(),
   saveDisplayModeMock: vi.fn(),
-  saveMenubarMetricMock: vi.fn(),
   saveResetTimerDisplayModeMock: vi.fn(),
   saveTimeFormatModeMock: vi.fn(),
 }))
@@ -18,7 +16,6 @@ const {
 vi.mock("@/lib/settings", () => ({
   saveThemeMode: saveThemeModeMock,
   saveDisplayMode: saveDisplayModeMock,
-  saveMenubarMetric: saveMenubarMetricMock,
   saveResetTimerDisplayMode: saveResetTimerDisplayModeMock,
   saveTimeFormatMode: saveTimeFormatModeMock,
 }))
@@ -29,12 +26,10 @@ describe("useSettingsDisplayActions", () => {
   beforeEach(() => {
     saveThemeModeMock.mockReset()
     saveDisplayModeMock.mockReset()
-    saveMenubarMetricMock.mockReset()
     saveResetTimerDisplayModeMock.mockReset()
     saveTimeFormatModeMock.mockReset()
     saveThemeModeMock.mockResolvedValue(undefined)
     saveDisplayModeMock.mockResolvedValue(undefined)
-    saveMenubarMetricMock.mockResolvedValue(undefined)
     saveResetTimerDisplayModeMock.mockResolvedValue(undefined)
     saveTimeFormatModeMock.mockResolvedValue(undefined)
   })
@@ -44,7 +39,6 @@ describe("useSettingsDisplayActions", () => {
     const setDisplayMode = vi.fn()
     const setResetTimerDisplayMode = vi.fn()
     const setTimeFormatMode = vi.fn()
-    const setMenubarMetric = vi.fn()
     const scheduleTrayIconUpdate = vi.fn()
 
     const { result } = renderHook(() =>
@@ -55,7 +49,6 @@ describe("useSettingsDisplayActions", () => {
         setResetTimerDisplayMode,
         setTimeFormatMode,
         setMenubarIconStyle: vi.fn(),
-        setMenubarMetric,
         scheduleTrayIconUpdate,
       })
     )
@@ -65,21 +58,18 @@ describe("useSettingsDisplayActions", () => {
       result.current.handleDisplayModeChange("used")
       result.current.handleResetTimerDisplayModeChange("absolute")
       result.current.handleTimeFormatModeChange("24h")
-      result.current.handleMenubarMetricChange("weekly")
     })
 
     expect(setThemeMode).toHaveBeenCalledWith("dark")
     expect(setDisplayMode).toHaveBeenCalledWith("used")
     expect(setResetTimerDisplayMode).toHaveBeenCalledWith("absolute")
     expect(setTimeFormatMode).toHaveBeenCalledWith("24h")
-    expect(setMenubarMetric).toHaveBeenCalledWith("weekly")
     expect(scheduleTrayIconUpdate).toHaveBeenCalledWith("settings", 0)
 
     expect(saveThemeModeMock).toHaveBeenCalledWith("dark")
     expect(saveDisplayModeMock).toHaveBeenCalledWith("used")
     expect(saveResetTimerDisplayModeMock).toHaveBeenCalledWith("absolute")
     expect(saveTimeFormatModeMock).toHaveBeenCalledWith("24h")
-    expect(saveMenubarMetricMock).toHaveBeenCalledWith("weekly")
   })
 
   it("toggles reset timer mode in both directions", () => {
@@ -94,7 +84,6 @@ describe("useSettingsDisplayActions", () => {
           setResetTimerDisplayMode,
           setTimeFormatMode: vi.fn(),
           setMenubarIconStyle: vi.fn(),
-          setMenubarMetric: vi.fn(),
           scheduleTrayIconUpdate: vi.fn(),
         }),
       { initialProps: { mode: "relative" as const } }
@@ -132,7 +121,6 @@ describe("useSettingsDisplayActions", () => {
         setResetTimerDisplayMode: vi.fn(),
         setTimeFormatMode: vi.fn(),
         setMenubarIconStyle: vi.fn(),
-        setMenubarMetric: vi.fn(),
         scheduleTrayIconUpdate: vi.fn(),
       })
     )

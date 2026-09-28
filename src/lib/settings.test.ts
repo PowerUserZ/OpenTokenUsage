@@ -4,7 +4,6 @@ import {
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
-  DEFAULT_MENUBAR_METRIC,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
@@ -16,7 +15,6 @@ import {
   loadDisplayMode,
   loadGlobalShortcut,
   loadMenubarIconStyle,
-  loadMenubarMetric,
   loadPluginSettings,
   loadResetTimerDisplayMode,
   loadStartOnLogin,
@@ -29,7 +27,6 @@ import {
   saveDisplayMode,
   saveGlobalShortcut,
   saveMenubarIconStyle,
-  saveMenubarMetric,
   savePluginSettings,
   saveResetTimerDisplayMode,
   saveStartOnLogin,
@@ -335,23 +332,27 @@ describe("settings", () => {
     await expect(loadMenubarIconStyle()).resolves.toBe(DEFAULT_MENUBAR_ICON_STYLE)
   })
 
-  it("loads default menubar metric when missing", async () => {
-    await expect(loadMenubarMetric()).resolves.toBe(DEFAULT_MENUBAR_METRIC)
-  })
-
-  it("loads stored menubar metric", async () => {
+  // The duplicate Default/Weekly menubarMetric was folded into trayMetric.
+  it("migrates legacy weekly menubar metric into tray metric", async () => {
     storeState.set("menubarMetric", "weekly")
-    await expect(loadMenubarMetric()).resolves.toBe("weekly")
+    await migrateLegacyTraySettings()
+    expect(storeState.get("trayMetric")).toBe("Weekly")
+    expect(storeState.has("menubarMetric")).toBe(false)
   })
 
-  it("saves menubar metric", async () => {
-    await saveMenubarMetric("weekly")
-    await expect(loadMenubarMetric()).resolves.toBe("weekly")
+  it("keeps an explicit tray metric over the legacy menubar metric", async () => {
+    storeState.set("menubarMetric", "weekly")
+    storeState.set("trayMetric", "Session")
+    await migrateLegacyTraySettings()
+    expect(storeState.get("trayMetric")).toBe("Session")
+    expect(storeState.has("menubarMetric")).toBe(false)
   })
 
-  it("falls back to default for invalid menubar metric", async () => {
-    storeState.set("menubarMetric", "invalid")
-    await expect(loadMenubarMetric()).resolves.toBe(DEFAULT_MENUBAR_METRIC)
+  it("drops a legacy default menubar metric without touching tray metric", async () => {
+    storeState.set("menubarMetric", "default")
+    await migrateLegacyTraySettings()
+    expect(storeState.has("trayMetric")).toBe(false)
+    expect(storeState.has("menubarMetric")).toBe(false)
   })
 
   it("skips legacy tray migration when keys are absent", async () => {
