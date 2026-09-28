@@ -22,6 +22,11 @@ This file holds the project facts that are easy to get wrong.
   timeout (30 s), one probe per plugin at a time, panics → error result. Don't re-implement in JS.
 - Paths: `~/Library/Application Support/<X>` is mapped to `%APPDATA%\<X>` by `expand_path`.
   SQLite goes through bundled `rusqlite` (no `sqlite3` CLI); no `ps`/`lsof`/`security` on Windows.
+- Release builds run only the bundled plugins (copied to `%APPDATA%\com.sunstory.openusage\plugins`);
+  the repo's `plugins/` is picked up from the cwd in **debug builds only** (`#[cfg(debug_assertions)]`
+  in `plugin_engine/mod.rs`) — never make that path reachable in release. Plugin ids must match
+  `[a-z0-9-]`; `entry` and `icon` must stay inside the plugin folder.
+- Host HTTP caps response bodies at 8 MB and honors `dangerouslyIgnoreTls` for loopback URLs only.
 
 ## UI
 - Windows 11 Fluent look: colors are tokens in `src/index.css` (`--accent-base` = Windows accent
@@ -70,6 +75,17 @@ This file holds the project facts that are easy to get wrong.
   `Access-Control-Allow-Origin` back (any website could read usage).
 - Keyboard: Ctrl (not Cmd/Win) shortcuts; show Ctrl/Alt in the UI.
 
+## Security
+- CSP lives in `tauri.conf.json` (`script-src 'self'`; `img-src` data:/blob:; `connect-src` only IPC +
+  `https://api.github.com`). The dev server runs WITHOUT it, so a new remote fetch/image/font source
+  works in `tauri dev` and silently breaks in release: add it to the CSP and test a release build
+  (`bun tauri build --no-bundle`, run `src-tauri/target/release/opentokenusage.exe`).
+- App-defined Tauri commands are callable by any script in the webview (no ACL): validate every
+  argument in Rust. Images over IPC go through `tray::decode_rgba` (size caps, no u32 overflow);
+  `run_in_terminal` only runs its exact allow-list.
+- No telemetry: the upstream Aptabase ping (reported to upstream's account) was removed in 0.7.0.
+  Don't add analytics back.
+
 ## Verify before committing
 - `bunx tsc --noEmit` · `bun run test` (src + plugins) · `cd src-tauri && cargo test --lib`.
 - Vitest `testTimeout` is 20 s on purpose (cold transform of a file's first test is slow on
@@ -80,9 +96,14 @@ This file holds the project facts that are easy to get wrong.
 - Tauri JS packages and Rust crates must share **major.minor** (`@tauri-apps/api` ↔ `tauri`,
   `@tauri-apps/plugin-x` ↔ `tauri-plugin-x`); the Tauri CLI refuses to build otherwise.
 - Release: bump the version in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`
-  (+ `Cargo.lock`), then push a `v*` tag → `publish.yml` (windows-latest) builds NSIS + MSI and
-  signs updater artifacts with the `TAURI_SIGNING_*` repo secrets. The updater points at this
-  fork's `latest.json`, never upstream's.
-- `git push` is blocked by the owner's hook; do local commits and hand the push back.
+  (+ `Cargo.lock`), add a `## vX.Y.Z` section to `CHANGELOG.md` (required: it becomes the release
+  body the in-app changelog shows), then push a `v*` tag → `publish.yml` (windows-latest) builds
+  NSIS + MSI and signs updater artifacts with the `TAURI_SIGNING_*` repo secrets. The updater points
+  at this fork's `latest.json`, never upstream's. `git fetch upstream` must not bring upstream's
+  Swift `v0.7.x` tags (`remote.upstream.tagOpt --no-tags`).
+- Workflow actions are pinned to full commit SHAs (version in a comment) and Bun to an exact
+  version; bump them deliberately. The winget job needs a valid `WINGET_TOKEN` (classic PAT,
+  `public_repo`); if it fails, submit with komac (see the release notes of 0.7.0 / memory).
+- The owner's hook blocks force pushes (and a few destructive git commands); plain pushes pass.
 - `.claude/skills/tauri-*` are real copies (git symlinks don't work on Windows without
   Developer Mode); keep them in sync with `.agents/skills/` if you edit one.
