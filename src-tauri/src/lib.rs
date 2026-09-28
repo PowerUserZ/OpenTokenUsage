@@ -4,6 +4,7 @@ mod log_path;
 mod panel;
 mod plugin_engine;
 mod provider_status;
+mod setup_actions;
 mod tray;
 mod window_style;
 
@@ -654,7 +655,9 @@ pub fn run() {
             window_style::get_window_backdrop,
             window_style::get_accent_color,
             window_style::get_taskbar_is_light,
-            tray::set_tray_menu_labels
+            tray::set_tray_menu_labels,
+            setup_actions::run_in_terminal,
+            setup_actions::open_env_editor
         ])
         .setup(|app| {
             use tauri::Manager;

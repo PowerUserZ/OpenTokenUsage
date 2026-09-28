@@ -86,7 +86,7 @@ export const ja: Messages = {
   "settings.alerts.desc": "80% と 95% に達したとき、リセット前に上限に達しそうなとき、リセットされたときに通知",
   "settings.alerts.label": "使用状況の通知",
   "settings.plugins.title": "プロバイダー",
-  "settings.plugins.desc": "チェックでプロバイダーを有効化、ドラッグで並べ替え。目のアイコンで通知領域のアイコンへの表示/非表示を切り替えます。",
+  "settings.plugins.desc": "チェックでプロバイダーを有効化、ドラッグで並べ替え。目のアイコンで、時計の横にある通知領域アイコンへの表示/非表示を切り替えます。",
   "settings.plugins.inTray": "通知領域のアイコンに表示中。クリックで非表示（サイドメニューには残ります）。",
   "settings.plugins.notInTray": "通知領域のアイコンに非表示。クリックで表示します。",
 
@@ -98,6 +98,9 @@ export const ja: Messages = {
   "status.open": "状態ページを開く",
 
   "card.retry": "再試行",
+  "error.runInTerminal": "ターミナルで {cmd} を実行",
+  "error.envSteps": "「API キー」からキーをコピーし、環境変数を開いて {name} という名前のユーザー環境変数を作成し、キーを貼り付けてください。次回の更新で読み込まれます。",
+  "error.openEnvEditor": "環境変数を開く",
   "card.updated": "更新: {time}",
   "card.justNow": "たった今",
   "card.minutesAgo": "{n}分前",
@@ -160,6 +163,9 @@ export const ja: Messages = {
   "label.Credits": "クレジット",
   "label.Balance": "残高",
   "label.Status": "状態",
+  "label.API keys": "API キー",
+  "label.Dashboard": "ダッシュボード",
+  "label.Usage dashboard": "使用状況ダッシュボード",
   "label.Usage Trend": "使用量の推移",
   "label.Rate Limit Resets": "レート制限のリセット",
   "label.Extra usage spent": "追加使用額",

@@ -119,13 +119,30 @@ export const PLUGIN_ERROR_PATTERNS: readonly { pattern: RegExp; key: PluginError
   { pattern: /^Couldn't update data\. Try again\?$/, key: "updateFailed" },
 ]
 
-/** Plugin error in the app language; unknown messages (e.g. raw server text) come back unchanged. */
-export function translatePluginError(message: string): string {
+function matchPluginError(message: string) {
   for (const { pattern, key } of PLUGIN_ERROR_PATTERNS) {
     const match = pattern.exec(message)
-    if (!match) continue
-    const vars = match.groups ?? {}
-    return MESSAGES[getLocale()][key].replace(/\{(\w+)\}/g, (text, name: string) => vars[name] ?? text)
+    if (match) return { key, vars: match.groups ?? {} }
   }
-  return message
+  return null
+}
+
+/** Plugin error in the app language; unknown messages (e.g. raw server text) come back unchanged. */
+export function translatePluginError(message: string): string {
+  const match = matchPluginError(message)
+  if (!match) return message
+  return MESSAGES[getLocale()][match.key].replace(/\{(\w+)\}/g, (text, name: string) => match.vars[name] ?? text)
+}
+
+export type PluginErrorAction = { kind: "run"; command: string } | { kind: "env"; names: string[] }
+
+/**
+ * One-click fix for a known error: a login command to run in a terminal, or API-key environment
+ * variables to set. The host only runs commands on its own allow-list (setup_actions.rs).
+ */
+export function getPluginErrorAction(message: string): PluginErrorAction | null {
+  const vars = matchPluginError(message)?.vars
+  if (vars?.cmd) return { kind: "run", command: vars.cmd }
+  if (vars?.env) return { kind: "env", names: [vars.env, vars.env2].filter((name) => !!name) }
+  return null
 }

@@ -86,7 +86,7 @@ export const ko: Messages = {
   "settings.alerts.desc": "80%와 95% 도달 시, 초기화 전에 소진될 때, 한도가 초기화될 때",
   "settings.alerts.label": "사용량 알림",
   "settings.plugins.title": "공급자",
-  "settings.plugins.desc": "체크하면 공급자가 켜지고, 끌어서 순서를 바꿉니다. 눈 아이콘은 알림 영역 아이콘에서 표시하거나 숨깁니다.",
+  "settings.plugins.desc": "체크하면 공급자가 켜지고, 끌어서 순서를 바꿉니다. 눈 아이콘은 시계 옆 알림 영역 아이콘에서 표시하거나 숨깁니다.",
   "settings.plugins.inTray": "알림 영역 아이콘에 표시 중. 클릭하면 숨깁니다(사이드 메뉴에는 남음).",
   "settings.plugins.notInTray": "알림 영역 아이콘에서 숨겨짐. 클릭하면 표시합니다.",
 
@@ -98,6 +98,9 @@ export const ko: Messages = {
   "status.open": "상태 페이지 열기",
 
   "card.retry": "다시 시도",
+  "error.runInTerminal": "터미널에서 {cmd} 실행",
+  "error.envSteps": "API 키에서 키를 복사한 뒤 환경 변수를 열고 이름이 {name}인 사용자 변수를 만들어 키를 붙여넣으세요. 다음 새로 고침 때 적용됩니다.",
+  "error.openEnvEditor": "환경 변수 열기",
   "card.updated": "{time} 업데이트됨",
   "card.justNow": "방금",
   "card.minutesAgo": "{n}분 전",
@@ -160,6 +163,9 @@ export const ko: Messages = {
   "label.Credits": "크레딧",
   "label.Balance": "잔액",
   "label.Status": "상태",
+  "label.API keys": "API 키",
+  "label.Dashboard": "대시보드",
+  "label.Usage dashboard": "사용량 대시보드",
   "label.Usage Trend": "사용량 추이",
   "label.Rate Limit Resets": "속도 제한 초기화",
   "label.Extra usage spent": "추가 사용 금액",

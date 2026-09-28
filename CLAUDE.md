@@ -31,6 +31,16 @@ This file holds the project facts that are easy to get wrong.
   (TypeScript fails otherwise). Keep `{placeholders}` identical (checked by `locales.test.ts`).
   Never compare translated text in logic. The native tray menu gets its labels from the frontend
   (`set_tray_menu_labels`).
+- **Translation rule (always):** whenever a feature adds or changes user-facing text, update the
+  key in **all 11 languages in the same change**: `src/locales/*.ts` for UI, plus
+  `src/locales/plugin-errors/*.ts` for plugin errors. Rewording the English means rewording every
+  language, and never paste English into another locale. `translation-lock.test.ts` fails when
+  English text changes; after translating everything, run `bun run locales:lock`. Never re-lock
+  without translating first.
+- Errors: `getPluginErrorAction` turns known errors into one-click fixes: a login command →
+  `run_in_terminal` (Rust allow-list in `setup_actions.rs`, test-synced with the plugin fixtures),
+  a missing API-key env var → the Windows Environment Variables dialog. Env vars are also read from
+  the registry, so a key added while the app is running works on the next refresh.
 - Tray metric: one setting, `trayMetric` (auto | Session | Weekly), drives bars, percent and tooltip.
   Tray provider `tightest` = "Most used" line across providers. `trayHiddenPlugins` keeps a provider
   in the nav but out of the tray. The tray icon color follows the *taskbar* theme, not the app theme.

@@ -86,7 +86,7 @@ export const es419: Messages = {
   "settings.alerts.desc": "Al 80% y 95%, cuando se agotará antes de restablecerse y cuando se restablece",
   "settings.alerts.label": "Notificaciones de uso",
   "settings.plugins.title": "Proveedores",
-  "settings.plugins.desc": "Marca para activar un proveedor y arrastra para reordenar. El ojo lo muestra u oculta en el ícono del área de notificación.",
+  "settings.plugins.desc": "Marca para activar un proveedor y arrastra para reordenar. El ojo lo muestra u oculta en el ícono del área de notificación, junto al reloj.",
   "settings.plugins.inTray": "Visible en el ícono del área de notificación. Haz clic para ocultarlo ahí (sigue en el menú lateral).",
   "settings.plugins.notInTray": "Oculto en el ícono del área de notificación. Haz clic para mostrarlo.",
 
@@ -98,6 +98,9 @@ export const es419: Messages = {
   "status.open": "Abrir página de estado",
 
   "card.retry": "Reintentar",
+  "error.runInTerminal": "Ejecutar {cmd} en la terminal",
+  "error.envSteps": "Copia tu clave desde Claves de API, luego abre Variables de entorno y crea una variable de usuario llamada {name} con esa clave. La próxima actualización la detectará.",
+  "error.openEnvEditor": "Abrir Variables de entorno",
   "card.updated": "Actualizado {time}",
   "card.justNow": "ahora mismo",
   "card.minutesAgo": "hace {n} min",
@@ -160,6 +163,9 @@ export const es419: Messages = {
   "label.Credits": "Créditos",
   "label.Balance": "Saldo",
   "label.Status": "Estado",
+  "label.API keys": "Claves de API",
+  "label.Dashboard": "Panel",
+  "label.Usage dashboard": "Panel de uso",
   "label.Usage Trend": "Tendencia de uso",
   "label.Rate Limit Resets": "Restablecimientos de límite",
   "label.Extra usage spent": "Gasto en uso adicional",

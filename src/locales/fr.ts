@@ -86,7 +86,7 @@ export const fr: Messages = {
   "settings.alerts.desc": "À 80 % et 95 %, si la limite sera atteinte avant la réinitialisation, et à chaque réinitialisation",
   "settings.alerts.label": "Notifications d'utilisation",
   "settings.plugins.title": "Fournisseurs",
-  "settings.plugins.desc": "Cochez pour activer un fournisseur, faites glisser pour réorganiser. L'œil l'affiche ou le masque dans l'icône de la zone de notification.",
+  "settings.plugins.desc": "Cochez pour activer un fournisseur, faites glisser pour réorganiser. L'œil l'affiche ou le masque dans l'icône de la zone de notification, à côté de l'horloge.",
   "settings.plugins.inTray": "Affiché dans l'icône de la zone de notification. Cliquez pour l'y masquer (il reste dans le menu latéral).",
   "settings.plugins.notInTray": "Masqué dans l'icône de la zone de notification. Cliquez pour l'y afficher.",
 
@@ -98,6 +98,9 @@ export const fr: Messages = {
   "status.open": "Ouvrir la page d'état",
 
   "card.retry": "Réessayer",
+  "error.runInTerminal": "Exécuter {cmd} dans un terminal",
+  "error.envSteps": "Copiez votre clé via Clés API, puis ouvrez les variables d'environnement et créez une variable utilisateur nommée {name} avec cette clé. Elle sera prise en compte à la prochaine actualisation.",
+  "error.openEnvEditor": "Ouvrir les variables d'environnement",
   "card.updated": "Mis à jour {time}",
   "card.justNow": "à l'instant",
   "card.minutesAgo": "il y a {n} min",
@@ -160,6 +163,9 @@ export const fr: Messages = {
   "label.Credits": "Crédits",
   "label.Balance": "Solde",
   "label.Status": "État",
+  "label.API keys": "Clés API",
+  "label.Dashboard": "Tableau de bord",
+  "label.Usage dashboard": "Tableau de bord d'utilisation",
   "label.Usage Trend": "Tendance d'utilisation",
   "label.Rate Limit Resets": "Réinitialisation des limites de débit",
   "label.Extra usage spent": "Dépenses supplémentaires",

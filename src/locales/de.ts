@@ -86,7 +86,7 @@ export const de: Messages = {
   "settings.alerts.desc": "Bei 80 % und 95 %, wenn das Limit vor dem Zurücksetzen erreicht wird, und beim Zurücksetzen",
   "settings.alerts.label": "Nutzungsbenachrichtigungen",
   "settings.plugins.title": "Anbieter",
-  "settings.plugins.desc": "Zum Aktivieren anhaken, zum Sortieren ziehen. Das Auge blendet den Anbieter im Infobereich-Symbol ein oder aus.",
+  "settings.plugins.desc": "Zum Aktivieren anhaken, zum Sortieren ziehen. Das Auge blendet den Anbieter im Infobereich-Symbol neben der Uhr ein oder aus.",
   "settings.plugins.inTray": "Wird im Infobereich-Symbol angezeigt. Klicken, um ihn dort auszublenden (bleibt im Seitenmenü).",
   "settings.plugins.notInTray": "Im Infobereich-Symbol ausgeblendet. Klicken, um ihn dort anzuzeigen.",
 
@@ -98,6 +98,9 @@ export const de: Messages = {
   "status.open": "Statusseite öffnen",
 
   "card.retry": "Wiederholen",
+  "error.runInTerminal": "{cmd} im Terminal ausführen",
+  "error.envSteps": "Kopieren Sie Ihren Schlüssel über „API-Schlüssel“, öffnen Sie dann die Umgebungsvariablen und legen Sie eine Benutzervariable namens {name} mit diesem Schlüssel an. Die nächste Aktualisierung übernimmt sie.",
+  "error.openEnvEditor": "Umgebungsvariablen öffnen",
   "card.updated": "Aktualisiert {time}",
   "card.justNow": "gerade eben",
   "card.minutesAgo": "vor {n} Min.",
@@ -160,6 +163,9 @@ export const de: Messages = {
   "label.Credits": "Guthaben",
   "label.Balance": "Saldo",
   "label.Status": "Status",
+  "label.API keys": "API-Schlüssel",
+  "label.Dashboard": "Dashboard",
+  "label.Usage dashboard": "Nutzungs-Dashboard",
   "label.Usage Trend": "Nutzungstrend",
   "label.Rate Limit Resets": "Limit-Zurücksetzungen",
   "label.Extra usage spent": "Ausgaben für Zusatznutzung",

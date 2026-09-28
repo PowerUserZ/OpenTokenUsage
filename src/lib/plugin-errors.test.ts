@@ -1,6 +1,7 @@
+import { readFileSync } from "node:fs"
 import { afterEach, describe, expect, it } from "vitest"
 import { LANGUAGES, useLocaleStore } from "@/lib/i18n"
-import { PLUGIN_ERROR_PATTERNS, translatePluginError } from "@/lib/plugin-errors"
+import { getPluginErrorAction, PLUGIN_ERROR_PATTERNS, translatePluginError } from "@/lib/plugin-errors"
 import enUS, { type PluginErrorKey } from "@/locales/plugin-errors/en-US"
 import deDE from "@/locales/plugin-errors/de-DE"
 import es419 from "@/locales/plugin-errors/es-419"
@@ -215,4 +216,29 @@ describe("plugin error dictionaries", () => {
       }
     })
   }
+})
+
+describe("getPluginErrorAction", () => {
+  it("offers the login command or the missing API-key variables", () => {
+    expect(getPluginErrorAction("Start Antigravity or run `agy` and try again.")).toEqual({ kind: "run", command: "agy" })
+    expect(getPluginErrorAction("No ZAI_API_KEY found. Set up environment variable first.")).toEqual({
+      kind: "env",
+      names: ["ZAI_API_KEY"],
+    })
+    expect(getPluginErrorAction("MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY.")).toEqual({
+      kind: "env",
+      names: ["MINIMAX_API_KEY", "MINIMAX_CN_API_KEY"],
+    })
+    expect(getPluginErrorAction("Request failed. Check your connection.")).toBeNull()
+    expect(getPluginErrorAction("quota exceeded for org")).toBeNull()
+  })
+
+  it("every command a plugin asks for is on the host allow-list", () => {
+    const rust = readFileSync("src-tauri/src/setup_actions.rs", "utf8")
+    const allowList = rust.slice(rust.indexOf("ALLOWED_COMMANDS"), rust.indexOf("];"))
+    for (const [message] of FIXTURES) {
+      const action = getPluginErrorAction(message)
+      if (action?.kind === "run") expect(allowList, message).toContain(`"${action.command}"`)
+    }
+  })
 })

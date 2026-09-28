@@ -278,13 +278,13 @@ export function ProviderCard({
                   openUrl(link.url).catch(console.error)
                 }}
               >
-                <span className="truncate">{link.label}</span>
+                <span className="truncate">{tLabel(link.label)}</span>
                 <ExternalLink className="size-3 opacity-70" />
               </Button>
             ))}
           </div>
         )}
-        {error && !hasStaleData && <PluginError message={error} />}
+        {error && !hasStaleData && <PluginError message={error} pluginId={pluginId} />}
 
         {error && hasStaleData && (
           <Tooltip>

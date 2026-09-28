@@ -15,6 +15,7 @@
     { "type": "progress", "label": "Search", "scope": "detail" }
   ],
   "links": [
+    { "label": "API keys", "url": "https://synthetic.new/user-settings/api" },
     { "label": "Dashboard", "url": "https://synthetic.new/billing" }
   ]
 }

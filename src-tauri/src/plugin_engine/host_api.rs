@@ -216,9 +216,38 @@ fn read_env_from_interactive_shells(name: &str) -> Option<String> {
     None
 }
 
+/// The process env is a snapshot from app launch; Windows stores user/system variables in the
+/// registry, so a key the user adds while the app runs is picked up on the next refresh.
+#[cfg(windows)]
+fn read_env_from_registry(name: &str) -> Option<String> {
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::RegKey;
+    [
+        (HKEY_CURRENT_USER, "Environment"),
+        (
+            HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+        ),
+    ]
+    .into_iter()
+    .find_map(|(root, path)| {
+        let value: String = RegKey::predef(root)
+            .open_subkey(path)
+            .ok()?
+            .get_value(name)
+            .ok()?;
+        sanitize_env_value(&value)
+    })
+}
+
 fn resolve_env_value(name: &str) -> Option<String> {
     // Prefer the current process env (fast + supports launchctl/terminal-launch).
     if let Some(value) = read_env_from_process(name) {
+        return Some(value);
+    }
+
+    #[cfg(windows)]
+    if let Some(value) = read_env_from_registry(name) {
         return Some(value);
     }
 
@@ -1367,7 +1396,10 @@ struct LsDiscoverResult {
 const POWERSHELL_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// Run a PowerShell snippet without flashing a console window; killed after `timeout`.
-fn powershell_with_timeout(script: &str, timeout: Duration) -> std::io::Result<std::process::Output> {
+fn powershell_with_timeout(
+    script: &str,
+    timeout: Duration,
+) -> std::io::Result<std::process::Output> {
     let mut child = silent_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .stdout(std::process::Stdio::piped())
@@ -1385,7 +1417,11 @@ fn powershell_with_timeout(script: &str, timeout: Duration) -> std::io::Result<s
     loop {
         if let Some(status) = child.try_wait()? {
             let stdout = reader.join().unwrap_or_default();
-            return Ok(std::process::Output { status, stdout, stderr: Vec::new() });
+            return Ok(std::process::Output {
+                status,
+                stdout,
+                stderr: Vec::new(),
+            });
         }
         if start.elapsed() >= timeout {
             let _ = child.kill();
@@ -2739,7 +2775,11 @@ mod tests {
         let err = powershell_with_timeout("Start-Sleep -Seconds 30", Duration::from_secs(2))
             .expect_err("should time out");
         assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
-        assert!(start.elapsed() < Duration::from_secs(10), "took {:?}", start.elapsed());
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "took {:?}",
+            start.elapsed()
+        );
         let ok = powershell("Write-Output 42").expect("runs");
         assert_eq!(String::from_utf8_lossy(&ok.stdout).trim(), "42");
     }
@@ -3226,6 +3266,22 @@ mod tests {
                 "process env should be preferred from JS"
             );
         });
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn env_read_from_registry_sees_variables_added_after_launch() {
+        use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+        const NAME: &str = "__OPENUSAGE_TEST_REGISTRY_ENV__";
+        let (env, _) = RegKey::predef(HKEY_CURRENT_USER)
+            .create_subkey("Environment")
+            .expect("open HKCU\\Environment");
+        env.set_value(NAME, &"key-from-registry")
+            .expect("set test var");
+        let value = read_env_from_registry(NAME);
+        env.delete_value(NAME).expect("remove test var");
+        assert_eq!(value.as_deref(), Some("key-from-registry"));
+        assert!(read_env_from_registry(NAME).is_none());
     }
 
     #[test]

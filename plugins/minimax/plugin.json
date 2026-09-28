@@ -8,6 +8,7 @@
   "brandColor": "#F5433C",
   "statusPageUrl": "https://status.minimax.io",
   "links": [
+    { "label": "API keys", "url": "https://platform.minimax.io/user-center/basic-information/interface-key" },
     { "label": "Status", "url": "https://status.minimax.io/" }
   ],
   "lines": [

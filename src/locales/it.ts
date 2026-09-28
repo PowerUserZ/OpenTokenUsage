@@ -86,7 +86,7 @@ export const it: Messages = {
   "settings.alerts.desc": "All'80% e al 95%, se il limite verrà raggiunto prima dell'azzeramento e quando si azzera",
   "settings.alerts.label": "Notifiche di utilizzo",
   "settings.plugins.title": "Provider",
-  "settings.plugins.desc": "Seleziona per attivare un provider, trascina per riordinare. L'occhio lo mostra o lo nasconde nell'icona dell'area di notifica.",
+  "settings.plugins.desc": "Seleziona per attivare un provider, trascina per riordinare. L'occhio lo mostra o lo nasconde nell'icona dell'area di notifica, accanto all'orologio.",
   "settings.plugins.inTray": "Mostrato nell'icona dell'area di notifica. Fai clic per nasconderlo lì (resta nel menu laterale).",
   "settings.plugins.notInTray": "Nascosto dall'icona dell'area di notifica. Fai clic per mostrarlo.",
 
@@ -98,6 +98,9 @@ export const it: Messages = {
   "status.open": "Apri la pagina di stato",
 
   "card.retry": "Riprova",
+  "error.runInTerminal": "Esegui {cmd} nel terminale",
+  "error.envSteps": "Copia la chiave da Chiavi API, poi apri Variabili d'ambiente e aggiungi una variabile utente chiamata {name} con la chiave. Verrà letta al prossimo aggiornamento.",
+  "error.openEnvEditor": "Apri Variabili d'ambiente",
   "card.updated": "Aggiornato {time}",
   "card.justNow": "ora",
   "card.minutesAgo": "{n} min fa",
@@ -160,6 +163,9 @@ export const it: Messages = {
   "label.Credits": "Crediti",
   "label.Balance": "Saldo",
   "label.Status": "Stato",
+  "label.API keys": "Chiavi API",
+  "label.Dashboard": "Dashboard",
+  "label.Usage dashboard": "Dashboard utilizzo",
   "label.Usage Trend": "Andamento utilizzo",
   "label.Rate Limit Resets": "Azzeramento limiti di frequenza",
   "label.Extra usage spent": "Spesa per utilizzo extra",

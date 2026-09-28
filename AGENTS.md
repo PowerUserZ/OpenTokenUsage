@@ -14,6 +14,7 @@
 - New functionality: small OR absolutely necessary
 - NEVER delete files, folders or other data unless explicilty approved or part of a plan
 - Before writing code, stricly follow the below research rules
+- User-facing text added/changed → translate it in all 11 languages (`src/locales/*.ts`, `src/locales/plugin-errors/*.ts`) in the same change, then `bun run locales:lock`. Never re-lock without translating.
 
 ## Research
 - Prefer skills if available over research.

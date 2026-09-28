@@ -13,6 +13,7 @@
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest run --coverage.enabled",
+    "locales:lock": "UPDATE_LOCALE_LOCK=1 vitest run src/locales/translation-lock.test.ts",
     "tauri": "tauri"
   },
   "dependencies": {

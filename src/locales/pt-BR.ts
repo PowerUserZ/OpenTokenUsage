@@ -86,7 +86,7 @@ export const ptBR: Messages = {
   "settings.alerts.desc": "Em 80% e 95%, quando o limite vai acabar antes de redefinir e quando ele é redefinido",
   "settings.alerts.label": "Notificações de uso",
   "settings.plugins.title": "Provedores",
-  "settings.plugins.desc": "Marque para ativar um provedor e arraste para reordenar. O olho mostra ou oculta o provedor no ícone da área de notificação.",
+  "settings.plugins.desc": "Marque para ativar um provedor e arraste para reordenar. O olho mostra ou oculta o provedor no ícone da área de notificação, ao lado do relógio.",
   "settings.plugins.inTray": "Exibido no ícone da área de notificação. Clique para ocultá-lo ali (ele continua no menu lateral).",
   "settings.plugins.notInTray": "Oculto do ícone da área de notificação. Clique para exibi-lo.",
 
@@ -98,6 +98,9 @@ export const ptBR: Messages = {
   "status.open": "Abrir página de status",
 
   "card.retry": "Tentar novamente",
+  "error.runInTerminal": "Executar {cmd} no terminal",
+  "error.envSteps": "Copie sua chave em Chaves de API, depois abra Variáveis de Ambiente e crie uma variável de usuário chamada {name} com essa chave. A próxima atualização a detecta.",
+  "error.openEnvEditor": "Abrir Variáveis de Ambiente",
   "card.updated": "Atualizado {time}",
   "card.justNow": "agora mesmo",
   "card.minutesAgo": "há {n} min",
@@ -160,6 +163,9 @@ export const ptBR: Messages = {
   "label.Credits": "Créditos",
   "label.Balance": "Saldo",
   "label.Status": "Status",
+  "label.API keys": "Chaves de API",
+  "label.Dashboard": "Painel",
+  "label.Usage dashboard": "Painel de uso",
   "label.Usage Trend": "Tendência de uso",
   "label.Rate Limit Resets": "Redefinições de limite",
   "label.Extra usage spent": "Gasto com uso extra",

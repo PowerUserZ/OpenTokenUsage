@@ -86,7 +86,7 @@ export const zhCN: Messages = {
   "settings.alerts.desc": "用量达到 80% 和 95%、重置前将用完以及额度重置时通知",
   "settings.alerts.label": "用量通知",
   "settings.plugins.title": "提供商",
-  "settings.plugins.desc": "勾选以启用提供商，拖动以排序。眼睛图标可在通知区域图标中显示或隐藏该提供商。",
+  "settings.plugins.desc": "勾选以启用提供商，拖动以排序。眼睛图标可在时钟旁的通知区域图标中显示或隐藏该提供商。",
   "settings.plugins.inTray": "在通知区域图标中显示。点击可隐藏（侧边菜单中仍保留）。",
   "settings.plugins.notInTray": "不在通知区域图标中显示。点击可显示。",
 
@@ -98,6 +98,9 @@ export const zhCN: Messages = {
   "status.open": "打开状态页",
 
   "card.retry": "重试",
+  "error.runInTerminal": "在终端中运行 {cmd}",
+  "error.envSteps": "通过“API 密钥”复制密钥，然后打开“环境变量”，新建名为 {name} 的用户变量并粘贴密钥。下次刷新时即可生效。",
+  "error.openEnvEditor": "打开环境变量",
   "card.updated": "已更新：{time}",
   "card.justNow": "刚刚",
   "card.minutesAgo": "{n}分钟前",
@@ -160,6 +163,9 @@ export const zhCN: Messages = {
   "label.Credits": "额度",
   "label.Balance": "余额",
   "label.Status": "状态",
+  "label.API keys": "API 密钥",
+  "label.Dashboard": "仪表板",
+  "label.Usage dashboard": "用量仪表板",
   "label.Usage Trend": "用量趋势",
   "label.Rate Limit Resets": "限额重置次数",
   "label.Extra usage spent": "额外用量支出",
