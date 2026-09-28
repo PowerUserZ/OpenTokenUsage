@@ -1,6 +1,7 @@
 import type { PluginMeta } from "@/lib/plugin-types"
 import {
   MAX_TASKBAR_STRIP_PROVIDERS,
+  TASKBAR_STRIP_COLOR_SCALES,
   TASKBAR_STRIP_FONTS,
   type DisplayMode,
   type PluginSettings,
@@ -51,13 +52,39 @@ export function stripPluginSettings(selected: string[] | null, settings: PluginS
   return { order: ids.slice(0, MAX_TASKBAR_STRIP_PROVIDERS), disabled: [] }
 }
 
+function hexToRgb(hex: string): [number, number, number] {
+  const value = parseInt(hex.slice(1), 16)
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255]
+}
+
+function mix(from: string, to: string, t: number): string {
+  const a = hexToRgb(from)
+  const b = hexToRgb(to)
+  return `#${a.map((channel, i) => Math.round(channel + (b[i]! - channel) * t).toString(16).padStart(2, "0")).join("")}`
+}
+
+/** Color for a share used (0-100 %) on a scale of [percent, color] stops; "base" = text color. */
+export function colorOnScale(scale: readonly (readonly [number, string])[], usedPercent: number, base: string): string {
+  const stops = scale.map(([at, color]) => [at, (color === "base" ? base : color).toLowerCase()] as const)
+  if (usedPercent <= stops[0]![0]) return stops[0]![1]
+  for (let i = 1; i < stops.length; i += 1) {
+    const [at, color] = stops[i]!
+    const [prevAt, prevColor] = stops[i - 1]!
+    if (usedPercent <= at) return mix(prevColor, color, (usedPercent - prevAt) / (at - prevAt))
+  }
+  return stops[stops.length - 1]![1]
+}
+
 function lineColor(bar: TrayPrimaryBar | undefined, base: string, style: TaskbarStripStyle, displayMode: DisplayMode) {
   const fraction = bar?.fraction
-  if (!style.usageColors || typeof fraction !== "number") return base
+  if (style.colorMode === "off" || typeof fraction !== "number") return base
   const usedPercent = (displayMode === "left" ? 1 - fraction : fraction) * 100
-  if (usedPercent >= style.criticalAt) return style.criticalColor
-  if (usedPercent >= style.warnAt) return style.warnColor
-  return base
+  if (style.colorMode === "thresholds") {
+    if (usedPercent >= style.criticalAt) return style.criticalColor
+    if (usedPercent >= style.warnAt) return style.warnColor
+    return base
+  }
+  return colorOnScale(TASKBAR_STRIP_COLOR_SCALES[style.colorMode], usedPercent, base)
 }
 
 export function buildTaskbarStripItems(args: {
@@ -71,7 +98,7 @@ export function buildTaskbarStripItems(args: {
 }): TaskbarStripItem[] {
   const { primaryBars, weeklyBars, pluginsMeta, onLightTaskbar, logoColors, displayMode, style } = args
   const taskbarColor = onLightTaskbar ? "black" : "white"
-  const base = style.textColor ?? taskbarColor
+  const base = style.textColor ?? (onLightTaskbar ? "#000000" : "#ffffff")
   const metaById = new Map(pluginsMeta.map((meta) => [meta.id, meta]))
   const weeklyById = new Map(weeklyBars.map((bar) => [bar.id, bar]))
   const text = (bar: TrayPrimaryBar | undefined) => {
@@ -83,10 +110,11 @@ export function buildTaskbarStripItems(args: {
     const meta = metaById.get(primary.id)
     if (!meta) return []
     const weekly = weeklyById.get(primary.id)
-    const lines = [{ text: text(primary), color: lineColor(primary, base, style, displayMode) }]
-    if (style.showWeekly && weekly?.weekly === true && weekly.label !== primary.label) {
-      lines.push({ text: text(weekly), color: lineColor(weekly, base, style, displayMode) })
-    }
+    const hasWeekly = weekly?.weekly === true && weekly.label !== primary.label
+    const mode = style.lineModes[primary.id] ?? "both"
+    // A provider with one line shows it whatever the mode (e.g. a weekly-only plan).
+    const bars = !hasWeekly ? [primary] : mode === "session" ? [primary] : mode === "weekly" ? [weekly] : [primary, weekly]
+    const lines = bars.map((bar) => ({ text: text(bar), color: lineColor(bar, base, style, displayMode) }))
     return [
       {
         iconUrl: meta.iconUrl,

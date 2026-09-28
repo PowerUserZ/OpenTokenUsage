@@ -1,27 +1,21 @@
 import { useEffect } from "react"
+import { isTauri } from "@tauri-apps/api/core"
+import { getCurrentWindow } from "@tauri-apps/api/window"
 import type { ThemeMode } from "@/lib/settings"
 
 export function useSettingsTheme(themeMode: ThemeMode) {
   useEffect(() => {
+    const dark = themeMode === "dark"
     const root = document.documentElement
-    root.classList.toggle("oled", themeMode === "oled")
-    const apply = (dark: boolean) => {
-      root.classList.toggle("dark", dark)
+    root.classList.toggle("dark", dark)
+    // Dark is pure black (the `.oled` tokens in index.css).
+    root.classList.toggle("oled", dark)
+    // Mica takes its tint from the window's theme, not the page's: without this a light page sits
+    // on dark Mica whenever Windows itself is dark (and the other way round).
+    if (isTauri()) {
+      getCurrentWindow()
+        .setTheme(dark ? "dark" : "light")
+        .catch((error) => console.error("Failed to set the window theme:", error))
     }
-
-    if (themeMode === "light") {
-      apply(false)
-      return
-    }
-    if (themeMode === "dark" || themeMode === "oled") {
-      apply(true)
-      return
-    }
-
-    const mq = window.matchMedia("(prefers-color-scheme: dark)")
-    apply(mq.matches)
-    const handler = (e: MediaQueryListEvent) => apply(e.matches)
-    mq.addEventListener("change", handler)
-    return () => mq.removeEventListener("change", handler)
   }, [themeMode])
 }

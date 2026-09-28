@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -49,7 +49,7 @@ const defaultProps = {
   onToggle: vi.fn(),
   autoUpdateInterval: 15 as const,
   onAutoUpdateIntervalChange: vi.fn(),
-  themeMode: "system" as const,
+  themeMode: "dark" as const,
   onThemeModeChange: vi.fn(),
   displayMode: "used" as const,
   onDisplayModeChange: vi.fn(),
@@ -93,8 +93,8 @@ describe("SettingsPage", () => {
         onToggle={onToggle}
       />
     )
-    const checkboxes = screen.getAllByRole("checkbox")
-    await userEvent.click(checkboxes[checkboxes.length - 1])
+    const row = screen.getByText("Beta").closest("div")!
+    await userEvent.click(within(row).getByRole("checkbox"))
     expect(onToggle).toHaveBeenCalledWith("b")
   })
 
@@ -163,9 +163,9 @@ describe("SettingsPage", () => {
   it("renders app theme section with theme options", () => {
     render(<SettingsPage {...defaultProps} />)
     expect(screen.getByText("Theme")).toBeInTheDocument()
-    expect(screen.getByText("Match Windows, light, dark, or pure black for OLED screens")).toBeInTheDocument()
-    expect(screen.getByText("Windows")).toBeInTheDocument()
-    expect(screen.getByText("OLED")).toBeInTheDocument()
+    expect(screen.getByText("Dark (pure black) or light")).toBeInTheDocument()
+    expect(screen.queryByText("Windows")).toBeNull()
+    expect(screen.queryByText("OLED")).toBeNull()
     expect(screen.getByText("Light")).toBeInTheDocument()
     expect(screen.getByText("Dark")).toBeInTheDocument()
   })
@@ -178,8 +178,8 @@ describe("SettingsPage", () => {
         onThemeModeChange={onThemeModeChange}
       />
     )
-    await userEvent.click(screen.getByText("Dark"))
-    expect(onThemeModeChange).toHaveBeenCalledWith("dark")
+    await userEvent.click(screen.getByText("Light"))
+    expect(onThemeModeChange).toHaveBeenCalledWith("light")
   })
 
   it("updates display mode", async () => {

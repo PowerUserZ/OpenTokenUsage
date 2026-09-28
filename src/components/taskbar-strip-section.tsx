@@ -13,17 +13,49 @@ import {
   saveTaskbarStrip,
   saveTaskbarStripStyle,
   saveTrayLogoColors,
+  TASKBAR_STRIP_COLOR_MODES,
+  TASKBAR_STRIP_COLOR_SCALES,
   TASKBAR_STRIP_FONTS,
   type MenubarIconStyle,
+  type TaskbarStripColorMode,
   type TaskbarStripFont,
+  type TaskbarStripLineMode,
   type TaskbarStripStyle,
 } from "@/lib/settings"
-import { stripPluginSettings } from "@/lib/taskbar-strip"
+import { colorOnScale, stripPluginSettings } from "@/lib/taskbar-strip"
 import { cn } from "@/lib/utils"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 
 const FONT_SIZES = [10, 11, 12, 13, 14, 15]
+
+const LINE_MODE_LABELS = {
+  both: "settings.strip.lineBoth",
+  session: "label.Session",
+  weekly: "label.Weekly",
+} as const
+
+const COLOR_MODE_LABELS = {
+  heat: "settings.strip.colorHeat",
+  traffic: "settings.strip.colorTraffic",
+  cool: "settings.strip.colorCool",
+  mono: "settings.strip.colorMono",
+  thresholds: "settings.strip.colorThresholds",
+  off: "settings.strip.colorOff",
+} as const
+
+/** The chosen scale from 1 to 100 %, drawn as a bar so the user sees it before picking. */
+function ScalePreview({ mode, base }: { mode: TaskbarStripColorMode; base: string }) {
+  if (mode === "off" || mode === "thresholds") return null
+  const stops = Array.from({ length: 11 }, (_, i) => `${colorOnScale(TASKBAR_STRIP_COLOR_SCALES[mode], i * 10, base)} ${i * 10}%`)
+  return (
+    <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+      <span>1%</span>
+      <span className="h-2 flex-1 rounded-full border border-surface-stroke" style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }} />
+      <span>100%</span>
+    </div>
+  )
+}
 
 let saveTimer: number | undefined
 /** Color pickers fire on every drag step; write the file once the user pauses. */
@@ -61,13 +93,17 @@ function StripProviderRow({
   name,
   checked,
   disabled,
+  lineMode,
   onToggle,
+  onLineModeChange,
 }: {
   id: string
   name: string
   checked: boolean
   disabled: boolean
+  lineMode: TaskbarStripLineMode
   onToggle: (id: string) => void
+  onLineModeChange: (id: string, mode: TaskbarStripLineMode) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
   return (
@@ -85,7 +121,21 @@ function StripProviderRow({
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <span className={cn("flex-1 text-[13px]", !checked && "text-muted-foreground")}>{name}</span>
+      <span className={cn("flex-1 truncate text-[13px]", !checked && "text-muted-foreground")}>{name}</span>
+      {checked && (
+        <select
+          value={lineMode}
+          aria-label={t("settings.strip.lineMode", { name })}
+          onChange={(e) => onLineModeChange(id, e.target.value as TaskbarStripLineMode)}
+          className="fluent-control h-6 w-24 py-0 text-xs"
+        >
+          {(Object.keys(LINE_MODE_LABELS) as TaskbarStripLineMode[]).map((mode) => (
+            <option key={mode} value={mode}>
+              {t(LINE_MODE_LABELS[mode])}
+            </option>
+          ))}
+        </select>
+      )}
       <Checkbox
         key={`${id}-${checked}`}
         checked={checked}
@@ -185,7 +235,9 @@ export function TaskbarStripSection({ onMenubarIconStyleChange }: { onMenubarIco
                     name={nameOf(id)}
                     checked={shown.includes(id)}
                     disabled={full && !shown.includes(id)}
+                    lineMode={style.lineModes[id] ?? "both"}
                     onToggle={toggleProvider}
+                    onLineModeChange={(provider, mode) => update({ lineModes: { ...style.lineModes, [provider]: mode } })}
                   />
                 ))}
               </SortableContext>
@@ -228,9 +280,6 @@ export function TaskbarStripSection({ onMenubarIconStyleChange }: { onMenubarIco
             <CheckRow checked={style.bold} onChange={(bold) => update({ bold })}>
               {t("settings.strip.bold")}
             </CheckRow>
-            <CheckRow checked={style.showWeekly} onChange={(showWeekly) => update({ showWeekly })}>
-              {t("settings.strip.showWeekly")}
-            </CheckRow>
             <CheckRow checked={style.showPercentSign} onChange={(showPercentSign) => update({ showPercentSign })}>
               {t("settings.strip.showPercentSign")}
             </CheckRow>
@@ -255,10 +304,22 @@ export function TaskbarStripSection({ onMenubarIconStyleChange }: { onMenubarIco
           </div>
 
           <div className="space-y-2">
-            <CheckRow checked={style.usageColors} onChange={(usageColors) => update({ usageColors })}>
-              {t("settings.strip.usageColors")}
-            </CheckRow>
-            {style.usageColors && (
+            <label className="block text-xs text-muted-foreground">
+              <span className="mb-1 block">{t("settings.strip.colorMode")}</span>
+              <select
+                value={style.colorMode}
+                onChange={(e) => update({ colorMode: e.target.value as TaskbarStripColorMode })}
+                className="fluent-control w-full"
+              >
+                {TASKBAR_STRIP_COLOR_MODES.map((mode) => (
+                  <option key={mode} value={mode}>
+                    {t(COLOR_MODE_LABELS[mode])}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <ScalePreview mode={style.colorMode} base={style.textColor ?? (preview?.onLightTaskbar ? "#000000" : "#ffffff")} />
+            {style.colorMode === "thresholds" && (
               <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-1.5 pl-6 text-xs text-muted-foreground">
                 {(
                   [

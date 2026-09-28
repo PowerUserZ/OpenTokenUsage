@@ -14,8 +14,8 @@ export type PluginSettings = {
 
 export type AutoUpdateIntervalMinutes = 5 | 15 | 30 | 60;
 
-/** "oled" = dark with a pure black background. */
-export type ThemeMode = "system" | "light" | "dark" | "oled";
+/** "dark" is pure black (the former OLED theme). */
+export type ThemeMode = "dark" | "light";
 
 export type DisplayMode = "used" | "left";
 
@@ -60,7 +60,7 @@ const START_ON_LOGIN_KEY = "startOnLogin";
 const LANGUAGE_KEY = "language";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
-export const DEFAULT_THEME_MODE: ThemeMode = "system";
+export const DEFAULT_THEME_MODE: ThemeMode = "dark";
 export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
 export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative";
 export const DEFAULT_TIME_FORMAT_MODE: TimeFormatMode = "auto";
@@ -72,7 +72,7 @@ export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = true;
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
-const THEME_MODES: ThemeMode[] = ["system", "light", "dark", "oled"];
+const THEME_MODES: ThemeMode[] = ["dark", "light"];
 const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
 const TIME_FORMAT_MODES: TimeFormatMode[] = ["auto", "12h", "24h"];
@@ -108,7 +108,7 @@ export const AUTO_UPDATE_OPTIONS: SettingOption<AutoUpdateIntervalMinutes>[] =
 export const THEME_OPTIONS: SettingOption<ThemeMode>[] = THEME_MODES.map((value) => ({
   value,
   labelKey: `settings.theme.${value}` as const,
-  hintKey: value === "oled" ? "settings.theme.oledHint" : undefined,
+  hintKey: value === "dark" ? "settings.theme.darkHint" : undefined,
 }));
 
 export const DISPLAY_MODE_OPTIONS: SettingOption<DisplayMode>[] = [
@@ -264,6 +264,7 @@ function isThemeMode(value: unknown): value is ThemeMode {
 export async function loadThemeMode(): Promise<ThemeMode> {
   const stored = await store.get<unknown>(THEME_MODE_KEY);
   if (isThemeMode(stored)) return stored;
+  // Older builds also had "system" and "oled"; everything but light is dark now.
   return DEFAULT_THEME_MODE;
 }
 
@@ -408,6 +409,24 @@ export const TASKBAR_STRIP_FONTS = [
 
 export type TaskbarStripFont = (typeof TASKBAR_STRIP_FONTS)[number]["id"];
 
+/** Which values a provider shows in the strip. */
+export type TaskbarStripLineMode = "both" | "session" | "weekly";
+const STRIP_LINE_MODES: TaskbarStripLineMode[] = ["both", "session", "weekly"];
+
+/**
+ * How numbers are colored by the share of the limit used: a preset scale from 1 to 100 %, the
+ * user's own two thresholds, or not at all. "base" in a scale = the strip's text color.
+ */
+export const TASKBAR_STRIP_COLOR_SCALES = {
+  heat: [[0, "base"], [45, "#FACC15"], [75, "#FB923C"], [92, "#EF4444"]],
+  traffic: [[0, "#22C55E"], [55, "#FACC15"], [90, "#EF4444"]],
+  cool: [[0, "base"], [45, "#38BDF8"], [75, "#A78BFA"], [92, "#F43F5E"]],
+  mono: [[0, "base"], [90, "base"], [100, "#EF4444"]],
+} as const satisfies Record<string, readonly (readonly [number, string])[]>;
+
+export type TaskbarStripColorMode = "off" | "thresholds" | keyof typeof TASKBAR_STRIP_COLOR_SCALES;
+export const TASKBAR_STRIP_COLOR_MODES: TaskbarStripColorMode[] = ["heat", "traffic", "cool", "mono", "thresholds", "off"];
+
 /** Look of the taskbar strip; everything the user can restyle. */
 export type TaskbarStripStyle = {
   /** Providers shown, in strip order (own order, independent of the nav); null = first enabled ones. */
@@ -417,13 +436,14 @@ export type TaskbarStripStyle = {
   bold: boolean;
   /** Text color; null follows the taskbar (white on dark, black on light). */
   textColor: string | null;
-  /** Color a number by how much of the limit is used. */
-  usageColors: boolean;
+  /** Color a number by how much of the limit is used; thresholds use warnAt/criticalAt. */
+  colorMode: TaskbarStripColorMode;
   warnAt: number;
   criticalAt: number;
   warnColor: string;
   criticalColor: string;
-  showWeekly: boolean;
+  /** Per provider id; missing = "both" (session on top, weekly below). */
+  lineModes: Record<string, TaskbarStripLineMode>;
   showPercentSign: boolean;
 };
 
@@ -433,12 +453,12 @@ export const DEFAULT_TASKBAR_STRIP_STYLE: TaskbarStripStyle = {
   fontSize: 12,
   bold: true,
   textColor: null,
-  usageColors: true,
+  colorMode: "heat",
   warnAt: 70,
   criticalAt: 90,
   warnColor: "#F5A524",
   criticalColor: "#F04438",
-  showWeekly: true,
+  lineModes: {},
   showPercentSign: true,
 };
 
@@ -459,12 +479,20 @@ export function normalizeTaskbarStripStyle(value: unknown): TaskbarStripStyle {
     fontSize: typeof raw.fontSize === "number" && raw.fontSize >= 10 && raw.fontSize <= 15 ? raw.fontSize : d.fontSize,
     bold: typeof raw.bold === "boolean" ? raw.bold : d.bold,
     textColor: isHexColor(raw.textColor) ? raw.textColor : null,
-    usageColors: typeof raw.usageColors === "boolean" ? raw.usageColors : d.usageColors,
+    colorMode: TASKBAR_STRIP_COLOR_MODES.includes(raw.colorMode as TaskbarStripColorMode)
+      ? (raw.colorMode as TaskbarStripColorMode)
+      : (raw as { usageColors?: unknown }).usageColors === false // before color modes existed
+        ? "off"
+        : d.colorMode,
     warnAt: isPercent(raw.warnAt) ? raw.warnAt : d.warnAt,
     criticalAt: isPercent(raw.criticalAt) ? raw.criticalAt : d.criticalAt,
     warnColor: isHexColor(raw.warnColor) ? raw.warnColor : d.warnColor,
     criticalColor: isHexColor(raw.criticalColor) ? raw.criticalColor : d.criticalColor,
-    showWeekly: typeof raw.showWeekly === "boolean" ? raw.showWeekly : d.showWeekly,
+    lineModes: Object.fromEntries(
+      Object.entries(raw.lineModes && typeof raw.lineModes === "object" ? raw.lineModes : {}).filter(
+        (entry): entry is [string, TaskbarStripLineMode] => STRIP_LINE_MODES.includes(entry[1] as TaskbarStripLineMode)
+      )
+    ),
     showPercentSign: typeof raw.showPercentSign === "boolean" ? raw.showPercentSign : d.showPercentSign,
   };
 }

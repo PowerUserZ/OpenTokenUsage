@@ -547,23 +547,6 @@ export function SettingsPage({
         />
       </SettingsSection>
 
-      <LanguageSection />
-
-      <GlobalShortcutSection globalShortcut={globalShortcut} onGlobalShortcutChange={onGlobalShortcutChange} />
-
-      <NotificationsSection />
-
-      <SettingsSection title={t("settings.startOnLogin.title")} description={t("settings.startOnLogin.desc")}>
-        <label className="flex items-center gap-2 text-[13px] select-none text-foreground">
-          <Checkbox
-            key={`start-on-login-${startOnLogin}`}
-            checked={startOnLogin}
-            onCheckedChange={(checked) => onStartOnLoginChange(checked === true)}
-          />
-          {t("settings.startOnLogin.label")}
-        </label>
-      </SettingsSection>
-
       <SettingsSection title={t("settings.plugins.title")} description={t("settings.plugins.desc")}>
         <div className="-mx-1">
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -580,6 +563,23 @@ export function SettingsPage({
             </SortableContext>
           </DndContext>
         </div>
+      </SettingsSection>
+
+      <LanguageSection />
+
+      <GlobalShortcutSection globalShortcut={globalShortcut} onGlobalShortcutChange={onGlobalShortcutChange} />
+
+      <NotificationsSection />
+
+      <SettingsSection title={t("settings.startOnLogin.title")} description={t("settings.startOnLogin.desc")}>
+        <label className="flex items-center gap-2 text-[13px] select-none text-foreground">
+          <Checkbox
+            key={`start-on-login-${startOnLogin}`}
+            checked={startOnLogin}
+            onCheckedChange={(checked) => onStartOnLoginChange(checked === true)}
+          />
+          {t("settings.startOnLogin.label")}
+        </label>
       </SettingsSection>
     </div>
   );

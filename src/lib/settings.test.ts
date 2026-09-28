@@ -194,6 +194,13 @@ describe("settings", () => {
     await expect(loadThemeMode()).resolves.toBe("light")
   })
 
+  it("moves the old system and OLED themes to dark", async () => {
+    storeState.set("themeMode", "system")
+    await expect(loadThemeMode()).resolves.toBe("dark")
+    storeState.set("themeMode", "oled")
+    await expect(loadThemeMode()).resolves.toBe("dark")
+  })
+
   it("falls back to default for invalid theme mode", async () => {
     storeState.set("themeMode", "invalid")
     await expect(loadThemeMode()).resolves.toBe(DEFAULT_THEME_MODE)

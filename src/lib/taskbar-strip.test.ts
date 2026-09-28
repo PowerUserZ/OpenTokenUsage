@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type { PluginMeta } from "@/lib/plugin-types"
 import { DEFAULT_TASKBAR_STRIP_STYLE, normalizeTaskbarStripStyle, type TaskbarStripStyle } from "@/lib/settings"
-import { buildTaskbarStripItems, makeTaskbarStripSvg, stripPluginSettings } from "@/lib/taskbar-strip"
+import { buildTaskbarStripItems, colorOnScale, makeTaskbarStripSvg, stripPluginSettings } from "@/lib/taskbar-strip"
 
 const meta = (id: string, brandColor?: string) =>
   ({ id, name: id, iconUrl: `data:image/svg+xml;base64,${id}`, brandColor }) as unknown as PluginMeta
@@ -28,10 +28,10 @@ const build = (patch: Partial<TaskbarStripStyle> = {}, displayMode: "used" | "le
 
 describe("buildTaskbarStripItems", () => {
   it("puts the primary value on top and a separate weekly line below", () => {
-    const [claude, codex] = build({ usageColors: false })
+    const [claude, codex] = build({ colorMode: "off" })
     expect(claude!.lines).toEqual([
-      { text: "58%", color: "white" },
-      { text: "12%", color: "white" },
+      { text: "58%", color: "#ffffff" },
+      { text: "12%", color: "#ffffff" },
     ])
     expect(claude!.logoColor).toBe("#DE7356")
     // Weekly is already the primary line: no duplicate; a black brand falls back to white.
@@ -40,20 +40,41 @@ describe("buildTaskbarStripItems", () => {
   })
 
   it("colors numbers by the share used and follows the chosen text color", () => {
-    const [claude, codex] = build({ warnAt: 50, criticalAt: 90, textColor: "#00ff00" })
+    const [claude, codex] = build({ colorMode: "thresholds", warnAt: 50, criticalAt: 90, textColor: "#00ff00" })
     expect(claude!.lines.map((line) => line.color)).toEqual([DEFAULT_TASKBAR_STRIP_STYLE.warnColor, "#00ff00"])
     expect(codex!.lines[0]!.color).toBe(DEFAULT_TASKBAR_STRIP_STYLE.criticalColor)
   })
 
   it("reads 'left' mode as the unused share", () => {
     // 0.95 left = 5% used: no warning color.
-    const [, codex] = build({}, "left")
-    expect(codex!.lines[0]!.color).toBe("white")
+    const [, codex] = build({ colorMode: "thresholds" }, "left")
+    expect(codex!.lines[0]!.color).toBe("#ffffff")
   })
 
-  it("can hide the weekly line and the % sign", () => {
-    const [claude] = build({ showWeekly: false, showPercentSign: false, usageColors: false })
-    expect(claude!.lines).toEqual([{ text: "58", color: "white" }])
+  it("shows session, weekly or both per provider, and can drop the % sign", () => {
+    const texts = (patch: Partial<TaskbarStripStyle>) => build({ colorMode: "off", ...patch })[0]!.lines.map((line) => line.text)
+    expect(texts({ lineModes: { claude: "session" } })).toEqual(["58%"])
+    expect(texts({ lineModes: { claude: "weekly" }, showPercentSign: false })).toEqual(["12"])
+    expect(texts({ lineModes: {} })).toEqual(["58%", "12%"])
+    // Codex has one line: every mode shows it.
+    expect(build({ lineModes: { codex: "session" } })[1]!.lines).toHaveLength(1)
+  })
+
+  it("colors along the chosen scale from the text color up to red", () => {
+    const [claude, codex] = build({ colorMode: "heat" })
+    expect(claude!.lines[1]!.color).not.toBe("#ffffff") // 12% is already on its way to yellow
+    expect(codex!.lines[0]!.color).toBe("#ef4444") // 95% = the scale's red
+  })
+})
+
+describe("colorOnScale", () => {
+  const scale = [[0, "base"], [50, "#ffff00"], [100, "#ff0000"]] as const
+
+  it("starts at the text color and blends between stops", () => {
+    expect(colorOnScale(scale, 0, "#ffffff")).toBe("#ffffff")
+    expect(colorOnScale(scale, 25, "#ffffff")).toBe("#ffff80")
+    expect(colorOnScale(scale, 75, "#ffffff")).toBe("#ff8000")
+    expect(colorOnScale(scale, 120, "#ffffff")).toBe("#ff0000")
   })
 })
 
@@ -93,13 +114,23 @@ describe("makeTaskbarStripSvg", () => {
 
 describe("normalizeTaskbarStripStyle", () => {
   it("keeps valid fields and replaces broken ones", () => {
-    const stored = { font: "comic-sans", fontSize: 13, textColor: "blue", warnAt: 250, providers: ["a", 1, "b"], bold: false }
+    const stored = {
+      font: "comic-sans",
+      fontSize: 13,
+      textColor: "blue",
+      warnAt: 250,
+      providers: ["a", 1, "b"],
+      bold: false,
+      lineModes: { claude: "weekly", codex: "sideways" },
+    }
     expect(normalizeTaskbarStripStyle(stored)).toEqual({
       ...DEFAULT_TASKBAR_STRIP_STYLE,
       fontSize: 13,
       bold: false,
       providers: ["a", "b"],
+      lineModes: { claude: "weekly" },
     })
+    expect(normalizeTaskbarStripStyle({ usageColors: false }).colorMode).toBe("off")
     expect(normalizeTaskbarStripStyle(undefined)).toEqual(DEFAULT_TASKBAR_STRIP_STYLE)
   })
 })

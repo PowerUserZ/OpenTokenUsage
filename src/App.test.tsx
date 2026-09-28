@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
@@ -174,7 +174,7 @@ vi.mock("@tauri-apps/api/path", () => ({
 }))
 
 vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ setSize: state.setSizeMock }),
+  getCurrentWindow: () => ({ setSize: state.setSizeMock, setTheme: vi.fn(async () => undefined) }),
   PhysicalSize: class {
     width: number
     height: number
@@ -248,6 +248,9 @@ vi.mock("@/lib/settings", async () => {
     saveUsageAlerts: vi.fn(async () => undefined),
     loadSentUsageAlerts: vi.fn(async () => []),
     saveSentUsageAlerts: vi.fn(async () => undefined),
+    loadTrayLogoColors: vi.fn(async () => true),
+    loadTaskbarStrip: vi.fn(async () => false),
+    loadTaskbarStripStyle: vi.fn(async () => actual.DEFAULT_TASKBAR_STRIP_STYLE),
     migrateLegacyTraySettings: state.migrateLegacyTraySettingsMock,
     loadGlobalShortcut: state.loadGlobalShortcutMock,
     saveGlobalShortcut: state.saveGlobalShortcutMock,
@@ -257,6 +260,12 @@ vi.mock("@/lib/settings", async () => {
 })
 
 import { App } from "@/App"
+
+/** Checkbox of the last provider row in Settings > Providers. */
+async function lastProviderCheckbox() {
+  const section = (await screen.findByText("Providers")).closest("section")!
+  return within(section).getAllByRole("checkbox").at(-1)!
+}
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
@@ -322,7 +331,7 @@ describe("App", () => {
     updaterState.checkMock.mockResolvedValue(null)
     state.savePluginSettingsMock.mockResolvedValue(undefined)
     state.saveAutoUpdateIntervalMock.mockResolvedValue(undefined)
-    state.loadThemeModeMock.mockResolvedValue("system")
+    state.loadThemeModeMock.mockResolvedValue("dark")
     state.saveThemeModeMock.mockResolvedValue(undefined)
     state.loadDisplayModeMock.mockResolvedValue("left")
     state.saveDisplayModeMock.mockResolvedValue(undefined)
@@ -398,30 +407,19 @@ describe("App", () => {
   }
 
   it("applies theme mode changes to document", async () => {
-    const mq = {
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    } as unknown as MediaQueryList
-    const mmSpy = vi.spyOn(window, "matchMedia").mockReturnValue(mq)
-
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
 
-    // Dark
-    await userEvent.click(await screen.findByRole("radio", { name: "Dark" }))
-    expect(document.documentElement.classList.contains("dark")).toBe(true)
-
     // Light
     await userEvent.click(await screen.findByRole("radio", { name: "Light" }))
     expect(document.documentElement.classList.contains("dark")).toBe(false)
+    expect(document.documentElement.classList.contains("oled")).toBe(false)
 
-    // Back to system should subscribe to matchMedia changes
-    await userEvent.click(await screen.findByRole("radio", { name: "Windows" }))
-    expect(mq.addEventListener).toHaveBeenCalled()
-
-    mmSpy.mockRestore()
+    // Dark is pure black
+    await userEvent.click(await screen.findByRole("radio", { name: "Dark" }))
+    expect(document.documentElement.classList.contains("dark")).toBe(true)
+    expect(document.documentElement.classList.contains("oled")).toBe(true)
   })
 
   it("loads plugins, normalizes settings, and renders overview", async () => {
@@ -950,9 +948,9 @@ describe("App", () => {
     await userEvent.click(settingsButtons[0])
     // Re-query before each click: the Checkbox remounts on each toggle because
     // its key includes plugin.enabled, so the reference goes stale after click 1.
-    await userEvent.click((await screen.findAllByRole("checkbox")).at(-1)!)
+    await userEvent.click(await lastProviderCheckbox())
     expect(state.savePluginSettingsMock).toHaveBeenCalledTimes(1)
-    await userEvent.click((await screen.findAllByRole("checkbox")).at(-1)!)
+    await userEvent.click(await lastProviderCheckbox())
     expect(state.savePluginSettingsMock).toHaveBeenCalledTimes(2)
   })
 
@@ -1301,9 +1299,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
-    const checkboxes = await screen.findAllByRole("checkbox")
-    const targetCheckbox = checkboxes[checkboxes.length - 1]
-    await userEvent.click(targetCheckbox)
+    await userEvent.click(await lastProviderCheckbox())
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
     expect(errorSpy).toHaveBeenCalled()
     errorSpy.mockRestore()
@@ -1314,9 +1310,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
-    const checkboxes = await screen.findAllByRole("checkbox")
-    const targetCheckbox = checkboxes[checkboxes.length - 1]
-    await userEvent.click(targetCheckbox)
+    await userEvent.click(await lastProviderCheckbox())
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalledWith(["b"]))
   })
 
