@@ -672,7 +672,7 @@ fn parse_bar_chart_line<'js>(
     )
 }
 
-fn error_output(plugin: &LoadedPlugin, message: String) -> PluginOutput {
+pub(crate) fn error_output(plugin: &LoadedPlugin, message: String) -> PluginOutput {
     PluginOutput {
         provider_id: plugin.manifest.id.clone(),
         display_name: plugin.manifest.name.clone(),
