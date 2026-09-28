@@ -1,12 +1,12 @@
 # OpenTokenUsage
 
-Track all your AI coding subscriptions in one place — now on **Windows** too.
+Every AI coding limit, next to your clock. Made for **Windows 11**.
 
-See your usage at a glance from your system tray. No digging through dashboards. OpenTokenUsage Screenshot
+![The OpenTokenUsage panel above the Windows taskbar, with Claude, Codex and Cursor usage shown next to the clock](docs/images/hero.webp)
 
-<img width="1160" height="602" alt="OpenTokenUsage Screenshot" src="https://github.com/user-attachments/assets/0181ab9f-cc08-43a6-ac0a-5a05c3a32631" />
+OpenTokenUsage lives in the notification area and shows how much of your AI coding subscriptions you've used: session and weekly limits, credits, when they reset, and whether you're on pace. No digging through dashboards, no mental math.
 
-> **Fork of [OpenUsage](https://github.com/robinebers/openusage) by Robin Ebers.** This fork adds full Windows support while preserving macOS functionality.
+> Built on [OpenUsage](https://github.com/robinebers/openusage) by Robin Ebers, rebuilt for Windows.
 
 ## Download
 
@@ -16,24 +16,34 @@ See your usage at a glance from your system tray. No digging through dashboards.
 winget install PowerUserZ.OpenTokenUsage
 ```
 
-Or [**download the latest release**](https://github.com/PowerUserZ/OpenTokenUsage/releases/latest) and run the installer directly (Windows).
+Or [**download the latest release**](https://github.com/PowerUserZ/OpenTokenUsage/releases/latest) and run the installer.
 
-The app checks for new releases in-app and links you to the latest download.
+The app checks for new releases in-app and updates itself.
 
 ## What It Does
 
-OpenTokenUsage lives in your system tray and shows you how much of your AI coding subscriptions you've used. Progress bars, badges, and clear labels. No mental math required.
-
-- **One glance.** All your AI tools, one panel.
-- **Always up-to-date.** Refreshes automatically on a schedule you pick.
-- **Global shortcut.** Toggle the panel from anywhere with a customizable keyboard shortcut.
-- **Lightweight.** Opens instantly, stays out of your way.
-- **Plugin-based.** New providers get added without updating the whole app.
-- **[Local HTTP API](docs/local-http-api.md).** Other apps can read your usage data from `127.0.0.1:6736`.
-- **[Proxy support](docs/proxy.md).** Route provider HTTP requests through a SOCKS5 or HTTP proxy.
-- **Windows 11 native.** Mica, your accent color, light / dark / OLED themes, 11 languages.
+- **One glance.** All your AI tools in one panel, opened from the tray or a global shortcut.
+- **Next to the clock.** The tray shows the app icon, a percent, bars, or one number or logo ring per provider.
+- **Taskbar strip (experimental).** Provider logos with session and weekly usage right in the taskbar, in your own fonts, colors and order.
+- **Pace.** Every limit says whether you're ahead or behind, and when it runs out at this rate.
 - **Notifications.** At 80% and 95%, when you're on pace to run out before a reset, and when a limit resets.
+- **One-click fixes.** Errors come with the fix: run the login command in a terminal, or open the provider's API key page and Windows' Environment Variables.
 - **Service status.** A badge on the card when the provider's status page reports an incident.
+- **Windows 11 native.** Mica, your accent color, a pure black dark theme and a light one.
+- **11 languages.** English, Deutsch, Español (España and Latinoamérica), Français, Italiano, 日本語, 한국어, Português (Brasil), Türkçe and 简体中文.
+- **Plugin-based.** New providers get added without updating the whole app.
+- **[Local HTTP API](docs/local-http-api.md).** Other apps on your PC can read your usage from `127.0.0.1:6736` (loopback only).
+- **[Proxy support](docs/proxy.md).** Route provider requests through a SOCKS5 or HTTP proxy.
+
+## Make It Yours
+
+![Taskbar strip settings with a live preview, and the strip in different fonts and color scales](docs/images/customize.webp)
+
+Settings → **Tray icon** picks what sits next to the clock. Settings → **Taskbar strip** puts logos with session and weekly numbers into the taskbar: choose up to 6 providers and their order, the font and size, and a color scale that warms up as you use more.
+
+## At Home on Windows 11
+
+![The panel in the pure black dark theme and in the light theme](docs/images/themes.webp)
 
 ## Supported Providers
 

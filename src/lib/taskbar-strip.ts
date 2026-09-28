@@ -156,7 +156,9 @@ export function makeTaskbarStripSvg(args: {
         `<text x="${x}" y="${firstCenter + i * lineHeight}" dominant-baseline="central" fill="${line.color}" font-family='${fontCss}' font-size="${fontSize}" font-weight="${weight}" style="font-variant-numeric:tabular-nums">${line.text}</text>`
       )
     })
-    x += Math.ceil(Math.max(0, ...item.lines.map((line) => measure(line.text, fontSize, fontCss, weight))))
+    // Digits are drawn tabular (all as wide as "0"), which the canvas can't measure: measure zeros.
+    const textWidth = Math.max(0, ...item.lines.map((line) => measure(line.text.replace(/\d/g, "0"), fontSize, fontCss, weight)))
+    x += Math.ceil(textWidth) + px(1)
   })
   const width = Math.max(1, x)
   // Alpha 1/255 everywhere: invisible, but makes the whole strip clickable (Windows lets clicks
