@@ -89,6 +89,9 @@ fn load_single_plugin(
     let manifest_path = plugin_dir.join("plugin.json");
     let manifest_text = std::fs::read_to_string(&manifest_path)?;
     let mut manifest: PluginManifest = serde_json::from_str(&manifest_text)?;
+    if !is_valid_plugin_id(&manifest.id) {
+        return Err(format!("invalid plugin id {:?}", manifest.id).into());
+    }
     manifest.links = sanitize_plugin_links(&manifest.id, std::mem::take(&mut manifest.links));
     manifest.status_page_url =
         sanitize_status_page_url(&manifest.id, manifest.status_page_url.take());
@@ -123,27 +126,11 @@ fn load_single_plugin(
         }
     }
 
-    if manifest.entry.trim().is_empty() {
-        return Err("plugin entry field cannot be empty".into());
-    }
-    if Path::new(&manifest.entry).is_absolute() {
-        return Err("plugin entry must be a relative path".into());
-    }
+    let entry_path = file_within_plugin(plugin_dir, &manifest.entry, "entry")?;
+    let entry_script = std::fs::read_to_string(&entry_path)?;
 
-    let entry_path = plugin_dir.join(&manifest.entry);
-    let canonical_plugin_dir = plugin_dir.canonicalize()?;
-    let canonical_entry_path = entry_path.canonicalize()?;
-    if !canonical_entry_path.starts_with(&canonical_plugin_dir) {
-        return Err("plugin entry must remain within plugin directory".into());
-    }
-    if !canonical_entry_path.is_file() {
-        return Err("plugin entry must be a file".into());
-    }
-
-    let entry_script = std::fs::read_to_string(&canonical_entry_path)?;
-
-    let icon_file = plugin_dir.join(&manifest.icon);
-    let icon_bytes = std::fs::read(&icon_file)?;
+    let icon_path = file_within_plugin(plugin_dir, &manifest.icon, "icon")?;
+    let icon_bytes = std::fs::read(&icon_path)?;
     let icon_data_url = format!("data:image/svg+xml;base64,{}", STANDARD.encode(&icon_bytes));
 
     Ok(LoadedPlugin {
@@ -152,6 +139,37 @@ fn load_single_plugin(
         entry_script,
         icon_data_url,
     })
+}
+
+/// Plugin ids name folders (`plugins_data/<id>`) and settings keys: lowercase letters, digits and
+/// dashes only, so a manifest can't point a path at `../`.
+fn is_valid_plugin_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// A file named by the manifest (entry script, icon) must stay inside the plugin's folder.
+fn file_within_plugin(
+    plugin_dir: &Path,
+    relative: &str,
+    what: &str,
+) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+    if relative.trim().is_empty() {
+        return Err(format!("plugin {what} field cannot be empty").into());
+    }
+    if Path::new(relative).is_absolute() {
+        return Err(format!("plugin {what} must be a relative path").into());
+    }
+    let canonical_plugin_dir = plugin_dir.canonicalize()?;
+    let canonical = plugin_dir.join(relative).canonicalize()?;
+    if !canonical.starts_with(&canonical_plugin_dir) {
+        return Err(format!("plugin {what} must remain within plugin directory").into());
+    }
+    if !canonical.is_file() {
+        return Err(format!("plugin {what} must be a file").into());
+    }
+    Ok(canonical)
 }
 
 fn sanitize_plugin_links(plugin_id: &str, links: Vec<PluginLink>) -> Vec<PluginLink> {

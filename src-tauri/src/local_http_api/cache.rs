@@ -475,11 +475,11 @@ mod tests {
 
         let mut first = HashMap::new();
         first.insert("claude".to_string(), make_snapshot("claude", "Claude"));
-        save_cache(&dir, &first);
+        save_cache(&dir, &first).expect("save cache");
 
         let mut second = HashMap::new();
         second.insert("codex".to_string(), make_snapshot("codex", "Codex"));
-        save_cache(&dir, &second);
+        save_cache(&dir, &second).expect("save cache");
 
         let loaded = load_cache(&dir);
         assert!(loaded.get("claude").is_none());

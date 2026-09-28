@@ -851,6 +851,45 @@ fn inject_env<'js>(ctx: &Ctx<'js>, host: &Object<'js>, _plugin_id: &str) -> rqui
     Ok(())
 }
 
+/// Usage APIs answer with small JSON; a body this large is broken or hostile (memory exhaustion).
+const MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
+
+/// The response body, refused past `MAX_RESPONSE_BYTES` (counted after decompression).
+fn read_body_capped(response: reqwest::blocking::Response) -> Result<String, String> {
+    use std::io::Read;
+    let too_large = || {
+        format!(
+            "response too large (over {} MB)",
+            MAX_RESPONSE_BYTES / 1024 / 1024
+        )
+    };
+    if response
+        .content_length()
+        .is_some_and(|len| len > MAX_RESPONSE_BYTES)
+    {
+        return Err(too_large());
+    }
+    let mut bytes = Vec::new();
+    response
+        .take(MAX_RESPONSE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() as u64 > MAX_RESPONSE_BYTES {
+        return Err(too_large());
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+fn is_loopback_url(url: &str) -> bool {
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|url| {
+            url.host_str()
+                .map(|host| matches!(host, "127.0.0.1" | "localhost" | "[::1]"))
+        })
+        .unwrap_or(false)
+}
+
 fn inject_http<'js>(
     ctx: &Ctx<'js>,
     host: &Object<'js>,
@@ -934,8 +973,17 @@ fn inject_http<'js>(
                     log::debug!("[http] proxy not used");
                 }
 
+                // Only local language servers (self-signed certs) may skip TLS checks.
                 if req.dangerously_ignore_tls.unwrap_or(false) {
-                    builder = builder.danger_accept_invalid_certs(true);
+                    if is_loopback_url(&req.url) {
+                        builder = builder.danger_accept_invalid_certs(true);
+                    } else {
+                        log::warn!(
+                            "[plugin:{}] dangerouslyIgnoreTls ignored for non-loopback {}",
+                            pid,
+                            redacted_url
+                        );
+                    }
                 }
                 let client = builder
                     .build()
@@ -983,9 +1031,8 @@ fn inject_http<'js>(
                         wait.as_secs()
                     );
                 }
-                let body = response
-                    .text()
-                    .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))?;
+                let body = read_body_capped(response)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e))?;
 
                 // Redact BEFORE truncation to ensure sensitive values are caught while intact
                 let redacted_body = redact_body(&body);
@@ -2767,6 +2814,63 @@ fn expand_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Serves one raw HTTP response on a local port and returns its URL.
+    fn serve_once(head: String, body_len: usize) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let url = format!("http://{}/", listener.local_addr().expect("addr"));
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request);
+            let _ = stream.write_all(head.as_bytes());
+            let _ = stream.write_all(&vec![b'a'; body_len]);
+        });
+        url
+    }
+
+    fn get(url: &str) -> reqwest::blocking::Response {
+        reqwest::blocking::Client::new()
+            .get(url)
+            .send()
+            .expect("send")
+    }
+
+    #[test]
+    fn response_bodies_are_capped() {
+        let small = serve_once("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n".into(), 5);
+        assert_eq!(read_body_capped(get(&small)).as_deref(), Ok("aaaaa"));
+
+        // Declared too large: refused from the header, before the body is read.
+        let declared = serve_once(
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+                MAX_RESPONSE_BYTES + 1
+            ),
+            0,
+        );
+        assert!(read_body_capped(get(&declared)).is_err());
+
+        // No length given: refused once the stream passes the cap.
+        let streamed = serve_once(
+            "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".into(),
+            MAX_RESPONSE_BYTES as usize + 1,
+        );
+        assert!(read_body_capped(get(&streamed)).is_err());
+    }
+
+    #[test]
+    fn tls_can_only_be_skipped_for_loopback() {
+        assert!(is_loopback_url(
+            "https://127.0.0.1:42100/exa.language_server_pb/GetUserStatus"
+        ));
+        assert!(is_loopback_url("https://localhost:8443/x"));
+        assert!(is_loopback_url("https://[::1]:8443/x"));
+        assert!(!is_loopback_url("https://api.example.com/usage"));
+        assert!(!is_loopback_url("https://127.0.0.1.evil.com/x"));
+        assert!(!is_loopback_url("not a url"));
+    }
 
     #[test]
     fn powershell_is_killed_when_it_hangs() {

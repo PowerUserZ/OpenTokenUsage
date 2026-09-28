@@ -8,7 +8,6 @@
 //! windows need Windows 8+ compatibility in the app manifest (`app.manifest`).
 //! The frontend draws the image (`src/lib/taskbar-strip.ts`); this module only places it.
 
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use std::sync::{Mutex, OnceLock};
 use tauri::AppHandle;
 
@@ -44,16 +43,12 @@ fn shared() -> &'static Mutex<Shared> {
 
 static APP: OnceLock<AppHandle> = OnceLock::new();
 
+/// The strip is a few hundred px wide and one taskbar tall (x display scale).
+const MAX_STRIP_SIZE: (u32, u32) = (4096, 512);
+
 fn to_pixels(image: StripImage) -> Result<Pixels, String> {
-    let mut data = BASE64_STANDARD
-        .decode(&image.rgba)
-        .map_err(|e| e.to_string())?;
-    if image.width == 0 || data.len() != (image.width * image.height * 4) as usize {
-        return Err(format!(
-            "strip image is not {}x{} RGBA",
-            image.width, image.height
-        ));
-    }
+    let mut data = crate::tray::decode_rgba(&image.rgba, image.width, image.height, MAX_STRIP_SIZE)
+        .map_err(|e| format!("strip {e}"))?;
     for px in data.chunks_exact_mut(4) {
         let alpha = px[3] as u32;
         let (r, g, b) = (px[0] as u32, px[1] as u32, px[2] as u32);
@@ -334,6 +329,16 @@ mod win {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+
+    #[test]
+    fn sizes_that_would_overflow_are_refused() {
+        // 65536 x 65536 x 4 wraps to 0 in u32: an empty payload must not pass as that image.
+        let huge = StripImage { rgba: String::new(), width: 65536, height: 65536 };
+        assert!(to_pixels(huge).is_err());
+        let wide = StripImage { rgba: String::new(), width: 5000, height: 40 };
+        assert!(to_pixels(wide).is_err());
+    }
 
     #[test]
     fn pixels_are_premultiplied_bgra() {

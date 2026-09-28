@@ -8,6 +8,10 @@ name: Publish
 #   TAURI_SIGNING_PRIVATE_KEY          - contents of the updater private key file
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD - key password (empty if generated w/o one)
 # The matching public key + endpoints live in src-tauri/tauri.conf.json.
+#
+# Supply chain: every action is pinned to a full commit SHA (the version is in the comment), because
+# the signing key and WINGET_TOKEN are handed to them. Bump deliberately, never to a moving tag.
+# Release notes come from the matching "## vX.Y.Z" section of CHANGELOG.md (required).
 
 on:
   push:
@@ -27,19 +31,21 @@ jobs:
     env:
       RELEASE_TAG: ${{ github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ env.RELEASE_TAG }}
 
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch, 2026-09-03
+        with:
+          toolchain: stable
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: "./src-tauri -> target"
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: "latest"
-      - run: bun install
+          bun-version: "1.4.2"
+      - run: bun install --frozen-lockfile
       - name: Bundle plugins
         run: bun run bundle:plugins
       - name: Verify bundled plugins
@@ -82,7 +88,29 @@ jobs:
             exit 1
           fi
 
-      - uses: tauri-apps/tauri-action@v0
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        run: |
+          NOTES="$RUNNER_TEMP/release-notes.md"
+          # The "## vX.Y.Z" section, without its heading, up to the next "## v" heading.
+          # (The Windows runner may check files out with CRLF: drop the \r first.)
+          awk -v tag="## $RELEASE_TAG" '
+            { sub(/\r$/, "") }
+            $0 == tag { found = 1; next }
+            found && /^## v/ { exit }
+            found { print }
+          ' CHANGELOG.md > "$NOTES"
+          if ! grep -q '[^[:space:]]' "$NOTES"; then
+            echo "CHANGELOG.md has no '## $RELEASE_TAG' section; add the release notes first."
+            exit 1
+          fi
+          {
+            echo "body<<__RELEASE_NOTES__"
+            cat "$NOTES"
+            echo "__RELEASE_NOTES__"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -90,6 +118,7 @@ jobs:
         with:
           tagName: ${{ env.RELEASE_TAG }}
           releaseName: ${{ env.RELEASE_TAG }}
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
@@ -114,12 +143,14 @@ jobs:
     name: Submit to WinGet
     needs: publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
       WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
       - name: Publish to WinGet Community Repo
         if: ${{ env.WINGET_TOKEN != '' }}
-        uses: vedantmgoyal9/winget-releaser@v2
+        uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
         with:
           identifier: PowerUserZ.OpenTokenUsage
           installers-regex: 'OpenTokenUsage_.*_x64_en-US\.msi$'

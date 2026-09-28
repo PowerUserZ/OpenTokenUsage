@@ -13,6 +13,9 @@ pub fn initialize_plugins(
     app_data_dir: &Path,
     resource_dir: &Path,
 ) -> (PathBuf, Vec<LoadedPlugin>) {
+    // `bun tauri dev` runs next to the repo's plugins/. A release build must never execute scripts
+    // from wherever it happens to be started (cwd), only the bundled, installed copies.
+    #[cfg(debug_assertions)]
     if let Some(dev_dir) = find_dev_plugins_dir() {
         if !is_dir_empty(&dev_dir) {
             let plugins = load_active_plugins_from_dir(&dev_dir);
@@ -50,6 +53,7 @@ fn is_retired_bundled_plugin_id(id: &str) -> bool {
     RETIRED_BUNDLED_PLUGIN_IDS.contains(&id)
 }
 
+#[cfg(debug_assertions)]
 fn find_dev_plugins_dir() -> Option<PathBuf> {
     let cwd = std::env::current_dir().ok()?;
     let direct = cwd.join("plugins");
@@ -72,6 +76,7 @@ fn resolve_bundled_dir(resource_dir: &Path) -> PathBuf {
     }
 }
 
+#[cfg(debug_assertions)]
 fn is_dir_empty(path: &Path) -> bool {
     match std::fs::read_dir(path) {
         Ok(mut entries) => entries.next().is_none(),

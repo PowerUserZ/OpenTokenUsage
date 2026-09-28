@@ -34,7 +34,6 @@ tauri-plugin-store = "2.4.3"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
 tauri-plugin-log = "2"
-tauri-plugin-aptabase = { git = "https://github.com/aptabase/tauri-plugin-aptabase", rev = "e896cceb" }
 tauri-plugin-clipboard-manager = "2.3.2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"

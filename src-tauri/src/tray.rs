@@ -270,6 +270,32 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
 }
 
 const PROVIDER_TRAY_PREFIX: &str = "provider-";
+/// A tray slot is 16-32 px; the frontend draws at the real size (x display scale).
+const MAX_TRAY_ICON_PX: u32 = 256;
+const MAX_PROVIDER_TRAY_ICONS: usize = 32;
+
+/// RGBA pixels the frontend sends (tray icons, taskbar strip): refused unless exactly
+/// `width` x `height` and within `max` per side. The caps keep the size math far from overflow
+/// and the allocation small, whatever a (compromised) webview asks for.
+pub(crate) fn decode_rgba(
+    base64: &str,
+    width: u32,
+    height: u32,
+    max: (u32, u32),
+) -> Result<Vec<u8>, String> {
+    if width == 0 || height == 0 || width > max.0 || height > max.1 {
+        return Err(format!("image {width}x{height} is out of range"));
+    }
+    let expected = width as usize * height as usize * 4;
+    if base64.len() > expected.div_ceil(3) * 4 {
+        return Err(format!("image data is larger than {width}x{height} RGBA"));
+    }
+    let data = BASE64_STANDARD.decode(base64).map_err(|e| e.to_string())?;
+    if data.len() != expected {
+        return Err(format!("image data is not {width}x{height} RGBA"));
+    }
+    Ok(data)
+}
 
 /// The right-click menu, shared by the app icon and the per-provider icons.
 struct TrayMenu(Menu<tauri::Wry>);
@@ -325,6 +351,9 @@ pub fn set_provider_tray_icons(
     app_handle: AppHandle,
     icons: Vec<ProviderTrayIcon>,
 ) -> Result<(), String> {
+    if icons.len() > MAX_PROVIDER_TRAY_ICONS {
+        return Err(format!("at most {MAX_PROVIDER_TRAY_ICONS} provider tray icons"));
+    }
     let state = app_handle
         .try_state::<ProviderTrays>()
         .ok_or("tray is not created yet")?;
@@ -341,12 +370,13 @@ pub fn set_provider_tray_icons(
 
     let mut created = false;
     for (icon, id) in icons.into_iter().zip(wanted) {
-        let rgba = BASE64_STANDARD
-            .decode(&icon.rgba)
-            .map_err(|e| e.to_string())?;
-        if rgba.len() != (icon.size * icon.size * 4) as usize {
-            return Err(format!("tray icon for {id} is not {0}x{0} RGBA", icon.size));
-        }
+        let rgba = decode_rgba(
+            &icon.rgba,
+            icon.size,
+            icon.size,
+            (MAX_TRAY_ICON_PX, MAX_TRAY_ICON_PX),
+        )
+        .map_err(|e| format!("tray icon for {id}: {e}"))?;
         let image = Image::new_owned(rgba, icon.size, icon.size);
         if let Some(tray) = app_handle.tray_by_id(&id) {
             tray.set_icon(Some(image)).map_err(|e| e.to_string())?;
@@ -575,6 +605,28 @@ fn position_window_at_tray_icon(
         area,
     );
     let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
+#[cfg(test)]
+mod decode_rgba_tests {
+    use super::{decode_rgba, BASE64_STANDARD};
+    use base64::Engine as _;
+
+    #[test]
+    fn accepts_exactly_the_announced_image() {
+        let pixels = BASE64_STANDARD.encode([7u8; 2 * 2 * 4]);
+        assert_eq!(decode_rgba(&pixels, 2, 2, (256, 256)).unwrap(), vec![7u8; 16]);
+    }
+
+    #[test]
+    fn refuses_wrong_or_out_of_range_sizes() {
+        let pixels = BASE64_STANDARD.encode([7u8; 2 * 2 * 4]);
+        assert!(decode_rgba(&pixels, 3, 3, (256, 256)).is_err()); // too little data
+        assert!(decode_rgba(&pixels, 1, 1, (256, 256)).is_err()); // too much data
+        assert!(decode_rgba("", 0, 0, (256, 256)).is_err());
+        assert!(decode_rgba("", 65536, 65536, (u32::MAX, u32::MAX)).is_err()); // would wrap in u32
+        assert!(decode_rgba("", 300, 300, (256, 256)).is_err());
+    }
 }
 
 #[cfg(test)]
