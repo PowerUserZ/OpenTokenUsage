@@ -1274,6 +1274,13 @@ struct LsDiscoverResult {
     extension_port: Option<i32>,
 }
 
+/// Run a PowerShell snippet without flashing a console window.
+fn powershell(script: &str) -> std::io::Result<std::process::Output> {
+    silent_command("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .output()
+}
+
 fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
     let ls_obj = Object::new(ctx.clone())?;
     let pid = plugin_id.to_string();
@@ -1294,19 +1301,20 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     opts.markers
                 );
 
-                let ps_output = match silent_command("/bin/ps")
-                    .args(["-ax", "-o", "pid=,command="])
-                    .output()
-                {
+                // One "pid command-line" per line, like `ps -ax -o pid=,command=`.
+                let ps_output = match powershell(
+                    "Get-CimInstance Win32_Process -Filter 'CommandLine IS NOT NULL' | \
+                     ForEach-Object { \"$($_.ProcessId) $($_.CommandLine)\" }",
+                ) {
                     Ok(o) => o,
                     Err(e) => {
-                        log::warn!("[plugin:{}] ps failed: {}", pid, e);
+                        log::warn!("[plugin:{}] process list failed: {}", pid, e);
                         return Ok("null".to_string());
                     }
                 };
 
                 if !ps_output.status.success() {
-                    log::warn!("[plugin:{}] ps returned non-zero", pid);
+                    log::warn!("[plugin:{}] process list returned non-zero", pid);
                     return Ok("null".to_string());
                 }
 
@@ -1360,11 +1368,6 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     return Ok("null".to_string());
                 }
 
-                let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
-                    .iter()
-                    .find(|p| std::path::Path::new(p).exists())
-                    .copied();
-
                 candidates.sort_by_key(|(marker_rank, _, _)| *marker_rank);
                 for (_, process_pid, command) in candidates {
                     let csrf = if opts.csrf_flag.trim().is_empty() {
@@ -1393,33 +1396,17 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                         }
                     }
 
-                    let ports = if let Some(lsof) = lsof_path {
-                        match silent_command(lsof)
-                            .args([
-                                "-nP",
-                                "-iTCP",
-                                "-sTCP:LISTEN",
-                                "-a",
-                                "-p",
-                                &process_pid.to_string(),
-                            ])
-                            .output()
-                        {
-                            Ok(o) if o.status.success() => {
-                                ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
-                            }
-                            Ok(_) => {
-                                log::warn!("[plugin:{}] lsof returned non-zero", pid);
-                                Vec::new()
-                            }
-                            Err(e) => {
-                                log::warn!("[plugin:{}] lsof failed: {}", pid, e);
-                                Vec::new()
-                            }
+                    // Exits 1 when the pid has no listeners; empty stdout covers that.
+                    let ports = match powershell(&format!(
+                        "Get-NetTCPConnection -State Listen -OwningProcess {} \
+                         -ErrorAction SilentlyContinue | ForEach-Object LocalPort",
+                        process_pid
+                    )) {
+                        Ok(o) => ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout)),
+                        Err(e) => {
+                            log::warn!("[plugin:{}] Get-NetTCPConnection failed: {}", pid, e);
+                            Vec::new()
                         }
-                    } else {
-                        log::warn!("[plugin:{}] lsof not found", pid);
-                        Vec::new()
                     };
 
                     if ports.is_empty() && extension_port.is_none() {
@@ -1512,7 +1499,7 @@ fn ls_marker_rank(command: &str, markers_lower: &[String]) -> Option<u8> {
             .then_some(0);
     }
 
-    let command_lower = command.to_lowercase();
+    let command_lower = command.to_lowercase().replace('\\', "/");
     markers_lower
         .iter()
         .any(|m| command_lower.contains(&format!("/{}/", m)))
@@ -1542,7 +1529,7 @@ fn ls_command_matches_process(command: &str, process_name_lower: &str) -> bool {
     let exe_name = Path::new(argv0)
         .file_name()
         .and_then(|name| name.to_str())
-        .map(|name| name.to_lowercase())
+        .map(|name| name.to_lowercase().trim_end_matches(".exe").to_string())
         .unwrap_or_default();
 
     if exe_name == process_name_lower {
@@ -1553,34 +1540,21 @@ fn ls_command_matches_process(command: &str, process_name_lower: &str) -> bool {
         exe_name.starts_with(&format!("{}_", process_name_lower))
             || command.to_lowercase().contains(process_name_lower)
     } else {
-        let command_lower = command.to_lowercase();
+        let command_lower = command.to_lowercase().replace('\\', "/");
         command_lower.ends_with(&format!("/{}", process_name_lower))
             || command_lower.contains(&format!("/{} ", process_name_lower))
             || command_lower.contains(&format!("/{}\t", process_name_lower))
     }
 }
 
-/// Parse listening port numbers from `lsof -nP -iTCP -sTCP:LISTEN` output.
+/// Parse `Get-NetTCPConnection ... | ForEach-Object LocalPort` output: one
+/// port per line. Sorted, deduplicated (IPv4 and IPv6 listeners repeat).
 fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
-    let mut ports = std::collections::BTreeSet::new();
-    for line in output.lines() {
-        if !line.contains("LISTEN") {
-            continue;
-        }
-        // lsof -nP output: ... TCP 127.0.0.1:PORT (LISTEN)  or  ... TCP *:PORT
-        // Scan tokens in reverse to find the address:port token.
-        for token in line.split_whitespace().rev() {
-            if let Some(colon_pos) = token.rfind(':') {
-                let port_str = &token[colon_pos + 1..];
-                if let Ok(port) = port_str.parse::<i32>() {
-                    if port > 0 && port < 65536 {
-                        ports.insert(port);
-                        break;
-                    }
-                }
-            }
-        }
-    }
+    let ports: std::collections::BTreeSet<i32> = output
+        .lines()
+        .filter_map(|line| line.trim().parse::<i32>().ok())
+        .filter(|port| *port > 0 && *port < 65536)
+        .collect();
     ports.into_iter().collect()
 }
 
@@ -2912,6 +2886,37 @@ mod tests {
             "/opt/homebrew/bin/not-agy-helper --some-flag agy",
             "agy"
         ));
+    }
+
+    #[test]
+    fn ls_command_matches_windows_exe_paths() {
+        assert!(ls_command_matches_process(
+            r"C:\Users\u\AppData\Local\Programs\Antigravity\resources\app\extensions\antigravity\bin\language_server_windows_x64.exe --csrf_token abc",
+            "language_server"
+        ));
+        assert!(ls_command_matches_process(
+            r#""C:\Program Files\Antigravity\agy.exe" --some-flag"#,
+            "agy"
+        ));
+        assert!(!ls_command_matches_process(
+            r"C:\tools\not-agy.exe --some-flag agy",
+            "agy"
+        ));
+        assert_eq!(
+            ls_marker_rank(
+                r"C:\Programs\antigravity\bin\language_server_windows_x64.exe",
+                &["antigravity".to_string()]
+            ),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn ls_parse_listening_ports_reads_one_port_per_line() {
+        assert_eq!(
+            ls_parse_listening_ports("42101\r\n42100\r\n\r\n42100\r\nnoise\r\n0\r\n70000\r\n"),
+            vec![42100, 42101]
+        );
     }
 
     #[test]
