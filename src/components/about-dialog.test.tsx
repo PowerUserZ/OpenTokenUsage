@@ -55,7 +55,7 @@ describe("AboutDialog", () => {
     render(<AboutDialog version="1.2.3" onClose={onClose} />)
 
     // Switch to changelog view.
-    await userEvent.click(screen.getByRole("button", { name: "View Changelog" }))
+    await userEvent.click(screen.getByRole("button", { name: "View changelog" }))
 
     // Press Escape; should go back to About view, not close.
     await userEvent.keyboard("{Escape}")

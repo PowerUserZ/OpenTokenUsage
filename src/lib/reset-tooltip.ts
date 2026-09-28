@@ -1,24 +1,21 @@
 import type { ResetTimerDisplayMode, TimeFormatMode } from "@/lib/settings"
 import { formatCompactDuration } from "@/lib/pace-tooltip"
+import { getLocale, t } from "@/lib/i18n"
 
-const timeFormatterCache = new Map<TimeFormatMode, Intl.DateTimeFormat>()
+const timeFormatterCache = new Map<string, Intl.DateTimeFormat>()
 
 export function getTimeFormatter(mode: TimeFormatMode): Intl.DateTimeFormat {
-  const cached = timeFormatterCache.get(mode)
+  const cacheKey = `${getLocale()}|${mode}`
+  const cached = timeFormatterCache.get(cacheKey)
   if (cached) return cached
   const opts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" }
   if (mode === "12h") opts.hour12 = true
   else if (mode === "24h") opts.hour12 = false
-  // "auto" leaves hour12 unset so the user's locale decides.
-  const formatter = new Intl.DateTimeFormat(undefined, opts)
-  timeFormatterCache.set(mode, formatter)
+  // "auto" leaves hour12 unset so the app language decides.
+  const formatter = new Intl.DateTimeFormat(getLocale(), opts)
+  timeFormatterCache.set(cacheKey, formatter)
   return formatter
 }
-
-const RESET_MONTH_DAY_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-})
 
 const RESET_SOON_THRESHOLD_MS = 5 * 60 * 1000
 
@@ -33,16 +30,16 @@ function getLocalDayIndex(timestampMs: number): number {
 }
 
 function formatMonthDay(timestampMs: number): string {
-  return RESET_MONTH_DAY_FORMATTER.format(timestampMs)
+  return new Intl.DateTimeFormat(getLocale(), { month: "short", day: "numeric" }).format(timestampMs)
 }
 
 export function formatResetRelativeLabel(nowMs: number, resetsAtIso: string): string | null {
   const resetsAtMs = parseResetTimestamp(resetsAtIso)
   if (resetsAtMs === null) return null
   const deltaMs = resetsAtMs - nowMs
-  if (deltaMs < RESET_SOON_THRESHOLD_MS) return "Resets soon"
+  if (deltaMs < RESET_SOON_THRESHOLD_MS) return t("reset.soon")
   const durationText = formatCompactDuration(deltaMs)
-  return durationText ? `Resets in ${durationText}` : null
+  return durationText ? t("reset.in", { time: durationText }) : null
 }
 
 export function formatResetAbsoluteLabel(
@@ -52,13 +49,12 @@ export function formatResetAbsoluteLabel(
 ): string | null {
   const resetsAtMs = parseResetTimestamp(resetsAtIso)
   if (resetsAtMs === null) return null
-  if (resetsAtMs - nowMs <= 0) return "Resets soon"
+  if (resetsAtMs - nowMs <= 0) return t("reset.soon")
   const dayDiff = getLocalDayIndex(resetsAtMs) - getLocalDayIndex(nowMs)
   const timeText = getTimeFormatter(timeFormatMode).format(resetsAtMs)
-  if (dayDiff <= 0) return `Resets today at ${timeText}`
-  if (dayDiff === 1) return `Resets tomorrow at ${timeText}`
-  const dateText = formatMonthDay(resetsAtMs)
-  return `Resets ${dateText} at ${timeText}`
+  if (dayDiff <= 0) return t("reset.todayAt", { time: timeText })
+  if (dayDiff === 1) return t("reset.tomorrowAt", { time: timeText })
+  return t("reset.onDateAt", { date: formatMonthDay(resetsAtMs), time: timeText })
 }
 
 export function formatResetTooltipText({

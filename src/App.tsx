@@ -15,6 +15,7 @@ import { type PluginContextAction } from "@/components/side-nav"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
+import { useLocaleStore } from "@/lib/i18n"
 
 const TRAY_PROBE_DEBOUNCE_MS = 500
 const TRAY_SETTINGS_DEBOUNCE_MS = 2000
@@ -254,8 +255,12 @@ function App() {
     [pluginStates]
   )
 
+  // Remount the UI on a language switch so every string (incl. helper-formatted text) re-renders.
+  const locale = useLocaleStore((state) => state.locale)
+
   return (
     <AppShell
+      key={locale}
       onRefreshAll={handleRefreshAll}
       navPlugins={navPlugins}
       displayPlugins={displayPlugins}

@@ -3,6 +3,7 @@ import { Loader2, ChevronRight, ExternalLink as ExternalLinkIcon } from "lucide-
 import { useChangelog } from "@/hooks/use-changelog"
 import { Button } from "@/components/ui/button"
 import { openUrl } from "@tauri-apps/plugin-opener"
+import { getLocale, t } from "@/lib/i18n"
 
 interface ChangelogDialogProps {
   currentVersion: string
@@ -192,33 +193,33 @@ export function ChangelogDialog({ currentVersion, onBack, onClose }: ChangelogDi
   )
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] rounded-xl">
-      <div className="bg-card rounded-lg border shadow-2xl flex flex-col w-[92%] h-[88%] animate-in fade-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between p-3.5 border-b bg-muted/20">
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30">
+      <div className="bg-popover rounded-lg border shadow-2xl flex flex-col w-[92%] h-[88%] animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between p-3 border-b">
           <div className="flex items-center gap-2">
             <button
               onClick={onBack}
-              className="p-1.5 hover:bg-muted rounded-md transition-colors text-muted-foreground hover:text-foreground"
-              title="Back"
+              className="p-1.5 hover:bg-accent rounded-md transition-colors text-muted-foreground hover:text-foreground"
+              title={t("changelog.back")}
             >
               <ChevronRight className="w-5 h-5 rotate-180" />
             </button>
-            <h2 className="font-semibold text-sm tracking-tight">Release Notes</h2>
+            <h2 className="font-semibold text-sm">{t("changelog.title")}</h2>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 custom-scrollbar overflow-x-hidden">
+        <div className="flex-1 overflow-y-auto p-5 overflow-x-hidden">
           {loading ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
               <Loader2 className="w-6 h-6 animate-spin" />
-              <span className="text-xs">Fetching release info...</span>
+              <span className="text-xs">{t("changelog.loading")}</span>
             </div>
           ) : error ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-4">
-              <span className="text-destructive text-sm font-medium mb-1">Failed to load release notes</span>
+              <span className="text-destructive text-sm font-medium mb-1">{t("changelog.failed")}</span>
               <span className="text-xs text-muted-foreground mb-4">{error}</span>
               <Button size="xs" variant="outline" onClick={() => window.location.reload()}>
-                Try again
+                {t("changelog.tryAgain")}
               </Button>
             </div>
           ) : currentRelease ? (
@@ -228,19 +229,17 @@ export function ChangelogDialog({ currentVersion, onBack, onClose }: ChangelogDi
                   <h3 className="font-bold text-lg">{currentRelease.name || currentRelease.tag_name}</h3>
                   <p className="text-[10px] text-muted-foreground mt-0.5">
                     {currentRelease.published_at
-                      ? (() => {
-                          const d = new Date(currentRelease.published_at)
-                          const year = d.getUTCFullYear()
-                          const month = String(d.getUTCMonth() + 1).padStart(2, "0")
-                          const day = String(d.getUTCDate()).padStart(2, "0")
-                          return `Released on ${year}/${month}/${day}`
-                        })()
-                      : "Unpublished release"}
+                      ? t("changelog.releasedOn", {
+                          date: new Intl.DateTimeFormat(getLocale(), { dateStyle: "medium", timeZone: "UTC" }).format(
+                            new Date(currentRelease.published_at)
+                          ),
+                        })
+                      : t("changelog.unpublished")}
                   </p>
                 </div>
                 <button
                   onClick={() => openUrl(currentRelease.html_url).catch(console.error)}
-                  className="text-[10px] text-[#58a6ff] hover:underline flex items-center gap-1"
+                  className="text-[11px] text-primary hover:underline flex items-center gap-1"
                 >
                   GitHub <ExternalLinkIcon className="w-3 h-3" />
                 </button>
@@ -253,12 +252,12 @@ export function ChangelogDialog({ currentVersion, onBack, onClose }: ChangelogDi
               {releases.length >= 1 && (
                 <div className="mt-8 pt-6 border-t border-dashed">
                   <p className="text-[10px] text-muted-foreground text-center">
-                    Looking for older versions? Check the{" "}
-                    <button 
+                    {t("changelog.olderVersions")}{" "}
+                    <button
                       onClick={() => openUrl("https://github.com/PowerUserZ/OpenTokenUsage/releases").catch(console.error)}
-                      className="text-[#58a6ff] hover:underline"
+                      className="text-primary hover:underline"
                     >
-                      full changelog
+                      {t("changelog.fullChangelog")}
                     </button>
                   </p>
                 </div>
@@ -266,13 +265,13 @@ export function ChangelogDialog({ currentVersion, onBack, onClose }: ChangelogDi
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center p-4 opacity-60">
-              <span className="text-sm font-medium mb-1">No specific notes for v{currentVersion}</span>
-              <span className="text-xs mb-4">This version might be a pre-release or local build.</span>
-              <button 
+              <span className="text-sm font-medium mb-1">{t("changelog.noNotes", { version: currentVersion })}</span>
+              <span className="text-xs mb-4">{t("changelog.noNotesHint")}</span>
+              <button
                 onClick={() => openUrl("https://github.com/PowerUserZ/OpenTokenUsage/releases").catch(console.error)}
-                className="text-xs text-[#58a6ff] hover:underline"
+                className="text-xs text-primary hover:underline"
               >
-                View all releases on GitHub
+                {t("changelog.viewAll")}
               </button>
             </div>
           )}

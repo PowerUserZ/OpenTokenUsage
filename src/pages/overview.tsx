@@ -1,6 +1,7 @@
 import { ProviderCard } from "@/components/provider-card"
 import type { PluginDisplayState } from "@/lib/plugin-types"
 import type { DisplayMode, ResetTimerDisplayMode, TimeFormatMode } from "@/lib/settings"
+import { t } from "@/lib/i18n"
 
 interface OverviewPageProps {
   plugins: PluginDisplayState[]
@@ -22,7 +23,7 @@ export function OverviewPage({
   if (plugins.length === 0) {
     return (
       <div className="text-center text-muted-foreground py-8">
-        No providers enabled
+        {t("overview.noProviders")}
       </div>
     )
   }

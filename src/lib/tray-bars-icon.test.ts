@@ -9,10 +9,9 @@ vi.mock("@tauri-apps/api/image", () => ({
 import { getTrayIconSizePx, makeTrayBarsSvg, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
 
 describe("tray-bars-icon", () => {
-  it("getTrayIconSizePx scales from the platform base size", () => {
-    const base = navigator.userAgent.includes("Macintosh") ? 18 : 32
-    expect(getTrayIconSizePx(1)).toBe(base)
-    expect(getTrayIconSizePx(2)).toBe(base * 2)
+  it("getTrayIconSizePx scales from the 32pt tray base size", () => {
+    expect(getTrayIconSizePx(1)).toBe(32)
+    expect(getTrayIconSizePx(2)).toBe(64)
   })
 
   it("default style is bars", () => {

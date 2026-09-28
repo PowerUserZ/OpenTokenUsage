@@ -1,5 +1,7 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
 import type { PluginMeta } from "@/lib/plugin-types";
+import { isLanguagePreference, type LanguagePreference } from "@/lib/i18n";
+import type { MessageKey } from "@/locales/en";
 
 // Refresh cooldown duration in milliseconds (5 minutes)
 export const REFRESH_COOLDOWN_MS = 300_000;
@@ -45,6 +47,7 @@ const TRAY_METRIC_KEY = "trayMetric";
 const TRAY_PERCENT_COLOR_KEY = "trayPercentColor";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
+const LANGUAGE_KEY = "language";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
@@ -65,38 +68,41 @@ const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolut
 const TIME_FORMAT_MODES: TimeFormatMode[] = ["auto", "12h", "24h"];
 const MENUBAR_ICON_STYLES: MenubarIconStyle[] = ["icon", "percent", "bars"];
 
-export const MENUBAR_ICON_STYLE_OPTIONS: { value: MenubarIconStyle; label: string }[] = [
-  { value: "icon", label: "Icon" },
-  { value: "percent", label: "Percent" },
-  { value: "bars", label: "Bars" },
+/** A settings choice; the UI renders `t(labelKey, labelVars)`. */
+export type SettingOption<T> = { value: T; labelKey: MessageKey; labelVars?: Record<string, number> };
+
+export const MENUBAR_ICON_STYLE_OPTIONS: SettingOption<MenubarIconStyle>[] = [
+  { value: "icon", labelKey: "settings.tray.icon" },
+  { value: "percent", labelKey: "settings.tray.percent" },
+  { value: "bars", labelKey: "settings.tray.bars" },
 ];
 
-export const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] =
-  AUTO_UPDATE_INTERVALS.map((value) => ({
-    value,
-    label: value === 60 ? "1 hour" : `${value} min`,
-  }));
+export const AUTO_UPDATE_OPTIONS: SettingOption<AutoUpdateIntervalMinutes>[] =
+  AUTO_UPDATE_INTERVALS.map((value) =>
+    value === 60
+      ? { value, labelKey: "settings.autoRefresh.hour" }
+      : { value, labelKey: "settings.autoRefresh.minutes", labelVars: { n: value } }
+  );
 
-export const THEME_OPTIONS: { value: ThemeMode; label: string }[] =
-  THEME_MODES.map((value) => ({
-    value,
-    label: value.charAt(0).toUpperCase() + value.slice(1),
-  }));
+export const THEME_OPTIONS: SettingOption<ThemeMode>[] = THEME_MODES.map((value) => ({
+  value,
+  labelKey: `settings.theme.${value}` as const,
+}));
 
-export const DISPLAY_MODE_OPTIONS: { value: DisplayMode; label: string }[] = [
-  { value: "left", label: "Left" },
-  { value: "used", label: "Used" },
+export const DISPLAY_MODE_OPTIONS: SettingOption<DisplayMode>[] = [
+  { value: "left", labelKey: "settings.usageMode.left" },
+  { value: "used", labelKey: "settings.usageMode.used" },
 ];
 
-export const RESET_TIMER_DISPLAY_OPTIONS: { value: ResetTimerDisplayMode; label: string }[] = [
-  { value: "relative", label: "Relative" },
-  { value: "absolute", label: "Absolute" },
+export const RESET_TIMER_DISPLAY_OPTIONS: SettingOption<ResetTimerDisplayMode>[] = [
+  { value: "relative", labelKey: "settings.resetTimers.relative" },
+  { value: "absolute", labelKey: "settings.resetTimers.absolute" },
 ];
 
-export const TIME_FORMAT_OPTIONS: { value: TimeFormatMode; label: string }[] = [
-  { value: "auto", label: "Auto" },
-  { value: "12h", label: "12-hour" },
-  { value: "24h", label: "24-hour" },
+export const TIME_FORMAT_OPTIONS: SettingOption<TimeFormatMode>[] = [
+  { value: "auto", labelKey: "settings.timeFormat.auto" },
+  { value: "12h", labelKey: "settings.timeFormat.12h" },
+  { value: "24h", labelKey: "settings.timeFormat.24h" },
 ];
 
 const store = new LazyStore(SETTINGS_STORE_PATH);
@@ -426,5 +432,15 @@ export async function loadStartOnLogin(): Promise<boolean> {
 
 export async function saveStartOnLogin(value: boolean): Promise<void> {
   await store.set(START_ON_LOGIN_KEY, value);
+  await store.save();
+}
+
+export async function loadLanguage(): Promise<LanguagePreference> {
+  const stored = await store.get<unknown>(LANGUAGE_KEY);
+  return isLanguagePreference(stored) ? stored : "system";
+}
+
+export async function saveLanguage(value: LanguagePreference): Promise<void> {
+  await store.set(LANGUAGE_KEY, value);
   await store.save();
 }

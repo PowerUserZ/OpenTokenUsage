@@ -41,7 +41,7 @@ describe("ChangelogDialog", () => {
       />,
     )
 
-    expect(screen.getByText("Fetching release info...")).toBeInTheDocument()
+    expect(screen.getByText("Fetching release info…")).toBeInTheDocument()
   })
 
   it("renders error state and shows retry button", async () => {
@@ -55,7 +55,7 @@ describe("ChangelogDialog", () => {
       />,
     )
 
-    expect(screen.getByText("Failed to load release notes")).toBeInTheDocument()
+    expect(screen.getByText("Couldn't load release notes")).toBeInTheDocument()
     expect(screen.getByText("something went wrong")).toBeInTheDocument()
 
     const retryButton = screen.getByRole("button", { name: "Try again" })
@@ -208,7 +208,7 @@ describe("ChangelogDialog", () => {
       />,
     )
 
-    const fullChangelogButton = screen.getByRole("button", { name: "full changelog" })
+    const fullChangelogButton = screen.getByRole("button", { name: "See the full changelog" })
     await userEvent.click(fullChangelogButton)
 
     expect(openerState.openUrlMock).toHaveBeenCalledWith(
@@ -237,7 +237,7 @@ describe("ChangelogDialog", () => {
     )
 
     expect(
-      screen.getByText("No specific notes for v9.9.9"),
+      screen.getByText("No release notes for v9.9.9"),
     ).toBeInTheDocument()
 
     await userEvent.click(

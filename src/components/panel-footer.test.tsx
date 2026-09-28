@@ -96,7 +96,7 @@ describe("PanelFooter", () => {
         {...footerProps}
       />
     )
-    expect(screen.getByText("Downloading update...")).toBeTruthy()
+    expect(screen.getByText("Downloading update…")).toBeTruthy()
   })
 
   it("shows restart button when ready", async () => {
@@ -161,7 +161,7 @@ describe("PanelFooter", () => {
         {...footerProps}
       />
     )
-    expect(screen.getByText("Installing...")).toBeTruthy()
+    expect(screen.getByText("Installing…")).toBeTruthy()
   })
 
   it("opens About dialog when clicking version in idle state", async () => {
@@ -183,10 +183,10 @@ describe("PanelFooter", () => {
 
     render(<Harness />)
     await userEvent.click(screen.getByRole("button", { name: /OpenTokenUsage/ }))
-    expect(screen.getByText("Open source on")).toBeInTheDocument()
+    expect(screen.getByText(/Source code/)).toBeInTheDocument()
 
     // Close via Escape to exercise AboutDialog onClose path.
     await userEvent.keyboard("{Escape}")
-    expect(screen.queryByText("Open source on")).not.toBeInTheDocument()
+    expect(screen.queryByText(/Source code/)).not.toBeInTheDocument()
   })
 })

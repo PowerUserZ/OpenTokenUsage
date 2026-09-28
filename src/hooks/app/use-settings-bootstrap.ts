@@ -22,6 +22,7 @@ import {
   loadGlobalShortcut,
   loadMenubarIconStyle,
   loadTrayMetric,
+  loadLanguage,
   loadTrayPercentColor,
   loadTrayProvider,
   migrateLegacyTraySettings,
@@ -45,6 +46,7 @@ import {
   type TrayPercentColor,
   type TrayProvider,
 } from "@/lib/settings"
+import { useLocaleStore } from "@/lib/i18n"
 
 type UseSettingsBootstrapArgs = {
   setPluginSettings: (value: PluginSettings | null) => void
@@ -188,6 +190,13 @@ export function useSettingsBootstrap({
           storedTrayPercentColor = await loadTrayPercentColor()
         } catch (error) {
           console.error("Failed to load tray provider/metric:", error)
+        }
+
+        try {
+          const storedLanguage = await loadLanguage()
+          if (isMounted) useLocaleStore.getState().setPreference(storedLanguage)
+        } catch (error) {
+          console.error("Failed to load language:", error)
         }
 
         if (isMounted) {

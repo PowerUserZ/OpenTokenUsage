@@ -17,6 +17,7 @@ import { clamp01, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/ut
 import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
 import { buildPaceDetailText, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
 import { formatResetAbsoluteLabel, formatResetRelativeLabel, formatResetTooltipText } from "@/lib/reset-tooltip"
+import { t, tLabel } from "@/lib/i18n"
 
 interface ProviderCardProps {
   name: string
@@ -64,13 +65,13 @@ function PaceIndicator({
           <span
             {...props}
             className={`inline-block w-2 h-2 rounded-full ${colorClass}`}
-            aria-label={isLimitReached ? "Limit reached" : statusText}
+            aria-label={isLimitReached ? t("card.limitReached") : statusText}
           />
         )}
       />
       <TooltipContent side="top" className="text-xs text-center">
         {isLimitReached ? (
-          "Limit reached"
+          t("card.limitReached")
         ) : (
           <>
             <div>{statusText}</div>
@@ -84,13 +85,12 @@ function PaceIndicator({
 
 function formatRelativeTime(diffMs: number): string {
   const seconds = Math.floor(Math.max(0, diffMs) / 1000)
-  if (seconds < 60) return "just now"
+  if (seconds < 60) return t("card.justNow")
   const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
+  if (minutes < 60) return t("card.minutesAgo", { n: minutes })
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
+  if (hours < 24) return t("card.hoursAgo", { n: hours })
+  return t("card.daysAgo", { n: Math.floor(hours / 24) })
 }
 
 export function ProviderCard({
@@ -175,10 +175,8 @@ export function ProviderCard({
     const totalSeconds = Math.ceil(remainingMs / 1000)
     const minutes = Math.floor(totalSeconds / 60)
     const seconds = totalSeconds % 60
-    if (minutes > 0) {
-      return `Available in ${minutes}m ${seconds}s`
-    }
-    return `Available in ${seconds}s`
+    const time = minutes > 0 ? t("duration.ms", { m: minutes, s: seconds }) : t("duration.s", { s: seconds })
+    return t("card.availableIn", { time })
   }
 
   return (
@@ -186,7 +184,7 @@ export function ProviderCard({
       <div className="py-3">
         <div className="flex items-center justify-between mb-2">
           <div className="relative flex items-center">
-            <h2 className="text-lg font-semibold" style={{ transform: "translateZ(0)" }}>{name}</h2>
+            <h2 className="text-base font-semibold font-display" style={{ transform: "translateZ(0)" }}>{name}</h2>
             {onRetry && (
               loading ? (
                 <Button
@@ -229,7 +227,7 @@ export function ProviderCard({
                         {...props}
                         variant="ghost"
                         size="icon-xs"
-                        aria-label="Retry"
+                        aria-label={t("card.retry")}
                         onClick={(e) => {
                           e.currentTarget.blur()
                           onRetry()
@@ -243,7 +241,7 @@ export function ProviderCard({
                   />
                   {lastUpdatedAt != null && (
                     <TooltipContent side="top">
-                      Updated {formatRelativeTime(Date.now() - lastUpdatedAt)}
+                      {t("card.updated", { time: formatRelativeTime(Date.now() - lastUpdatedAt) })}
                     </TooltipContent>
                   )}
                 </Tooltip>
@@ -252,7 +250,7 @@ export function ProviderCard({
           </div>
           {plan && (
             <Badge
-              variant="outline"
+              variant="secondary"
               className="truncate min-w-0 max-w-[50%]"
               title={plan}
             >
@@ -369,7 +367,7 @@ function MetricLineRenderer({
       <div>
         <div className="flex justify-between items-center h-[18px] gap-2">
           <span className="text-xs text-muted-foreground min-w-0 truncate" title={line.label}>
-            {line.label}
+            {tLabel(line.label)}
           </span>
           <span
             className="text-xs text-muted-foreground truncate flex-shrink-0 max-w-[45%] text-right"
@@ -390,7 +388,7 @@ function MetricLineRenderer({
     return (
       <div>
         <div className="flex justify-between items-center h-[22px]">
-          <span className="text-sm text-muted-foreground flex-shrink-0">{line.label}</span>
+          <span className="text-sm text-muted-foreground flex-shrink-0">{tLabel(line.label)}</span>
           <Badge
             variant="outline"
             className="truncate min-w-0 max-w-[60%]"
@@ -413,7 +411,7 @@ function MetricLineRenderer({
 
   if (line.type === "barChart") {
     return (
-      <UsageSparkline label={line.label} points={line.points} note={line.note} color={line.color} />
+      <UsageSparkline label={tLabel(line.label)} points={line.points} note={line.note} color={line.color} />
     )
   }
 
@@ -427,14 +425,13 @@ function MetricLineRenderer({
         ? line.used
         : Math.max(0, line.limit - line.used)
     const percent = Math.round(clamp01(shownAmount / line.limit) * 10000) / 100
-    const leftSuffix = displayMode === "left" ? " left" : ""
-
-    const primaryText =
+    const amountText =
       line.format.kind === "percent"
-        ? `${Math.round(shownAmount)}%${leftSuffix}`
+        ? `${Math.round(shownAmount)}%`
         : line.format.kind === "dollars"
-          ? `$${formatFixedPrecisionNumber(shownAmount)}${leftSuffix}`
-          : `${formatCountNumber(shownAmount)} ${line.format.suffix}${leftSuffix}`
+          ? `$${formatFixedPrecisionNumber(shownAmount)}`
+          : `${formatCountNumber(shownAmount)} ${line.format.suffix}`
+    const primaryText = displayMode === "left" ? t("card.valueLeft", { value: amountText }) : amountText
 
     const resetLabel = line.resetsAt
       ? resetTimerDisplayMode === "absolute"
@@ -453,9 +450,9 @@ function MetricLineRenderer({
     const secondaryText =
       resetLabel ??
       (line.format.kind === "percent"
-        ? `${line.limit}% cap`
+        ? t("card.percentCap", { value: line.limit })
         : line.format.kind === "dollars"
-          ? `$${formatFixedPrecisionNumber(line.limit)} limit`
+          ? t("card.amountLimit", { value: `$${formatFixedPrecisionNumber(line.limit)}` })
           : `${formatCountNumber(line.limit)} ${line.format.suffix}`)
 
     // Calculate pace status if we have reset time and period duration
@@ -504,8 +501,8 @@ function MetricLineRenderer({
 
     return (
       <div>
-        <div className="text-sm font-medium mb-1.5 flex items-center gap-1.5">
-          {line.label}
+        <div className="text-[13px] font-medium mb-1.5 flex items-center gap-1.5">
+          {tLabel(line.label)}
           {paceStatus && (
             <PaceIndicator status={paceStatus} detailText={paceDetailText} isLimitReached={isLimitReached} />
           )}

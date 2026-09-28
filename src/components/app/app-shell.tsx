@@ -1,5 +1,4 @@
 import { useShallow } from "zustand/react/shallow"
-import { Minus } from "lucide-react"
 import { invoke } from "@tauri-apps/api/core"
 import { AppContent, type AppContentActionProps } from "@/components/app/app-content"
 import { PanelFooter } from "@/components/panel-footer"
@@ -9,11 +8,9 @@ import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import { useAppVersion } from "@/hooks/app/use-app-version"
 import { usePanel } from "@/hooks/app/use-panel"
 import { useAppUpdate } from "@/hooks/use-app-update"
+import { useWindowsAppearance } from "@/hooks/use-windows-appearance"
+import { t } from "@/lib/i18n"
 import { useAppUiStore } from "@/stores/app-ui-store"
-
-const IS_MACOS = navigator.userAgent.includes("Macintosh")
-
-const ARROW_OVERHEAD_PX = 37
 
 type AppShellProps = {
   onRefreshAll: () => void
@@ -26,6 +23,28 @@ type AppShellProps = {
   isPluginRefreshAvailable: (pluginId: string) => boolean
   onNavReorder: (orderedIds: string[]) => void
   appContentProps: AppContentActionProps
+}
+
+/** Windows 11 title bar: app icon + caption, and a Fluent caption button that hides to the tray. */
+function TitleBar() {
+  return (
+    <div data-tauri-drag-region className="titlebar flex items-center h-8 pl-3 shrink-0">
+      <img src="/icon.png" alt="" className="size-4 pointer-events-none" draggable={false} />
+      <span className="ml-2.5 text-xs text-foreground/80 select-none pointer-events-none">OpenTokenUsage</span>
+      <span className="flex-1" />
+      <button
+        type="button"
+        onClick={() => invoke("hide_panel")}
+        className="titlebar-button inline-flex items-center justify-center w-[46px] h-8 text-foreground hover:bg-accent active:bg-accent/60 transition-colors"
+        title={t("app.minimize")}
+        aria-label={t("app.minimize")}
+      >
+        <span aria-hidden className="text-[10px]" style={{ fontFamily: '"Segoe Fluent Icons", "Segoe MDL2 Assets"' }}>
+          {""}
+        </span>
+      </button>
+    </div>
+  )
 }
 
 export function AppShell({
@@ -67,36 +86,17 @@ export function AppShell({
     displayPlugins,
   })
 
+  useWindowsAppearance()
   const appVersion = useAppVersion()
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
 
   return (
-    <div
-      ref={containerRef}
-      tabIndex={-1}
-      className={`flex flex-col items-center bg-transparent outline-none ${IS_MACOS ? "p-6 pt-1.5" : "p-0"}`}
-    >
-      {IS_MACOS && <div className="tray-arrow" />}
+    <div ref={containerRef} tabIndex={-1} className="flex flex-col bg-background outline-none">
       <div
-        className={`relative bg-card overflow-hidden select-none w-full flex flex-col ${IS_MACOS ? "rounded-xl border shadow-lg" : ""}`}
-        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - (IS_MACOS ? ARROW_OVERHEAD_PX : 0)}px` } : undefined}
+        className="relative overflow-hidden select-none w-full flex flex-col"
+        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx}px` } : undefined}
       >
-        {!IS_MACOS && (
-          <div
-            data-tauri-drag-region
-            className="titlebar flex items-center h-7 px-2 shrink-0"
-          >
-            <span className="titlebar text-xs font-medium text-muted-foreground select-none pointer-events-none">OpenTokenUsage</span>
-            <span className="flex-1" />
-            <button
-              onClick={() => invoke("hide_panel")}
-              className="titlebar-button inline-flex items-center justify-center w-6 h-5 rounded hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
-              title="Minimize to tray"
-            >
-              <Minus size={14} strokeWidth={2} />
-            </button>
-          </div>
-        )}
+        <TitleBar />
         <div className="flex flex-1 min-h-0 flex-row">
           <SideNav
             activeView={activeView}
@@ -106,9 +106,10 @@ export function AppShell({
             isPluginRefreshAvailable={isPluginRefreshAvailable}
             onReorder={onNavReorder}
           />
-          <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
+          {/* NavigationView content layer: rounded top-left corner over the Mica base */}
+          <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0 bg-card border-t border-l rounded-tl-lg">
             <div className="relative flex-1 min-h-0">
-              <div ref={scrollRef} className={`h-full overflow-y-auto ${IS_MACOS ? "scrollbar-none" : ""}`}>
+              <div ref={scrollRef} className="h-full overflow-y-auto">
                 <AppContent
                   {...appContentProps}
                   displayPlugins={displayPlugins}
@@ -117,7 +118,7 @@ export function AppShell({
                 />
               </div>
               <div
-                className={`pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-card dark:from-muted/50 to-transparent transition-opacity duration-200 ${canScrollDown ? "opacity-100" : "opacity-0"}`}
+                className={`pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-card to-transparent transition-opacity duration-200 ${canScrollDown ? "opacity-100" : "opacity-0"}`}
               />
             </div>
             <PanelFooter

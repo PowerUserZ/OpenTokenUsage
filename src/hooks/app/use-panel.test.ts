@@ -152,7 +152,7 @@ describe("usePanel", () => {
     })
   })
 
-  it("switches views with Cmd+Arrow navigation", () => {
+  it("switches views with Ctrl+Arrow navigation", () => {
     const setActiveView = vi.fn()
 
     const firstHook = renderHook(() =>
@@ -181,7 +181,7 @@ describe("usePanel", () => {
     )
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", metaKey: true }))
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", ctrlKey: true }))
     })
 
     expect(setActiveView).toHaveBeenCalledWith("a")
@@ -215,14 +215,14 @@ describe("usePanel", () => {
     )
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", metaKey: true }))
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", ctrlKey: true }))
     })
 
     expect(setActiveView).toHaveBeenCalledWith("home")
     secondHook.unmount()
   })
 
-  it("ignores Cmd+Arrow navigation from editable targets", () => {
+  it("ignores Ctrl+Arrow navigation from editable targets", () => {
     const setActiveView = vi.fn()
     const { result } = renderHook(() =>
       usePanel({
@@ -247,7 +247,7 @@ describe("usePanel", () => {
     document.body.appendChild(textbox)
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", metaKey: true, bubbles: true }))
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", ctrlKey: true, bubbles: true }))
     })
 
     expect(setActiveView).toHaveBeenCalledWith("home")
@@ -255,7 +255,7 @@ describe("usePanel", () => {
     setActiveView.mockClear()
 
     act(() => {
-      textbox.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", metaKey: true, bubbles: true }))
+      textbox.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", ctrlKey: true, bubbles: true }))
     })
 
     expect(setActiveView).not.toHaveBeenCalled()
@@ -263,7 +263,7 @@ describe("usePanel", () => {
     expect(result.current.containerRef.current).toBeNull()
   })
 
-  it("skips settings when navigating with Cmd+Arrow", () => {
+  it("skips settings when navigating with Ctrl+Arrow", () => {
     const setActiveView = vi.fn()
 
     renderHook(() =>
@@ -292,7 +292,7 @@ describe("usePanel", () => {
     )
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", metaKey: true }))
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", ctrlKey: true }))
     })
 
     expect(setActiveView).toHaveBeenCalledWith("home")
@@ -300,7 +300,7 @@ describe("usePanel", () => {
     setActiveView.mockClear()
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", metaKey: true }))
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", ctrlKey: true }))
     })
 
     expect(setActiveView).toHaveBeenCalledWith("b")

@@ -685,12 +685,12 @@ describe("App", () => {
 
     // Open about via version button in footer
     await userEvent.click(await screen.findByRole("button", { name: /OpenTokenUsage/i }))
-    await screen.findByText("Open source on")
+    await screen.findByText(/Source code/)
 
     // Close about via ESC key
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
     await waitFor(() => {
-      expect(screen.queryByText("Open source on")).not.toBeInTheDocument()
+      expect(screen.queryByText(/Source code/)).not.toBeInTheDocument()
     })
   })
 
@@ -708,7 +708,7 @@ describe("App", () => {
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
 
-    expect(screen.getByText("Menubar Icon")).toBeVisible()
+    expect(screen.getByText("Tray icon")).toBeVisible()
     const barsRadio = await screen.findByRole("radio", { name: "Bars" })
     await userEvent.click(barsRadio)
     expect(state.saveMenubarIconStyleMock).toHaveBeenCalledWith("bars")
@@ -725,7 +725,7 @@ describe("App", () => {
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
 
-    expect(screen.getByText("Menubar Icon")).toBeVisible()
+    expect(screen.getByText("Tray icon")).toBeVisible()
     const percentRadio = await screen.findByRole("radio", { name: "Percent" })
     await userEvent.click(percentRadio)
     expect(state.saveMenubarIconStyleMock).toHaveBeenCalledWith("percent")
@@ -1353,7 +1353,7 @@ describe("App", () => {
     await screen.findByText("Now")
   })
 
-  it("switches sidebar tabs with Cmd+Up and Cmd+Down immediately after focus", async () => {
+  it("switches sidebar tabs with Ctrl+Up and Ctrl+Down immediately after focus", async () => {
     state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
     state.invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_plugins") {
@@ -1385,28 +1385,28 @@ describe("App", () => {
     await screen.findByText("Beta line")
 
     window.dispatchEvent(new Event("focus"))
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", metaKey: true }))
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", ctrlKey: true }))
 
     await waitFor(() => {
       expect(screen.getByText("Alpha line")).toBeInTheDocument()
       expect(screen.queryByText("Beta line")).not.toBeInTheDocument()
     })
 
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", metaKey: true }))
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", ctrlKey: true }))
 
     await waitFor(() => {
       expect(screen.getByText("Beta line")).toBeInTheDocument()
       expect(screen.queryByText("Alpha line")).not.toBeInTheDocument()
     })
 
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", metaKey: true }))
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", ctrlKey: true }))
 
     await waitFor(() => {
       expect(screen.getByText("Alpha line")).toBeInTheDocument()
       expect(screen.queryByText("Beta line")).not.toBeInTheDocument()
     })
 
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", metaKey: true }))
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", ctrlKey: true }))
 
     await waitFor(() => {
       expect(screen.getByText("Alpha line")).toBeInTheDocument()
@@ -1776,7 +1776,7 @@ describe("App", () => {
     await userEvent.click(settingsButtons[0])
 
     // The shortcut should be displayed
-    await screen.findByText(/Cmd \+ Shift \+ U/i)
+    await screen.findByText(/Ctrl \+ Shift \+ U/i)
 
     // Find and click the clear button (X icon)
     const clearButton = await screen.findByRole("button", { name: /clear shortcut/i })
@@ -1799,7 +1799,7 @@ describe("App", () => {
     await userEvent.click(settingsButtons[0])
 
     // The shortcut should be displayed (formatted version)
-    await screen.findByText(/Cmd \+ Shift \+ O/i)
+    await screen.findByText(/Ctrl \+ Shift \+ O/i)
   })
 
   it("shows placeholder when no shortcut is set", async () => {

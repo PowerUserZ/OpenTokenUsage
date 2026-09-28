@@ -121,7 +121,8 @@ export function usePanel({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return
-      if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+      // Ctrl+Up/Down (the Win key combos are taken by Windows window snapping)
+      if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return
       if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return
       if (isEditableTarget(event.target)) return
 
@@ -190,11 +191,8 @@ export function usePanel({
         const win = getCurrentWindow()
         await win.setSize(new PhysicalSize(width, height))
 
-        // On Windows, re-anchor the window so its bottom edge stays
-        // near the taskbar after every resize.
-        if (!navigator.userAgent.includes("Macintosh")) {
-          await invoke("reanchor_window")
-        }
+        // Re-anchor the window so its bottom edge stays near the taskbar after every resize.
+        await invoke("reanchor_window")
       } catch (e) {
         console.error("Failed to resize window:", e)
       }

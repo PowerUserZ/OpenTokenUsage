@@ -1,3 +1,4 @@
+import { getLocale } from "@/lib/i18n"
 import { fireEvent, render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
@@ -33,7 +34,7 @@ vi.mock("@/components/ui/tooltip", () => ({
 }))
 
 function formatMonthDay(date: Date): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(getLocale(), {
     month: "short",
     day: "numeric",
   }).format(date)
@@ -556,8 +557,8 @@ describe("ProviderCard", () => {
     expect(markers).toHaveLength(2)
     expect(markers[0]?.style.left).toBe("50%")
     expect(markers[1]?.style.left).toBe("50%")
-    expect(markers[0]).toHaveClass("bg-muted-foreground")
-    expect(markers[1]).toHaveClass("bg-muted-foreground")
+    expect(markers[0]).toHaveClass("bg-foreground/70")
+    expect(markers[1]).toHaveClass("bg-foreground/70")
     vi.useRealTimers()
   })
 

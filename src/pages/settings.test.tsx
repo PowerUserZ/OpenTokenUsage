@@ -141,13 +141,13 @@ describe("SettingsPage", () => {
 
   it("shows auto-update helper text", () => {
     render(<SettingsPage {...defaultProps} />)
-    expect(screen.getByText("How obsessive are you")).toBeInTheDocument()
+    expect(screen.getByText("How often usage is fetched")).toBeInTheDocument()
   })
 
   it("renders app theme section with theme options", () => {
     render(<SettingsPage {...defaultProps} />)
-    expect(screen.getByText("App Theme")).toBeInTheDocument()
-    expect(screen.getByText("How it looks around here")).toBeInTheDocument()
+    expect(screen.getByText("Theme")).toBeInTheDocument()
+    expect(screen.getByText("Light, dark, or match Windows")).toBeInTheDocument()
     expect(screen.getByText("System")).toBeInTheDocument()
     expect(screen.getByText("Light")).toBeInTheDocument()
     expect(screen.getByText("Dark")).toBeInTheDocument()
@@ -191,17 +191,17 @@ describe("SettingsPage", () => {
 
   it("renders renamed usage section heading", () => {
     render(<SettingsPage {...defaultProps} />)
-    expect(screen.getByText("Usage Mode")).toBeInTheDocument()
+    expect(screen.getByText("Usage mode")).toBeInTheDocument()
   })
 
   it("renders reset timers section heading", () => {
     render(<SettingsPage {...defaultProps} />)
-    expect(screen.getByText("Reset Timers")).toBeInTheDocument()
+    expect(screen.getByText("Reset timers")).toBeInTheDocument()
   })
 
   it("renders time format section heading", () => {
     render(<SettingsPage {...defaultProps} />)
-    expect(screen.getByText("Time Format")).toBeInTheDocument()
+    expect(screen.getByText("Time format")).toBeInTheDocument()
     expect(screen.getByText("12-hour or 24-hour clock")).toBeInTheDocument()
   })
 
@@ -231,8 +231,8 @@ describe("SettingsPage", () => {
 
   it("renders menubar icon section", () => {
     render(<SettingsPage {...defaultProps} />)
-    expect(screen.getByText("Menubar Icon")).toBeInTheDocument()
-    expect(screen.getByText("What shows in the menu bar")).toBeInTheDocument()
+    expect(screen.getByText("Tray icon")).toBeInTheDocument()
+    expect(screen.getByText("What shows next to the clock on the taskbar")).toBeInTheDocument()
   })
 
   it("clicking Bars triggers onMenubarIconStyleChange(\"bars\")", async () => {

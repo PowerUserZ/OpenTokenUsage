@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from "react"
+import { t } from "@/lib/i18n"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn, clamp01, formatCountNumber } from "@/lib/utils"
 import type { BarChartPoint } from "@/lib/plugin-types"
@@ -23,11 +24,11 @@ export function UsageSparkline({ label, points, note, color }: UsageSparklinePro
   const maxValue = Math.max(1, ...valid.map((point) => point.value))
   const peak = valid.reduce((a, b) => (b.value > a.value ? b : a))
   const last = valid[valid.length - 1]
-  const summary = `${label}: ${valid.length} days, latest ${pointLabel(last)} on ${last.label}, peak ${pointLabel(peak)}.${note ? ` ${note}` : ""}`
+  const summary = `${t("sparkline.summary", { label, days: valid.length, latest: pointLabel(last), date: last.label, peak: pointLabel(peak) })}${note ? ` ${note}` : ""}`
 
   // Default readout = peak; hovering a bar shows that specific day.
   const active = activeIndex != null ? valid[activeIndex] : null
-  const readout = active ? `${active.label} · ${pointLabel(active)}` : `peak ${pointLabel(peak)}`
+  const readout = active ? `${active.label} · ${pointLabel(active)}` : t("sparkline.peak", { value: pointLabel(peak) })
 
   const barStyle = (point: BarChartPoint, minPercent: number): CSSProperties => {
     const ratio = clamp01(point.value / maxValue)

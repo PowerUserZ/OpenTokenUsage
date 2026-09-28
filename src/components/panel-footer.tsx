@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { AboutDialog } from "@/components/about-dialog";
 import type { UpdateStatus } from "@/hooks/use-app-update";
 import { useNowTicker } from "@/hooks/use-now-ticker";
+import { t } from "@/lib/i18n";
 
 interface PanelFooterProps {
   version: string;
@@ -34,24 +35,24 @@ function VersionDisplay({
       return (
         <span className="text-xs text-muted-foreground">
           {updateStatus.progress >= 0
-            ? `Downloading update ${updateStatus.progress}%`
-            : "Downloading update..."}
+            ? t("footer.downloading", { progress: updateStatus.progress })
+            : t("footer.downloadingIndeterminate")}
         </span>
       );
     case "ready":
       return (
         <Button
-          variant="destructive"
+          variant="default"
           size="xs"
           className="update-border-beam"
           onClick={onUpdateInstall}
         >
-          Restart to update
+          {t("footer.restartToUpdate")}
         </Button>
       );
     case "installing":
       return (
-        <span className="text-xs text-muted-foreground">Installing...</span>
+        <span className="text-xs text-muted-foreground">{t("footer.installing")}</span>
       );
     case "error":
       if (updateStatus.message === "Update check failed") {
@@ -62,13 +63,13 @@ function VersionDisplay({
             className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             title={updateStatus.message}
           >
-            Updates soon
+            {t("footer.updatesSoon")}
           </button>
         );
       }
       return (
         <span className="text-xs text-destructive" title={updateStatus.message}>
-          Update failed
+          {t("footer.updateFailed")}
         </span>
       );
     default:
@@ -101,14 +102,13 @@ export function PanelFooter({
   });
 
   const countdownLabel = useMemo(() => {
-    if (!autoUpdateNextAt) return "Paused";
+    if (!autoUpdateNextAt) return t("footer.paused");
     const remainingMs = Math.max(0, autoUpdateNextAt - now);
     const totalSeconds = Math.ceil(remainingMs / 1000);
-    if (totalSeconds >= 60) {
-      const minutes = Math.ceil(totalSeconds / 60);
-      return `Next update in ${minutes}m`;
-    }
-    return `Next update in ${totalSeconds}s`;
+    const time = totalSeconds >= 60
+      ? t("duration.m", { m: Math.ceil(totalSeconds / 60) })
+      : t("duration.s", { s: totalSeconds });
+    return t("footer.nextUpdate", { time });
   }, [autoUpdateNextAt, now]);
 
   return (
@@ -129,7 +129,7 @@ export function PanelFooter({
               onRefreshAll()
             }}
             className="text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors cursor-pointer"
-            title="Refresh now"
+            title={t("footer.refreshNow")}
           >
             {countdownLabel}
           </button>

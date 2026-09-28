@@ -1,0 +1,69 @@
+import type { ReactNode } from "react"
+import { t } from "@/lib/i18n"
+import type { SettingOption } from "@/lib/settings"
+import { cn } from "@/lib/utils"
+
+/** Windows 11 Settings card: title, one-line description, then the control. */
+export function SettingsSection({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description?: string
+  children: ReactNode
+}) {
+  return (
+    <section className="rounded-lg border border-surface-stroke bg-surface px-3 py-2.5">
+      <h3 className="text-sm font-semibold leading-5">{title}</h3>
+      {description && <p className="text-xs text-muted-foreground leading-4 mb-2">{description}</p>}
+      {!description && <div className="h-1.5" />}
+      {children}
+    </section>
+  )
+}
+
+/** Fluent toggle-button group: one choice, the checked one filled with the accent color. */
+export function SegmentedControl<T extends string | number>({
+  options,
+  value,
+  onChange,
+  ariaLabel,
+  renderOption,
+  itemClassName,
+}: {
+  options: SettingOption<T>[]
+  value: T
+  onChange: (value: T) => void
+  ariaLabel: string
+  renderOption?: (option: SettingOption<T>, isActive: boolean) => ReactNode
+  itemClassName?: string
+}) {
+  return (
+    <div className="flex gap-0.5 rounded-md border bg-secondary p-0.5" role="radiogroup" aria-label={ariaLabel}>
+      {options.map((option) => {
+        const isActive = option.value === value
+        const label = t(option.labelKey, option.labelVars)
+        return (
+          <button
+            key={String(option.value)}
+            type="button"
+            role="radio"
+            aria-checked={isActive}
+            aria-label={label}
+            onClick={() => onChange(option.value)}
+            className={cn(
+              "flex-1 min-w-0 h-7 rounded-[3px] px-1.5 text-[13px] transition-colors",
+              isActive
+                ? "bg-primary text-primary-foreground font-medium"
+                : "text-foreground hover:bg-accent active:bg-accent/60",
+              itemClassName
+            )}
+          >
+            {renderOption ? renderOption(option, isActive) : label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}

@@ -1,3 +1,4 @@
+import { tLabel } from "@/lib/i18n"
 import { Fragment } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { ManifestLine } from "@/lib/plugin-types"
@@ -54,15 +55,15 @@ function SkeletonBarChart({ label }: { label: string }) {
 export function SkeletonLine({ line }: { line: ManifestLine }) {
   switch (line.type) {
     case "text":
-      return <SkeletonText label={line.label} />
+      return <SkeletonText label={tLabel(line.label)} />
     case "badge":
-      return <SkeletonBadge label={line.label} />
+      return <SkeletonBadge label={tLabel(line.label)} />
     case "progress":
-      return <SkeletonProgress label={line.label} />
+      return <SkeletonProgress label={tLabel(line.label)} />
     case "barChart":
-      return <SkeletonBarChart label={line.label} />
+      return <SkeletonBarChart label={tLabel(line.label)} />
     default:
-      return <SkeletonText label={line.label} />
+      return <SkeletonText label={tLabel(line.label)} />
   }
 }
 

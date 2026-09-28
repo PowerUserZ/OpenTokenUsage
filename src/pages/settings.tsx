@@ -17,14 +17,15 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Button } from "@/components/ui/button";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
+import { SegmentedControl, SettingsSection } from "@/components/settings-section";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
 import {
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
   MENUBAR_ICON_STYLE_OPTIONS,
   RESET_TIMER_DISPLAY_OPTIONS,
+  saveLanguage,
   THEME_OPTIONS,
   TIME_FORMAT_OPTIONS,
   type AutoUpdateIntervalMinutes,
@@ -36,6 +37,7 @@ import {
   type TimeFormatMode,
 } from "@/lib/settings";
 import { getTimeFormatter } from "@/lib/reset-tooltip";
+import { LANGUAGES, resolveLanguage, t, useLocaleStore, type LanguagePreference } from "@/lib/i18n";
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon";
 import { cn } from "@/lib/utils";
 
@@ -45,9 +47,12 @@ interface PluginConfig {
   enabled: boolean;
 }
 
-const TRAY_PREVIEW_SIZE_PX = getTrayIconSizePx(1);
+const TRAY_PREVIEW_SIZE_PX = getTrayIconSizePx(1) / 2;
 
 const PREVIEW_BAR_TRACK_PX = 20;
+
+// Sample time for the time-format and absolute-reset examples.
+const EXAMPLE_TIME = new Date(2026, 1, 2, 11, 4);
 
 function getPreviewBarLayout(fraction: number): { fillPercent: number; remainderPercent: number } {
   const { fillW, remainderDrawW } = getBarFillLayout(PREVIEW_BAR_TRACK_PX, fraction);
@@ -57,81 +62,55 @@ function getPreviewBarLayout(fraction: number): { fillPercent: number; remainder
   };
 }
 
-
-
-function MenubarIconStylePreview({
+function TrayIconStylePreview({
   style,
-  isActive,
   traySettingsPreview,
 }: {
   style: MenubarIconStyle;
-  isActive: boolean;
   traySettingsPreview: TraySettingsPreview;
 }) {
-  const textClass = isActive ? "text-primary-foreground" : "text-foreground";
-
   if (style === "icon") {
     return (
-      <div className="inline-flex items-center justify-center">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={cn("shrink-0", textClass)} style={{ width: `${TRAY_PREVIEW_SIZE_PX}px`, height: `${TRAY_PREVIEW_SIZE_PX}px` }}>
-          <path d="M12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2ZM12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4ZM15.8329 7.33748C16.0697 7.17128 16.3916 7.19926 16.5962 7.40381C16.8002 7.60784 16.8267 7.92955 16.6587 8.16418C14.479 11.2095 13.2796 12.8417 13.0607 13.0607C12.4749 13.6464 11.5251 13.6464 10.9393 13.0607C10.3536 12.4749 10.3536 11.5251 10.9393 10.9393C11.3126 10.5661 12.9438 9.36549 15.8329 7.33748Z" />
-        </svg>
-      </div>
+      <img
+        src="/icon.png"
+        alt=""
+        className="shrink-0"
+        style={{ width: `${TRAY_PREVIEW_SIZE_PX}px`, height: `${TRAY_PREVIEW_SIZE_PX}px` }}
+      />
     );
   }
 
   if (style === "bars") {
-    const trackClass = isActive ? "bg-primary-foreground/15" : "bg-foreground/15";
-    const remainderClass = isActive ? "bg-primary-foreground/20" : "bg-foreground/15";
-    const fillClass = isActive ? "bg-primary-foreground" : "bg-foreground";
     const fractions = traySettingsPreview.bars.length > 0
       ? traySettingsPreview.bars.map((b) => b.fraction ?? 0)
       : [0.83, 0.7, 0.56];
 
     return (
-      <div className="flex items-center">
-        <div className="flex flex-col gap-0.5 w-5">
-          {fractions.map((fraction, i) => {
-            const { fillPercent, remainderPercent } = getPreviewBarLayout(fraction);
-            return (
-              <div key={i} className={cn("relative h-1 rounded-sm", trackClass)}>
-                {remainderPercent > 0 && (
-                  <span
-                    aria-hidden
-                    className={remainderClass}
-                    style={{
-                      position: "absolute",
-                      right: 0,
-                      top: 0,
-                      bottom: 0,
-                      width: `${remainderPercent}%`,
-                      borderRadius: "1px 2px 2px 1px",
-                    }}
-                  />
-                )}
-                <div
-                  className={cn("h-1", fillClass)}
-                  style={{ width: `${fillPercent}%`, borderRadius: "2px 1px 1px 2px" }}
+      <div className="flex flex-col gap-0.5 w-5">
+        {fractions.map((fraction, i) => {
+          const { fillPercent, remainderPercent } = getPreviewBarLayout(fraction);
+          return (
+            <div key={i} className="relative h-1 rounded-sm bg-current/15">
+              {remainderPercent > 0 && (
+                <span
+                  aria-hidden
+                  className="absolute right-0 inset-y-0 bg-current/20"
+                  style={{ width: `${remainderPercent}%`, borderRadius: "1px 2px 2px 1px" }}
                 />
-              </div>
-            );
-          })}
-        </div>
+              )}
+              <div className="h-1 bg-current" style={{ width: `${fillPercent}%`, borderRadius: "2px 1px 1px 2px" }} />
+            </div>
+          );
+        })}
       </div>
     );
   }
 
-  if (style === "percent") {
-    return (
-      <div className="inline-flex items-center justify-center">
-        <span className={cn("text-[13px] font-bold tabular-nums leading-none", textClass)}>
-          {(traySettingsPreview.providerPercentText || "0%").replace(/%$/, "")}
-        </span>
-      </div>
-    );
-  }
-
-  return null;
+  return (
+    <span className="text-[13px] font-bold tabular-nums leading-none">
+      {(traySettingsPreview.providerPercentText || "0%").replace(/%$/, "")}
+    </span>
+  );
 }
 
 function SortablePluginItem({
@@ -141,29 +120,16 @@ function SortablePluginItem({
   plugin: PluginConfig;
   onToggle: (id: string) => void;
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: plugin.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: plugin.id });
 
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={() => onToggle(plugin.id)}
       className={cn(
-        "flex items-center gap-3 px-3 py-2 rounded-md bg-card cursor-pointer",
-        "border border-transparent",
-        isDragging && "opacity-50 border-border"
+        "flex items-center gap-2.5 px-2 h-9 rounded-md cursor-pointer hover:bg-accent transition-colors",
+        isDragging && "opacity-50 bg-accent"
       )}
     >
       <button
@@ -176,12 +142,7 @@ function SortablePluginItem({
         <GripVertical className="h-4 w-4" />
       </button>
 
-      <span
-        className={cn(
-          "flex-1 text-sm",
-          !plugin.enabled && "text-muted-foreground"
-        )}
-      >
+      <span className={cn("flex-1 text-[13px]", !plugin.enabled && "text-muted-foreground")}>
         {plugin.name}
       </span>
 
@@ -194,6 +155,40 @@ function SortablePluginItem({
         />
       </span>
     </div>
+  );
+}
+
+function LanguageSection() {
+  const preference = useLocaleStore((state) => state.preference);
+  const setPreference = useLocaleStore((state) => state.setPreference);
+  const systemLanguage = LANGUAGES.find((l) => l.code === resolveLanguage("system"));
+
+  const handleChange = (value: LanguagePreference) => {
+    setPreference(value);
+    void saveLanguage(value).catch((error) => {
+      console.error("Failed to save language:", error);
+    });
+  };
+
+  return (
+    <SettingsSection title={t("settings.language.title")} description={t("settings.language.desc")}>
+      <select
+        aria-label={t("settings.language.title")}
+        value={preference}
+        onChange={(e) => handleChange(e.target.value as LanguagePreference)}
+        className="fluent-control w-full"
+      >
+        <option value="system">
+          {t("settings.language.system")}
+          {systemLanguage ? ` (${systemLanguage.name})` : ""}
+        </option>
+        {LANGUAGES.map((language) => (
+          <option key={language.code} value={language.code}>
+            {language.name}
+          </option>
+        ))}
+      </select>
+    </SettingsSection>
   );
 }
 
@@ -226,6 +221,18 @@ interface SettingsPageProps {
   onStartOnLoginChange: (value: boolean) => void;
 }
 
+/** Choice with a second, smaller line (an example of what it looks like). */
+function OptionWithExample({ label, example, isActive }: { label: string; example: string; isActive: boolean }) {
+  return (
+    <span className="flex flex-col items-center leading-tight">
+      <span>{label}</span>
+      <span className={cn("text-[11px] font-normal", isActive ? "text-primary-foreground/80" : "text-muted-foreground")}>
+        {example}
+      </span>
+    </span>
+  );
+}
+
 export function SettingsPage({
   plugins,
   onReorder,
@@ -256,299 +263,168 @@ export function SettingsPage({
 }: SettingsPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-
     if (over && active.id !== over.id) {
       const oldIndex = plugins.findIndex((item) => item.id === active.id);
       const newIndex = plugins.findIndex((item) => item.id === over.id);
       if (oldIndex === -1 || newIndex === -1) return;
-      const next = arrayMove(plugins, oldIndex, newIndex);
-      onReorder(next.map((item) => item.id));
+      onReorder(arrayMove(plugins, oldIndex, newIndex).map((item) => item.id));
     }
   };
 
   return (
-    <div className="py-3 space-y-4">
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Auto Refresh</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          How obsessive are you
-        </p>
-        <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Auto-update interval">
-            {AUTO_UPDATE_OPTIONS.map((option) => {
-              const isActive = option.value === autoUpdateInterval;
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={isActive}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => onAutoUpdateIntervalChange(option.value)}
-                >
-                  {option.label}
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Usage Mode</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          Glass half full or half empty
-        </p>
-        <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Usage display mode">
-            {DISPLAY_MODE_OPTIONS.map((option) => {
-              const isActive = option.value === displayMode;
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={isActive}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => onDisplayModeChange(option.value)}
-                >
-                  {option.label}
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Reset Timers</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          Countdown or clock time
-        </p>
-        <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Reset timer display mode">
-            {RESET_TIMER_DISPLAY_OPTIONS.map((option) => {
-              const isActive = option.value === resetTimerDisplayMode;
-              const absoluteTimeExample = getTimeFormatter(timeFormatMode).format(new Date(2026, 1, 2, 11, 4));
-              const example = option.value === "relative" ? "5h 12m" : `today at ${absoluteTimeExample}`;
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={isActive}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1 flex flex-col items-center gap-0 py-2 h-auto"
-                  onClick={() => onResetTimerDisplayModeChange(option.value)}
-                >
-                  <span>{option.label}</span>
-                  <span
-                    className={cn(
-                      "text-xs font-normal",
-                      isActive ? "text-primary-foreground/80" : "text-muted-foreground"
-                    )}
-                  >
-                    {example}
-                  </span>
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Time Format</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          12-hour or 24-hour clock
-        </p>
-        <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Time format">
-            {TIME_FORMAT_OPTIONS.map((option) => {
-              const isActive = option.value === timeFormatMode;
-              const example = getTimeFormatter(option.value).format(new Date(2026, 1, 2, 11, 4));
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={isActive}
-                  aria-label={option.label}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1 flex flex-col items-center gap-0 py-2 h-auto"
-                  onClick={() => onTimeFormatModeChange(option.value)}
-                >
-                  <span>{option.label}</span>
-                  <span
-                    className={cn(
-                      "text-xs font-normal",
-                      isActive ? "text-primary-foreground/80" : "text-muted-foreground"
-                    )}
-                  >
-                    {example}
-                  </span>
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Menubar Icon</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          What shows in the menu bar
-        </p>
-        <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Menubar icon style">
-            {MENUBAR_ICON_STYLE_OPTIONS.map((option) => {
-              const isActive = option.value === menubarIconStyle;
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-label={option.label}
-                  aria-checked={isActive}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1 h-9 flex items-center justify-center"
-                  onClick={() => onMenubarIconStyleChange(option.value)}
-                >
-                  <MenubarIconStylePreview
-                    style={option.value}
-                    isActive={isActive}
-                    traySettingsPreview={traySettingsPreview}
-                  />
-                </Button>
-              );
-            })}
-          </div>
-        </div>
+    <div className="py-2 space-y-1">
+      <SettingsSection title={t("settings.autoRefresh.title")} description={t("settings.autoRefresh.desc")}>
+        <SegmentedControl
+          ariaLabel={t("settings.autoRefresh.title")}
+          options={AUTO_UPDATE_OPTIONS}
+          value={autoUpdateInterval}
+          onChange={onAutoUpdateIntervalChange}
+        />
+      </SettingsSection>
+
+      <SettingsSection title={t("settings.usageMode.title")} description={t("settings.usageMode.desc")}>
+        <SegmentedControl
+          ariaLabel={t("settings.usageMode.title")}
+          options={DISPLAY_MODE_OPTIONS}
+          value={displayMode}
+          onChange={onDisplayModeChange}
+        />
+      </SettingsSection>
+
+      <SettingsSection title={t("settings.resetTimers.title")} description={t("settings.resetTimers.desc")}>
+        <SegmentedControl
+          ariaLabel={t("settings.resetTimers.title")}
+          options={RESET_TIMER_DISPLAY_OPTIONS}
+          value={resetTimerDisplayMode}
+          onChange={onResetTimerDisplayModeChange}
+          itemClassName="h-auto py-1"
+          renderOption={(option, isActive) => (
+            <OptionWithExample
+              label={t(option.labelKey)}
+              isActive={isActive}
+              example={
+                option.value === "relative"
+                  ? t("duration.hm", { h: 5, m: 12 })
+                  : t("settings.resetTimers.todayAt", { time: getTimeFormatter(timeFormatMode).format(EXAMPLE_TIME) })
+              }
+            />
+          )}
+        />
+      </SettingsSection>
+
+      <SettingsSection title={t("settings.timeFormat.title")} description={t("settings.timeFormat.desc")}>
+        <SegmentedControl
+          ariaLabel={t("settings.timeFormat.title")}
+          options={TIME_FORMAT_OPTIONS}
+          value={timeFormatMode}
+          onChange={onTimeFormatModeChange}
+          itemClassName="h-auto py-1"
+          renderOption={(option, isActive) => (
+            <OptionWithExample
+              label={t(option.labelKey)}
+              isActive={isActive}
+              example={getTimeFormatter(option.value).format(EXAMPLE_TIME)}
+            />
+          )}
+        />
+      </SettingsSection>
+
+      <SettingsSection title={t("settings.tray.title")} description={t("settings.tray.desc")}>
+        <SegmentedControl
+          ariaLabel={t("settings.tray.title")}
+          options={MENUBAR_ICON_STYLE_OPTIONS}
+          value={menubarIconStyle}
+          onChange={onMenubarIconStyleChange}
+          itemClassName="h-9 flex items-center justify-center"
+          renderOption={(option) => (
+            <TrayIconStylePreview style={option.value} traySettingsPreview={traySettingsPreview} />
+          )}
+        />
         {menubarIconStyle !== "icon" && (
           <div className="flex gap-2 mt-2">
-            <div className="flex-1">
-              <label className="text-xs text-muted-foreground mb-1 block">Provider</label>
+            <label className="flex-1 text-xs text-muted-foreground">
+              <span className="mb-1 block">{t("settings.tray.provider")}</span>
               <select
                 aria-label="Tray provider"
                 value={trayProvider}
                 onChange={(e) => onTrayProviderChange(e.target.value)}
-                className="w-full h-8 rounded-md border bg-background px-2 text-sm"
+                className="fluent-control w-full"
               >
-                <option value="auto">Auto</option>
+                <option value="auto">{t("settings.tray.auto")}</option>
                 {plugins.filter((p) => p.enabled).map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
-            </div>
-            <div className="flex-1">
-              <label className="text-xs text-muted-foreground mb-1 block">Metric</label>
+            </label>
+            <label className="flex-1 text-xs text-muted-foreground">
+              <span className="mb-1 block">{t("settings.tray.metric")}</span>
               <select
                 aria-label="Tray metric"
                 value={trayMetric}
                 onChange={(e) => onTrayMetricChange(e.target.value)}
-                className="w-full h-8 rounded-md border bg-background px-2 text-sm"
+                className="fluent-control w-full"
               >
-                <option value="auto">Auto</option>
-                <option value="Session">Session</option>
-                <option value="Weekly">Weekly</option>
+                <option value="auto">{t("settings.tray.auto")}</option>
+                <option value="Session">{t("label.Session")}</option>
+                <option value="Weekly">{t("label.Weekly")}</option>
               </select>
-            </div>
+            </label>
             {menubarIconStyle === "percent" && (
-              <div className="w-16">
-                <label className="text-xs text-muted-foreground mb-1 block">Color</label>
+              <label className="w-14 text-xs text-muted-foreground">
+                <span className="mb-1 block">{t("settings.tray.color")}</span>
                 <input
                   type="color"
                   value={trayPercentColor}
                   onChange={(e) => onTrayPercentColorChange(e.target.value)}
-                  className="w-full h-8 rounded-md border bg-background cursor-pointer"
-                  title="Tray percent text color"
+                  className="fluent-control w-full cursor-pointer px-1"
+                  title={t("settings.tray.colorTitle")}
                 />
-              </div>
+              </label>
             )}
           </div>
         )}
-      </section>
-      <section>
-        <h3 className="text-lg font-semibold mb-0">App Theme</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          How it looks around here
-        </p>
-        <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Theme mode">
-            {THEME_OPTIONS.map((option) => {
-              const isActive = option.value === themeMode;
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={isActive}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => onThemeModeChange(option.value)}
-                >
-                  {option.label}
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-      <GlobalShortcutSection
-        globalShortcut={globalShortcut}
-        onGlobalShortcutChange={onGlobalShortcutChange}
-      />
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Start on Login</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          OpenTokenUsage starts when you sign in
-        </p>
-        <label className="flex items-center gap-2 text-sm select-none text-foreground">
+      </SettingsSection>
+
+      <SettingsSection title={t("settings.theme.title")} description={t("settings.theme.desc")}>
+        <SegmentedControl
+          ariaLabel={t("settings.theme.title")}
+          options={THEME_OPTIONS}
+          value={themeMode}
+          onChange={onThemeModeChange}
+        />
+      </SettingsSection>
+
+      <LanguageSection />
+
+      <GlobalShortcutSection globalShortcut={globalShortcut} onGlobalShortcutChange={onGlobalShortcutChange} />
+
+      <SettingsSection title={t("settings.startOnLogin.title")} description={t("settings.startOnLogin.desc")}>
+        <label className="flex items-center gap-2 text-[13px] select-none text-foreground">
           <Checkbox
             key={`start-on-login-${startOnLogin}`}
             checked={startOnLogin}
             onCheckedChange={(checked) => onStartOnLoginChange(checked === true)}
           />
-          Start on login
+          {t("settings.startOnLogin.label")}
         </label>
-      </section>
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Plugins</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          Your AI coding lineup
-        </p>
-        <div className="bg-muted/50 rounded-lg p-1 space-y-1">
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={plugins.map((p) => p.id)}
-              strategy={verticalListSortingStrategy}
-            >
+      </SettingsSection>
+
+      <SettingsSection title={t("settings.plugins.title")} description={t("settings.plugins.desc")}>
+        <div className="-mx-1">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={plugins.map((p) => p.id)} strategy={verticalListSortingStrategy}>
               {plugins.map((plugin) => (
-                <SortablePluginItem
-                  key={plugin.id}
-                  plugin={plugin}
-                  onToggle={onToggle}
-                />
+                <SortablePluginItem key={plugin.id} plugin={plugin} onToggle={onToggle} />
               ))}
             </SortableContext>
           </DndContext>
         </div>
-      </section>
+      </SettingsSection>
     </div>
   );
 }

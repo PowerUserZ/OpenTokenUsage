@@ -4,9 +4,11 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
@@ -15,6 +17,9 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-surface: var(--surface);
+  --color-surface-stroke: var(--surface-stroke);
+  --color-track: var(--track);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
@@ -34,113 +39,107 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-page-accent: var(--page-accent);
   --color-green-500: var(--green-500);
   --color-yellow-500: var(--yellow-500);
   --color-red-500: var(--red-500);
 }
 
+/*
+ * Windows 11 (Fluent) tokens. --accent-base is the Windows accent color, set at startup from the
+ * registry (see use-windows-appearance.ts); #0078D4 is the Windows default.
+ * Light mode uses a darker accent shade and dark mode a lighter one, like WinUI does.
+ */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.13 0.028 261.692);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.13 0.028 261.692);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.13 0.028 261.692);
-  --primary: oklch(0.21 0.034 264.665);
-  --primary-foreground: oklch(0.985 0.002 247.839);
-  --secondary: oklch(0.967 0.003 264.542);
-  --secondary-foreground: oklch(0.21 0.034 264.665);
-  --muted: oklch(0.967 0.003 264.542);
-  --muted-foreground: oklch(0.551 0.027 264.364);
-  --accent: oklch(0.967 0.003 264.542);
-  --accent-foreground: oklch(0.21 0.034 264.665);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.928 0.006 264.531);
-  --input: oklch(0.928 0.006 264.531);
-  --ring: oklch(0.707 0.022 261.325);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0.002 247.839);
-  --sidebar-foreground: oklch(0.13 0.028 261.692);
-  --sidebar-primary: oklch(0.21 0.034 264.665);
-  --sidebar-primary-foreground: oklch(0.985 0.002 247.839);
-  --sidebar-accent: oklch(0.967 0.003 264.542);
-  --sidebar-accent-foreground: oklch(0.21 0.034 264.665);
-  --sidebar-border: oklch(0.928 0.006 264.531);
-  --sidebar-ring: oklch(0.707 0.022 261.325);
+  color-scheme: light;
+  --accent-base: #0078d4;
+  --radius: 0.25rem;
 
-  /* Tailwind green/yellow/red-500 (light: stock defaults) */
-  --green-500: oklch(0.723 0.219 142.37);
-  --yellow-500: oklch(0.795 0.184 86.047);
-  --red-500: oklch(0.637 0.237 25.331);
+  --background: #f3f3f3;
+  --foreground: #1a1a1a;
+  --card: #fafafa;
+  --card-foreground: #1a1a1a;
+  --surface: #ffffff;
+  --surface-stroke: rgba(0, 0, 0, 0.0578);
+  --track: rgba(0, 0, 0, 0.09);
+  --popover: #f9f9f9;
+  --popover-foreground: #1a1a1a;
+  --primary: color-mix(in oklab, var(--accent-base) 88%, black);
+  --primary-foreground: #ffffff;
+  --secondary: rgba(0, 0, 0, 0.0373);
+  --secondary-foreground: #1a1a1a;
+  --muted: rgba(0, 0, 0, 0.0373);
+  --muted-foreground: #5d5d5d;
+  --accent: rgba(0, 0, 0, 0.0373);
+  --accent-foreground: #1a1a1a;
+  --destructive: #c42b1c;
+  --border: rgba(0, 0, 0, 0.0803);
+  --input: rgba(0, 0, 0, 0.1622);
+  --ring: #1a1a1a;
+  --chart-1: var(--primary);
+  --chart-2: #0f7b0f;
+  --chart-3: #9d5d00;
+  --chart-4: #8764b8;
+  --chart-5: #c42b1c;
+
+  /* Fluent system colors: success / caution / critical */
+  --green-500: #0f7b0f;
+  --yellow-500: #9d5d00;
+  --red-500: #c42b1c;
 }
 
 :root.dark {
-  --background: #1c1c1e;
-  --foreground: #ededed;
-  --card: #1c1c1e;
-  --card-foreground: #ededed;
-  --popover: #2c2c2e;
-  --popover-foreground: #ededed;
-  --primary: #ededed;
-  --primary-foreground: #0a0a0a;
-  --secondary: #252527;
-  --secondary-foreground: #ededed;
-  --muted: #2a2a2c;
-  --muted-foreground: #888888;
-  --accent: #252527;
-  --accent-foreground: #ededed;
-  --destructive: #ef4444;
-  --border: rgba(255, 255, 255, 0.08);
-  --input: rgba(255, 255, 255, 0.08);
-  --ring: #555555;
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: #2a2a2c;
-  --sidebar-foreground: #ededed;
-  --sidebar-primary: #ededed;
-  --sidebar-primary-foreground: #0a0a0a;
-  --sidebar-accent: #2a2a2c;
-  --sidebar-accent-foreground: #ededed;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #555555;
+  color-scheme: dark;
+  --background: #202020;
+  --foreground: #ffffff;
+  --card: #282828;
+  --card-foreground: #ffffff;
+  --surface: rgba(255, 255, 255, 0.0512);
+  --surface-stroke: rgba(0, 0, 0, 0.1);
+  --track: rgba(255, 255, 255, 0.1);
+  --popover: #2c2c2c;
+  --popover-foreground: #ffffff;
+  --primary: color-mix(in oklab, var(--accent-base) 55%, white);
+  --primary-foreground: #000000;
+  --secondary: rgba(255, 255, 255, 0.0605);
+  --secondary-foreground: #ffffff;
+  --muted: rgba(255, 255, 255, 0.0605);
+  --muted-foreground: #c5c5c5;
+  --accent: rgba(255, 255, 255, 0.0605);
+  --accent-foreground: #ffffff;
+  --destructive: #ff99a4;
+  --border: rgba(255, 255, 255, 0.0698);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: #ffffff;
+  --chart-2: #6ccb5f;
+  --chart-3: #fce100;
+  --chart-4: #b4a0ff;
+  --chart-5: #ff99a4;
 
-  /* Accent highlight (lime) */
-  --page-accent: #BFFF00;
+  --green-500: #6ccb5f;
+  --yellow-500: #fce100;
+  --red-500: #ff99a4;
+}
 
-  /* Tailwind green/yellow/red-500 derived from page-accent lime
-     #BFFF00 ≈ oklch(0.93 0.27 128) — hue-rotate, keep chroma family */
-  --green-500: oklch(0.93 0.27 128);
-  --yellow-500: oklch(0.90 0.21 85);
-  --red-500: oklch(0.70 0.24 29);
+/* Mica is applied natively by the window; let it show through the base and tint the layers. */
+:root.backdrop {
+  --background: transparent;
+  --card: rgba(255, 255, 255, 0.5);
+}
+:root.backdrop.dark {
+  --card: rgba(58, 58, 58, 0.3);
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans antialiased;
+    font-size: 14px;
   }
 }
 
-/* Window drag region for custom titlebar (Windows) */
+/* Window drag region for the custom title bar */
 .titlebar {
   -webkit-app-region: drag;
   app-region: drag;
@@ -150,7 +149,7 @@
   app-region: no-drag;
 }
 
-/* Panel-specific styles for transparent Tauri window */
+/* The WebView fills the transparent Tauri window; the shell paints its own background. */
 html,
 body,
 #root {
@@ -160,53 +159,28 @@ body,
   padding: 0;
 }
 
-/* Themed scrollbar (Windows) */
+/* Windows 11 style scrollbar: thin thumb that widens on hover */
 ::-webkit-scrollbar {
-  width: 18px;
+  width: 12px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--muted-foreground);
-  border-radius: 9px;
-  border: 6px solid transparent;
+  border-radius: 6px;
+  border: 4px solid transparent;
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--foreground);
-  border: 6px solid transparent;
-  background-clip: padding-box;
+  border-width: 3px;
 }
 
-/* Hide scrollbar (macOS) */
 .scrollbar-none {
-  scrollbar-width: none;          /* Firefox */
+  scrollbar-width: none;
 }
 .scrollbar-none::-webkit-scrollbar {
-  display: none;                  /* Chrome / Safari / WebKit */
-}
-
-/* Arrow pointing up toward the tray icon */
-.tray-arrow {
-  width: 0;
-  height: 0;
-  border-left: 7px solid transparent;
-  border-right: 7px solid transparent;
-  border-bottom: 7px solid var(--border);
-  position: relative;
-  flex-shrink: 0;
-}
-.tray-arrow::after {
-  content: "";
-  position: absolute;
-  left: -6px;
-  top: 1.5px;
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-bottom: 6px solid var(--card);
+  display: none;
 }
 
 /* Border beam for the update button */
@@ -223,7 +197,7 @@ body,
   background: conic-gradient(
     from var(--beam-angle),
     transparent 70%,
-    var(--destructive) 90%,
+    var(--primary) 90%,
     transparent 100%
   );
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -255,17 +229,33 @@ body,
   animation: shimmer 1.5s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .animate-shimmer {
+  .animate-shimmer,
+  .update-border-beam::before {
     animation: none;
   }
 }
 
-/* Remove focus rings - this is a menu bar app, not keyboard-navigated */
-*:focus,
+/* Fluent focus visual: only for keyboard focus, never after a mouse click */
+*:focus {
+  outline: none;
+}
 *:focus-visible {
-  outline: none !important;
-  box-shadow: none !important;
-  --tw-ring-shadow: 0 0 #0000 !important;
-  --tw-ring-offset-shadow: 0 0 #0000 !important;
-  border-color: transparent !important;
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+/* Native <select>/<input> styled like WinUI text controls (darker bottom stroke) */
+.fluent-control {
+  height: 2rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-bottom-color: var(--input);
+  background: var(--surface);
+  color: var(--foreground);
+  padding: 0 0.5rem;
+  font-size: 13px;
+}
+.fluent-control:hover {
+  background: color-mix(in oklab, var(--surface) 92%, var(--foreground));
 }
