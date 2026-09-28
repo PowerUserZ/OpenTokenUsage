@@ -103,7 +103,10 @@ This file holds the project facts that are easy to get wrong.
   Swift `v0.7.x` tags (`remote.upstream.tagOpt --no-tags`).
 - Workflow actions are pinned to full commit SHAs (version in a comment) and Bun to an exact
   version; bump them deliberately. The winget job needs a valid `WINGET_TOKEN` (classic PAT,
-  `public_repo`); if it fails, submit with komac (see the release notes of 0.7.0 / memory).
+  `public_repo` + `workflow`): the branch it creates in the `PowerUserZ/winget-pkgs` fork carries
+  upstream's `.github/workflows` changes, and without `workflow` GitHub refuses it
+  ("does not have the correct permissions to execute `CreateRef`", 0.7.0). If it fails, submit
+  with komac (see memory).
 - The owner's hook blocks force pushes (and a few destructive git commands); plain pushes pass.
 - `.claude/skills/tauri-*` are real copies (git symlinks don't work on Windows without
   Developer Mode); keep them in sync with `.agents/skills/` if you edit one.
