@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v0.7.1
+
+Notification sounds, the usage levels that notify you, a pin to keep the panel on top and a remembered position, plus fixes for the tray icon, the taskbar strip and light taskbars.
 
 ### New Features
 - Notification sounds: Windows' default, eight built-in sounds or your own file (MP3, WAV, OGG or M4A, cut at 5 seconds), with a play button to preview. Notifications were silent before, and the sound waits while Do Not Disturb is on
