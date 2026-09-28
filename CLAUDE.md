@@ -3,7 +3,7 @@ This file holds the project facts that are easy to get wrong.
 
 ## What this is
 - OpenTokenUsage: **Windows-only** Tauri v2 tray app (React 19 + Tailwind v4 frontend, Rust host).
-  Fork of `robinebers/openusage`; there is no macOS build — don't add macOS code paths back.
+  Derived from `robinebers/openusage` (left GitHub's fork network 2026-09-28); there is no macOS build — don't add macOS code paths back.
 - Upstream (`upstream` remote) is now a Swift macOS app. **Never `git merge upstream/main`.**
   Port provider fixes by hand: read `git show upstream/main:CHANGELOG.md`, compare the Swift
   provider in `upstream/main:Sources/OpenUsage/Providers/<X>/` with `plugins/<x>/plugin.js`.
