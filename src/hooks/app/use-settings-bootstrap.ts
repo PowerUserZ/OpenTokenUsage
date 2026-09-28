@@ -25,6 +25,8 @@ import {
   loadLanguage,
   loadTrayHiddenPlugins,
   loadUsageAlerts,
+  loadTrayLogoColors,
+  loadTaskbarStrip,
   loadTrayPercentColor,
   loadTrayProvider,
   migrateLegacyTraySettings,
@@ -66,6 +68,8 @@ type UseSettingsBootstrapArgs = {
   setTrayPercentColor: (value: TrayPercentColor) => void
   setTrayHiddenPlugins: (value: string[]) => void
   setUsageAlerts: (value: boolean) => void
+  setTrayLogoColors: (value: boolean) => void
+  setTaskbarStrip: (value: boolean) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -87,6 +91,8 @@ export function useSettingsBootstrap({
   setTrayPercentColor,
   setTrayHiddenPlugins,
   setUsageAlerts,
+  setTrayLogoColors,
+  setTaskbarStrip,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -121,6 +127,15 @@ export function useSettingsBootstrap({
         if (isMounted) setUsageAlerts(alerts)
       } catch (error) {
         console.error("Failed to load usage alerts setting:", error)
+      }
+      try {
+        const [logoColors, strip] = await Promise.all([loadTrayLogoColors(), loadTaskbarStrip()])
+        if (isMounted) {
+          setTrayLogoColors(logoColors)
+          setTaskbarStrip(strip)
+        }
+      } catch (error) {
+        console.error("Failed to load tray logo/taskbar strip settings:", error)
       }
       try {
         const storedLanguage = await loadLanguage()
@@ -267,6 +282,8 @@ export function useSettingsBootstrap({
     setTrayPercentColor,
     setTrayHiddenPlugins,
     setUsageAlerts,
+    setTrayLogoColors,
+    setTaskbarStrip,
     migrateWindsurfToDevin,
     migrateLegacyTraySettings,
     setPluginSettings,

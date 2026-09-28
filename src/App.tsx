@@ -19,6 +19,7 @@ import { t, useLocaleStore } from "@/lib/i18n"
 import { invoke } from "@tauri-apps/api/core"
 import { useAppUpdate } from "@/hooks/use-app-update"
 import { useUsageAlerts } from "@/hooks/app/use-usage-alerts"
+import { useProviderTrayIcons } from "@/hooks/app/use-provider-tray-icons"
 
 const TRAY_PROBE_DEBOUNCE_MS = 500
 const TRAY_SETTINGS_DEBOUNCE_MS = 2000
@@ -66,6 +67,9 @@ function App() {
     setTrayHiddenPlugins,
     usageAlerts,
     setUsageAlerts,
+    trayLogoColors,
+    setTrayLogoColors,
+    setTaskbarStrip,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setTimeFormatMode,
@@ -90,6 +94,9 @@ function App() {
       setTrayHiddenPlugins: state.setTrayHiddenPlugins,
       usageAlerts: state.usageAlerts,
       setUsageAlerts: state.setUsageAlerts,
+      trayLogoColors: state.trayLogoColors,
+      setTrayLogoColors: state.setTrayLogoColors,
+      setTaskbarStrip: state.setTaskbarStrip,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setTimeFormatMode: state.setTimeFormatMode,
@@ -143,6 +150,19 @@ function App() {
     activeView,
   })
 
+  const redrawAppTrayIcon = useCallback(() => scheduleTrayIconUpdate("settings", 0), [scheduleTrayIconUpdate])
+  useProviderTrayIcons({
+    pluginsMeta,
+    pluginSettings: trayPluginSettings,
+    pluginStates,
+    displayMode,
+    style: menubarIconStyle,
+    trayMetric,
+    themeMode,
+    logoColors: trayLogoColors,
+    onAppIconShown: redrawAppTrayIcon,
+  })
+
   useEffect(() => {
     scheduleProbeTrayUpdateRef.current = () => {
       scheduleTrayIconUpdate("probe", TRAY_PROBE_DEBOUNCE_MS)
@@ -161,6 +181,8 @@ function App() {
     setTrayPercentColor,
     setTrayHiddenPlugins,
     setUsageAlerts,
+    setTrayLogoColors,
+    setTaskbarStrip,
     setResetTimerDisplayMode,
     setTimeFormatMode,
     setGlobalShortcut,

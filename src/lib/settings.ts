@@ -23,7 +23,8 @@ export type ResetTimerDisplayMode = "relative" | "absolute";
 
 export type TimeFormatMode = "auto" | "12h" | "24h";
 
-export type MenubarIconStyle = "icon" | "percent" | "bars";
+/** "numbers"/"logos": one tray icon per provider (`use-provider-tray-icons.ts`). */
+export type MenubarIconStyle = "icon" | "percent" | "bars" | "numbers" | "logos";
 
 export type TrayProvider = "auto" | string;
 export type TrayMetric = "auto" | string;
@@ -48,6 +49,8 @@ const TRAY_METRIC_KEY = "trayMetric";
 const TRAY_PERCENT_COLOR_KEY = "trayPercentColor";
 const TRAY_HIDDEN_PLUGINS_KEY = "trayHiddenPlugins";
 const USAGE_ALERTS_KEY = "usageAlerts";
+const TRAY_LOGO_COLORS_KEY = "trayLogoColors";
+const TASKBAR_STRIP_KEY = "taskbarStrip";
 const SENT_USAGE_ALERTS_KEY = "sentUsageAlerts";
 /** Enough for every provider x line x level for a few windows; oldest keys drop off first. */
 const MAX_SENT_USAGE_ALERTS = 300;
@@ -72,7 +75,7 @@ const THEME_MODES: ThemeMode[] = ["system", "light", "dark", "oled"];
 const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
 const TIME_FORMAT_MODES: TimeFormatMode[] = ["auto", "12h", "24h"];
-const MENUBAR_ICON_STYLES: MenubarIconStyle[] = ["icon", "percent", "bars"];
+const MENUBAR_ICON_STYLES: MenubarIconStyle[] = ["icon", "percent", "bars", "numbers", "logos"];
 
 /** A settings choice; the UI renders `t(labelKey, labelVars)` and shows `hintKey` on hover. */
 export type SettingOption<T> = {
@@ -86,7 +89,13 @@ export const MENUBAR_ICON_STYLE_OPTIONS: SettingOption<MenubarIconStyle>[] = [
   { value: "icon", labelKey: "settings.tray.icon" },
   { value: "percent", labelKey: "settings.tray.percent" },
   { value: "bars", labelKey: "settings.tray.bars" },
+  { value: "numbers", labelKey: "settings.tray.numbers" },
+  { value: "logos", labelKey: "settings.tray.logos" },
 ];
+
+export function isPerProviderTrayStyle(style: MenubarIconStyle): boolean {
+  return style === "numbers" || style === "logos";
+}
 
 export const AUTO_UPDATE_OPTIONS: SettingOption<AutoUpdateIntervalMinutes>[] =
   AUTO_UPDATE_INTERVALS.map((value) =>
@@ -363,6 +372,24 @@ export async function saveUsageAlerts(value: boolean): Promise<void> {
   await store.set(USAGE_ALERTS_KEY, value);
   await store.save();
 }
+
+async function loadBoolean(key: string, fallback: boolean): Promise<boolean> {
+  const stored = await store.get<unknown>(key);
+  return typeof stored === "boolean" ? stored : fallback;
+}
+
+async function saveBoolean(key: string, value: boolean): Promise<void> {
+  await store.set(key, value);
+  await store.save();
+}
+
+/** Provider logos in their brand color (tray "logos" style and the taskbar strip). */
+export const loadTrayLogoColors = () => loadBoolean(TRAY_LOGO_COLORS_KEY, true);
+export const saveTrayLogoColors = (value: boolean) => saveBoolean(TRAY_LOGO_COLORS_KEY, value);
+
+/** Experimental: usage text embedded in the taskbar next to the tray (`taskbar_strip.rs`). */
+export const loadTaskbarStrip = () => loadBoolean(TASKBAR_STRIP_KEY, false);
+export const saveTaskbarStrip = (value: boolean) => saveBoolean(TASKBAR_STRIP_KEY, value);
 
 export async function loadSentUsageAlerts(): Promise<string[]> {
   const stored = await store.get<unknown>(SENT_USAGE_ALERTS_KEY);

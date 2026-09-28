@@ -4,7 +4,7 @@ import { TrayIcon } from "@tauri-apps/api/tray"
 import { invoke } from "@tauri-apps/api/core"
 import type { PluginMeta } from "@/lib/plugin-types"
 import type { DisplayMode, MenubarIconStyle, PluginSettings } from "@/lib/settings"
-import { getEnabledPluginIds } from "@/lib/settings"
+import { getEnabledPluginIds, isPerProviderTrayStyle } from "@/lib/settings"
 import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
 import { findTightestLimit, getTrayPrimaryBars, type TrayPrimaryBar } from "@/lib/tray-primary-progress"
 import { formatTrayPercentText, formatTrayTooltip } from "@/lib/tray-tooltip"
@@ -300,6 +300,13 @@ export function useTrayIcon({
       })
       const tooltip = formatTrayTooltip(tooltipBars, pluginsMetaRef.current, preferWeekly)
       const updateTooltip = () => setTrayTooltip(tooltip)
+
+      if (isPerProviderTrayStyle(style)) {
+        // This icon is hidden (a hidden tray icon rejects new images); use-provider-tray-icons.ts
+        // draws the per-provider icons and asks for a redraw once this one is back.
+        finalizeUpdate()
+        return
+      }
 
       if (style === "icon") {
         // The app logo is full color, so one icon works on light and dark taskbars.

@@ -1,8 +1,9 @@
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use std::sync::{Mutex, OnceLock};
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::path::BaseDirectory;
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_store::StoreExt;
@@ -95,13 +96,8 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
     log::set_max_level(current_level);
 
     let show_stats = MenuItem::with_id(app_handle, "show_stats", "Show stats", true, None::<&str>)?;
-    let go_to_settings = MenuItem::with_id(
-        app_handle,
-        "go_to_settings",
-        "Settings",
-        true,
-        None::<&str>,
-    )?;
+    let go_to_settings =
+        MenuItem::with_id(app_handle, "go_to_settings", "Settings", true, None::<&str>)?;
 
     // Log level submenu - clone items for use in event handler
     let log_error = CheckMenuItem::with_id(
@@ -264,37 +260,162 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
                 _ => {}
             }
         })
-        .on_tray_icon_event(|tray, event| {
-            let app_handle = tray.app_handle();
-
-            if let TrayIconEvent::Click {
-                button,
-                button_state,
-                rect,
-                ..
-            } = event
-            {
-                if button == MouseButton::Left && button_state == MouseButtonState::Up {
-                    if let Some(window) = app_handle.get_webview_window("main") {
-                        match window.is_visible() {
-                            Ok(true) => {
-                                log::debug!("tray click: hiding window");
-                                let _ = window.hide();
-                            }
-                            _ => {
-                                log::debug!("tray click: showing window");
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                                position_window_at_tray_icon(&window, rect.position, rect.size);
-                            }
-                        }
-                    }
-                }
-            }
-        })
+        .on_tray_icon_event(on_icon_event)
         .build(app_handle)?;
 
+    app_handle.manage(TrayMenu(menu));
+    app_handle.manage(ProviderTrays::default());
+
     Ok(())
+}
+
+const PROVIDER_TRAY_PREFIX: &str = "provider-";
+
+/// The right-click menu, shared by the app icon and the per-provider icons.
+struct TrayMenu(Menu<tauri::Wry>);
+
+/// Ids of the per-provider tray icons currently shown.
+#[derive(Default)]
+struct ProviderTrays(Mutex<Vec<String>>);
+
+/// Left click toggles the panel above the icon; a provider icon also opens that provider's page.
+fn on_icon_event(tray: &TrayIcon, event: TrayIconEvent) {
+    let TrayIconEvent::Click {
+        button: MouseButton::Left,
+        button_state: MouseButtonState::Up,
+        rect,
+        ..
+    } = event
+    else {
+        return;
+    };
+    let app_handle = tray.app_handle();
+    let Some(window) = app_handle.get_webview_window("main") else {
+        return;
+    };
+    if window.is_visible().unwrap_or(false) {
+        log::debug!("tray click: hiding window");
+        let _ = window.hide();
+        return;
+    }
+    log::debug!("tray click: showing window");
+    let _ = window.show();
+    let _ = window.set_focus();
+    position_window_at_tray_icon(&window, rect.position, rect.size);
+    if let Some(provider_id) = tray.id().as_ref().strip_prefix(PROVIDER_TRAY_PREFIX) {
+        let _ = app_handle.emit("tray:navigate", provider_id);
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderTrayIcon {
+    provider_id: String,
+    /// Square RGBA image, base64.
+    rgba: String,
+    size: u32,
+    tooltip: String,
+}
+
+/// Tray styles "numbers"/"logos": one icon per provider; an empty list brings back the app icon.
+/// Icons are updated in place, never recreated: Windows remembers "show on taskbar" per icon, and
+/// tray-icon identifies an icon by a creation counter, so a recreated icon lands in the overflow.
+#[tauri::command]
+pub fn set_provider_tray_icons(
+    app_handle: AppHandle,
+    icons: Vec<ProviderTrayIcon>,
+) -> Result<(), String> {
+    let state = app_handle
+        .try_state::<ProviderTrays>()
+        .ok_or("tray is not created yet")?;
+    let mut shown = state.0.lock().map_err(|e| e.to_string())?;
+    let app_icon_was_visible = shown.is_empty();
+    let wanted: Vec<String> = icons
+        .iter()
+        .map(|icon| format!("{PROVIDER_TRAY_PREFIX}{}", icon.provider_id))
+        .collect();
+    for id in shown.iter().filter(|id| !wanted.contains(id)) {
+        app_handle.remove_tray_by_id(id.as_str());
+    }
+    shown.retain(|id| wanted.contains(id));
+
+    let mut created = false;
+    for (icon, id) in icons.into_iter().zip(wanted) {
+        let rgba = BASE64_STANDARD
+            .decode(&icon.rgba)
+            .map_err(|e| e.to_string())?;
+        if rgba.len() != (icon.size * icon.size * 4) as usize {
+            return Err(format!("tray icon for {id} is not {0}x{0} RGBA", icon.size));
+        }
+        let image = Image::new_owned(rgba, icon.size, icon.size);
+        if let Some(tray) = app_handle.tray_by_id(&id) {
+            tray.set_icon(Some(image)).map_err(|e| e.to_string())?;
+            tray.set_tooltip(Some(icon.tooltip))
+                .map_err(|e| e.to_string())?;
+            continue;
+        }
+        let menu = app_handle.state::<TrayMenu>();
+        TrayIconBuilder::with_id(id.as_str())
+            .icon(image)
+            .tooltip(icon.tooltip)
+            .menu(&menu.0)
+            .show_menu_on_left_click(false)
+            .on_tray_icon_event(on_icon_event)
+            .build(&app_handle)
+            .map_err(|e| e.to_string())?;
+        shown.push(id);
+        created = true;
+    }
+
+    // Only on change: hiding an already hidden icon (or showing a shown one) makes Windows error out.
+    if shown.is_empty() != app_icon_was_visible {
+        if let Some(app_tray) = app_handle.tray_by_id("tray") {
+            app_tray
+                .set_visible(shown.is_empty())
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    if created {
+        promote_new_tray_icons_later();
+    }
+    Ok(())
+}
+
+/// Windows puts new tray icons in the overflow (^). The user picked "one icon per provider" to see
+/// them next to the clock, so mark our icons as shown, like Settings > Taskbar > Other system tray
+/// icons does. Only entries without a user choice yet: an icon the user turned off stays off.
+/// Explorer writes an icon's entry shortly after the icon appears, hence the delay.
+fn promote_new_tray_icons_later() {
+    #[cfg(windows)]
+    std::thread::spawn(|| {
+        use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
+        use winreg::RegKey;
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let Some(exe_name) = std::env::current_exe().ok().and_then(|exe| {
+            exe.file_name()
+                .map(|name| name.to_string_lossy().to_lowercase())
+        }) else {
+            return;
+        };
+        let Ok(settings) =
+            RegKey::predef(HKEY_CURRENT_USER).open_subkey(r"Control Panel\NotifyIconSettings")
+        else {
+            return;
+        };
+        for name in settings.enum_keys().flatten() {
+            let Ok(entry) = settings.open_subkey_with_flags(&name, KEY_READ | KEY_WRITE) else {
+                continue;
+            };
+            // Paths under Program Files are stored with a known-folder GUID prefix; match the file name.
+            let path: String = entry.get_value("ExecutablePath").unwrap_or_default();
+            let ours = path.to_lowercase().ends_with(&format!(r"\{exe_name}"));
+            if ours && entry.get_raw_value("IsPromoted").is_err() {
+                if let Err(error) = entry.set_value("IsPromoted", &1u32) {
+                    log::warn!("could not show tray icon {name} next to the clock: {error}");
+                }
+            }
+        }
+    });
 }
 
 /// Position the window above the tray icon, centered horizontally.
@@ -394,7 +515,13 @@ pub fn anchor_panel(window: &tauri::WebviewWindow) {
             (area.2 - size.width as i32 - margin, bottom)
         }
     };
-    let (x, y) = flyout_origin(x, anchor_bottom, size.width as i32, size.height as i32, area);
+    let (x, y) = flyout_origin(
+        x,
+        anchor_bottom,
+        size.width as i32,
+        size.height as i32,
+        area,
+    );
     let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
 }
 
@@ -440,7 +567,13 @@ fn position_window_at_tray_icon(
     let anchor_bottom = (icon_y.round() as i32).min(area.3) - margin;
     set_last_anchor_bottom_physical_y(anchor_bottom);
     let x = (icon_center_x - size.width as f64 / 2.0).round() as i32;
-    let (x, y) = flyout_origin(x, anchor_bottom, size.width as i32, size.height as i32, area);
+    let (x, y) = flyout_origin(
+        x,
+        anchor_bottom,
+        size.width as i32,
+        size.height as i32,
+        area,
+    );
     let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
 }
 

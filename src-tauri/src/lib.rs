@@ -656,8 +656,10 @@ pub fn run() {
             window_style::get_accent_color,
             window_style::get_taskbar_is_light,
             tray::set_tray_menu_labels,
+            tray::set_provider_tray_icons,
             setup_actions::run_in_terminal,
-            setup_actions::open_env_editor
+            setup_actions::open_env_editor,
+            setup_actions::open_taskbar_settings
         ])
         .setup(|app| {
             use tauri::Manager;

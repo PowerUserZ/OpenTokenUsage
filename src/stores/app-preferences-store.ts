@@ -37,6 +37,8 @@ type AppPreferencesStore = {
   trayPercentColor: TrayPercentColor
   trayHiddenPlugins: string[]
   usageAlerts: boolean
+  trayLogoColors: boolean
+  taskbarStrip: boolean
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
@@ -50,6 +52,8 @@ type AppPreferencesStore = {
   setTrayPercentColor: (value: TrayPercentColor) => void
   setTrayHiddenPlugins: (value: string[]) => void
   setUsageAlerts: (value: boolean) => void
+  setTrayLogoColors: (value: boolean) => void
+  setTaskbarStrip: (value: boolean) => void
   resetState: () => void
 }
 
@@ -67,6 +71,8 @@ const initialState = {
   trayPercentColor: DEFAULT_TRAY_PERCENT_COLOR,
   trayHiddenPlugins: [] as string[],
   usageAlerts: true,
+  trayLogoColors: true,
+  taskbarStrip: false,
 }
 
 export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
@@ -84,5 +90,7 @@ export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
   setTrayPercentColor: (value) => set({ trayPercentColor: value }),
   setTrayHiddenPlugins: (value) => set({ trayHiddenPlugins: value }),
   setUsageAlerts: (value) => set({ usageAlerts: value }),
+  setTrayLogoColors: (value) => set({ trayLogoColors: value }),
+  setTaskbarStrip: (value) => set({ taskbarStrip: value }),
   resetState: () => set(initialState),
 }))

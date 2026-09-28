@@ -132,7 +132,8 @@ function getSvgLayout(args: {
   if (style === "percent") {
     // Square icon with large centered number — Windows squishes non-square
     // icons into a square tray slot, so we MUST be square.
-    const bigFontSize = Math.max(10, Math.round(sizePx * 0.55))
+    // "100" needs a smaller font than two digits to fit the square.
+    const bigFontSize = Math.max(10, Math.round(sizePx * ((percentText?.length ?? 0) >= 3 ? 0.42 : 0.55)))
     return {
       width: sizePx,
       height,
@@ -285,7 +286,7 @@ export function makeTrayBarsSvg(args: {
   return parts.join("")
 }
 
-async function rasterizeSvgToRgba(svg: string, widthPx: number, heightPx: number): Promise<Uint8Array> {
+export async function rasterizeSvgToRgba(svg: string, widthPx: number, heightPx: number): Promise<Uint8Array> {
   const blob = new Blob([svg], { type: "image/svg+xml" })
   const url = URL.createObjectURL(blob)
   try {

@@ -52,6 +52,17 @@ pub fn open_env_editor() -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Opens Settings > Personalization > Taskbar, where "Other system tray icons" pins our icons
+/// next to the clock (Windows puts new tray icons in the overflow; only the user can move them).
+#[tauri::command]
+pub fn open_taskbar_settings() -> Result<(), String> {
+    Command::new("explorer.exe")
+        .arg("ms-settings:taskbar")
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

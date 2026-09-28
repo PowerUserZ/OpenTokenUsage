@@ -1,0 +1,95 @@
+import { useEffect, useRef, useState } from "react"
+import { invoke } from "@tauri-apps/api/core"
+import type { PluginState } from "@/hooks/app/types"
+import type { PluginMeta } from "@/lib/plugin-types"
+import { isPerProviderTrayStyle, type DisplayMode, type MenubarIconStyle, type PluginSettings } from "@/lib/settings"
+import { getTrayIconSizePx, rasterizeSvgToRgba } from "@/lib/tray-bars-icon"
+import { getTrayPrimaryBars } from "@/lib/tray-primary-progress"
+import { buildProviderTrayIconSpecs, bytesToBase64 } from "@/lib/tray-provider-icons"
+
+const UPDATE_DEBOUNCE_MS = 500
+const MAX_PROVIDER_ICONS = 12
+
+/** Taskbar theme (not the app theme): the tray sits on the taskbar. Re-read on focus and theme change. */
+export function useTaskbarIsLight(themeMode: string): boolean {
+  const [isLight, setIsLight] = useState(false)
+  useEffect(() => {
+    const refresh = () => {
+      invoke<boolean>("get_taskbar_is_light")
+        .then(setIsLight)
+        .catch((error) => console.error("Failed to read taskbar theme:", error))
+    }
+    refresh()
+    window.addEventListener("focus", refresh)
+    return () => window.removeEventListener("focus", refresh)
+  }, [themeMode])
+  return isLight
+}
+
+/** Tray styles "numbers"/"logos": one tray icon per provider, drawn here and shown by the Rust host. */
+export function useProviderTrayIcons(args: {
+  pluginsMeta: PluginMeta[]
+  pluginSettings: PluginSettings | null
+  pluginStates: Record<string, PluginState>
+  displayMode: DisplayMode
+  style: MenubarIconStyle
+  trayMetric: string
+  themeMode: string
+  logoColors: boolean
+  /** Called when the per-provider icons are gone and the app icon is visible again. */
+  onAppIconShown: () => void
+}) {
+  const { pluginsMeta, pluginSettings, pluginStates, displayMode, style, trayMetric, themeMode, logoColors, onAppIconShown } = args
+  const taskbarIsLight = useTaskbarIsLight(themeMode)
+  const showingRef = useRef(false)
+
+  useEffect(() => {
+    const perProvider = isPerProviderTrayStyle(style)
+    // Nothing to clear when the icons were never shown.
+    if (!perProvider && !showingRef.current) return
+
+    const timer = window.setTimeout(() => {
+      // Rings are drawn at the real tray size (16 px x scale): downscaled 32 px art blurs the logo.
+      const sizePx =
+        style === "logos"
+          ? Math.round(16 * (window.devicePixelRatio || 1))
+          : getTrayIconSizePx(window.devicePixelRatio)
+      const specs =
+        perProvider && pluginSettings
+          ? buildProviderTrayIconSpecs({
+              bars: getTrayPrimaryBars({
+                pluginsMeta,
+                pluginSettings,
+                pluginStates,
+                maxBars: MAX_PROVIDER_ICONS,
+                displayMode,
+                preferredMetric: trayMetric !== "auto" ? trayMetric : undefined,
+                preferWeekly: trayMetric === "Weekly",
+              }),
+              pluginsMeta,
+              style: style as "numbers" | "logos",
+              sizePx,
+              onLightTaskbar: taskbarIsLight,
+              logoColors,
+            })
+          : []
+      Promise.all(
+        specs.map(async ({ providerId, svg, tooltip }) => ({
+          providerId,
+          tooltip,
+          size: sizePx,
+          rgba: bytesToBase64(await rasterizeSvgToRgba(svg, sizePx, sizePx)),
+        }))
+      )
+        .then((icons) => invoke("set_provider_tray_icons", { icons }))
+        .then(() => {
+          const wasShowing = showingRef.current
+          showingRef.current = specs.length > 0
+          // The app icon can't take a new image while hidden, so redraw it once it's back.
+          if (wasShowing && !showingRef.current) onAppIconShown()
+        })
+        .catch((error) => console.error("Failed to update provider tray icons:", error))
+    }, UPDATE_DEBOUNCE_MS)
+    return () => window.clearTimeout(timer)
+  }, [pluginsMeta, pluginSettings, pluginStates, displayMode, style, trayMetric, taskbarIsLight, logoColors, onAppIconShown])
+}

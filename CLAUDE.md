@@ -44,6 +44,11 @@ This file holds the project facts that are easy to get wrong.
 - Tray metric: one setting, `trayMetric` (auto | Session | Weekly), drives bars, percent and tooltip.
   Tray provider `tightest` = "Most used" line across providers. `trayHiddenPlugins` keeps a provider
   in the nav but out of the tray. The tray icon color follows the *taskbar* theme, not the app theme.
+- Tray styles `numbers`/`logos` = one tray icon per provider (`use-provider-tray-icons.ts` draws,
+  `tray::set_provider_tray_icons` shows them and hides the app icon). Update icons in place, never
+  recreate (Windows keys "show next to clock" on tray-icon's creation-counter uID). A hidden tray
+  icon rejects `setIcon`, so the app icon is redrawn after it's shown again. New icons are promoted
+  via `HKCU\Control Panel\NotifyIconSettings\*\IsPromoted` only when the user hasn't chosen yet.
 - Themes: system | light | dark | oled (`.oled` = opaque pure black, even over Mica).
 - Notifications (`src/lib/usage-alerts.ts`, pure + tested): 80/95%, pace, reset; each once per
   provider+line+window, keys persisted in settings (`sentUsageAlerts`).

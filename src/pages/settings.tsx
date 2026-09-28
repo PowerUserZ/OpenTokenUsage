@@ -15,6 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { invoke } from "@tauri-apps/api/core";
 import { Eye, EyeOff, GripVertical } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
@@ -23,10 +24,12 @@ import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
 import {
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
+  isPerProviderTrayStyle,
   MENUBAR_ICON_STYLE_OPTIONS,
   RESET_TIMER_DISPLAY_OPTIONS,
   saveLanguage,
   saveTrayHiddenPlugins,
+  saveTrayLogoColors,
   saveUsageAlerts,
   THEME_OPTIONS,
   TIME_FORMAT_OPTIONS,
@@ -109,10 +112,60 @@ function TrayIconStylePreview({
     );
   }
 
+  const sampleFractions = traySettingsPreview.bars.length > 1
+    ? traySettingsPreview.bars.slice(0, 2).map((b) => b.fraction ?? 0)
+    : [0.58, 0.12];
+
+  if (style === "numbers") {
+    return (
+      <span className="flex gap-1 text-[11px] font-bold tabular-nums leading-none">
+        {sampleFractions.map((fraction, i) => (
+          <span key={i}>{Math.round(fraction * 100)}</span>
+        ))}
+      </span>
+    );
+  }
+
+  if (style === "logos") {
+    return (
+      <span className="flex gap-1">
+        {sampleFractions.map((fraction, i) => (
+          <svg key={i} viewBox="0 0 16 16" className="size-3.5" aria-hidden>
+            <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
+            <circle
+              cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeDasharray={`${fraction * 40.8} 40.8`} transform="rotate(-90 8 8)"
+            />
+            <circle cx="8" cy="8" r="2.5" fill="currentColor" />
+          </svg>
+        ))}
+      </span>
+    );
+  }
+
   return (
     <span className="text-[13px] font-bold tabular-nums leading-none">
       {(traySettingsPreview.providerPercentText || "0%").replace(/%$/, "")}
     </span>
+  );
+}
+
+function TrayLogoColorsToggle() {
+  const trayLogoColors = useAppPreferencesStore((state) => state.trayLogoColors);
+  const setTrayLogoColors = useAppPreferencesStore((state) => state.setTrayLogoColors);
+  return (
+    <label className="mt-2 flex items-center gap-2 text-[13px] select-none text-foreground">
+      <Checkbox
+        key={`tray-logo-colors-${trayLogoColors}`}
+        checked={trayLogoColors}
+        onCheckedChange={(checked) => {
+          const next = checked === true;
+          setTrayLogoColors(next);
+          void saveTrayLogoColors(next).catch((error) => console.error("Failed to save logo colors:", error));
+        }}
+      />
+      {t("settings.tray.logoColors")}
+    </label>
   );
 }
 
@@ -412,6 +465,7 @@ export function SettingsPage({
         />
         {menubarIconStyle !== "icon" && (
           <div className="flex gap-2 mt-2">
+            {!isPerProviderTrayStyle(menubarIconStyle) && (
             <label className="flex-1 text-xs text-muted-foreground">
               <span className="mb-1 block">{t("settings.tray.provider")}</span>
               <select
@@ -427,6 +481,7 @@ export function SettingsPage({
                 ))}
               </select>
             </label>
+            )}
             <label className="flex-1 text-xs text-muted-foreground">
               <span className="mb-1 block">{t("settings.tray.metric")}</span>
               <select
@@ -453,6 +508,19 @@ export function SettingsPage({
               </label>
             )}
           </div>
+        )}
+        {menubarIconStyle === "logos" && <TrayLogoColorsToggle />}
+        {isPerProviderTrayStyle(menubarIconStyle) && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t("settings.tray.perProviderHint")}{" "}
+            <button
+              type="button"
+              className="text-primary underline-offset-2 hover:underline"
+              onClick={() => invoke("open_taskbar_settings").catch((e) => console.error("open_taskbar_settings failed:", e))}
+            >
+              {t("settings.tray.openTaskbarSettings")}
+            </button>
+          </p>
         )}
       </SettingsSection>
 
