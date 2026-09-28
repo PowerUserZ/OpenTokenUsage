@@ -19,6 +19,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Eye, EyeOff, GripVertical } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
+import { TaskbarStripSection } from "@/components/taskbar-strip-section";
 import { SegmentedControl, SettingsSection } from "@/components/settings-section";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
 import {
@@ -148,29 +149,6 @@ function TrayIconStylePreview({
     <span className="text-[13px] font-bold tabular-nums leading-none">
       {(traySettingsPreview.providerPercentText || "0%").replace(/%$/, "")}
     </span>
-  );
-}
-
-function TaskbarStripToggle() {
-  const taskbarStrip = useAppPreferencesStore((state) => state.taskbarStrip);
-  const setTaskbarStrip = useAppPreferencesStore((state) => state.setTaskbarStrip);
-  return (
-    <label className="mt-3 flex items-start gap-2 text-[13px] select-none text-foreground">
-      <Checkbox
-        key={`taskbar-strip-${taskbarStrip}`}
-        checked={taskbarStrip}
-        className="mt-0.5"
-        onCheckedChange={(checked) => {
-          const next = checked === true;
-          setTaskbarStrip(next);
-          void saveTaskbarStrip(next).catch((error) => console.error("Failed to save taskbar strip:", error));
-        }}
-      />
-      <span>
-        {t("settings.tray.taskbarStrip")}
-        <span className="block text-xs text-muted-foreground">{t("settings.tray.taskbarStripHint")}</span>
-      </span>
-    </label>
   );
 }
 
@@ -388,6 +366,15 @@ export function SettingsPage({
   onStartOnLoginChange,
 }: SettingsPageProps) {
   const taskbarStrip = useAppPreferencesStore((state) => state.taskbarStrip);
+  const setTaskbarStrip = useAppPreferencesStore((state) => state.setTaskbarStrip);
+  // The taskbar strip and the tray styles that show numbers exclude each other.
+  const handleMenubarIconStyleChange = (style: MenubarIconStyle) => {
+    if (style !== "icon" && taskbarStrip) {
+      setTaskbarStrip(false);
+      void saveTaskbarStrip(false).catch((error) => console.error("Failed to save taskbar strip:", error));
+    }
+    onMenubarIconStyleChange(style);
+  };
   const trayHiddenPlugins = useAppPreferencesStore((state) => state.trayHiddenPlugins);
   const setTrayHiddenPlugins = useAppPreferencesStore((state) => state.setTrayHiddenPlugins);
   const handleToggleTray = (id: string) => {
@@ -482,7 +469,7 @@ export function SettingsPage({
           ariaLabel={t("settings.tray.title")}
           options={MENUBAR_ICON_STYLE_OPTIONS}
           value={menubarIconStyle}
-          onChange={onMenubarIconStyleChange}
+          onChange={handleMenubarIconStyleChange}
           itemClassName="h-9 flex items-center justify-center"
           renderOption={(option) => (
             <TrayIconStylePreview style={option.value} traySettingsPreview={traySettingsPreview} />
@@ -534,8 +521,7 @@ export function SettingsPage({
             )}
           </div>
         )}
-        <TaskbarStripToggle />
-        {(menubarIconStyle === "logos" || taskbarStrip) && <TrayLogoColorsToggle />}
+        {menubarIconStyle === "logos" && <TrayLogoColorsToggle />}
         {isPerProviderTrayStyle(menubarIconStyle) && (
           <p className="mt-2 text-xs text-muted-foreground">
             {t("settings.tray.perProviderHint")}{" "}
@@ -549,6 +535,8 @@ export function SettingsPage({
           </p>
         )}
       </SettingsSection>
+
+      <TaskbarStripSection onMenubarIconStyleChange={onMenubarIconStyleChange} />
 
       <SettingsSection title={t("settings.theme.title")} description={t("settings.theme.desc")}>
         <SegmentedControl

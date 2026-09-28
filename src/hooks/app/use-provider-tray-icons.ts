@@ -5,7 +5,7 @@ import type { PluginMeta } from "@/lib/plugin-types"
 import { isPerProviderTrayStyle, type DisplayMode, type MenubarIconStyle, type PluginSettings } from "@/lib/settings"
 import { getTrayIconSizePx, rasterizeSvgToRgba } from "@/lib/tray-bars-icon"
 import { getTrayPrimaryBars } from "@/lib/tray-primary-progress"
-import { buildProviderTrayIconSpecs, bytesToBase64 } from "@/lib/tray-provider-icons"
+import { buildProviderTrayIconSpecs, bytesToBase64, measureLogoExtent } from "@/lib/tray-provider-icons"
 
 const UPDATE_DEBOUNCE_MS = 500
 const MAX_PROVIDER_ICONS = 12
@@ -59,41 +59,49 @@ export function useProviderTrayIcons(args: {
         style === "logos"
           ? Math.round(16 * (window.devicePixelRatio || 1))
           : getTrayIconSizePx(window.devicePixelRatio)
-      const specs =
+      const bars =
         perProvider && pluginSettings
-          ? buildProviderTrayIconSpecs({
-              bars: getTrayPrimaryBars({
-                pluginsMeta,
-                pluginSettings,
-                pluginStates,
-                maxBars: MAX_PROVIDER_ICONS,
-                displayMode,
-                preferredMetric: trayMetric !== "auto" ? trayMetric : undefined,
-                preferWeekly: trayMetric === "Weekly",
-              }),
+          ? getTrayPrimaryBars({
               pluginsMeta,
-              style: style as "numbers" | "logos",
-              sizePx,
-              onLightTaskbar: taskbarIsLight,
-              logoColors,
+              pluginSettings,
+              pluginStates,
+              maxBars: MAX_PROVIDER_ICONS,
+              displayMode,
+              preferredMetric: trayMetric !== "auto" ? trayMetric : undefined,
+              preferWeekly: trayMetric === "Weekly",
             })
           : []
-      Promise.all(
-        specs.map(async ({ providerId, svg, tooltip }) => ({
-          providerId,
-          tooltip,
-          size: sizePx,
-          rgba: bytesToBase64(await rasterizeSvgToRgba(svg, sizePx, sizePx)),
-        }))
-      )
-        .then((icons) => invoke("set_provider_tray_icons", { icons }))
-        .then(() => {
-          const wasShowing = showingRef.current
-          showingRef.current = specs.length > 0
-          appIconHidden = showingRef.current
-          // The app icon can't take a new image while hidden, so redraw it once it's back.
-          if (wasShowing && !showingRef.current) onAppIconShown()
+      const update = async () => {
+        const iconUrls = bars.flatMap((bar) => pluginsMeta.find((meta) => meta.id === bar.id)?.iconUrl ?? [])
+        const logoExtents =
+          style === "logos"
+            ? new Map(await Promise.all(iconUrls.map(async (url) => [url, await measureLogoExtent(url)] as const)))
+            : undefined
+        const specs = buildProviderTrayIconSpecs({
+          bars,
+          pluginsMeta,
+          style: style as "numbers" | "logos",
+          sizePx,
+          onLightTaskbar: taskbarIsLight,
+          logoColors,
+          logoExtents,
         })
+        const icons = await Promise.all(
+          specs.map(async ({ providerId, svg, tooltip }) => ({
+            providerId,
+            tooltip,
+            size: sizePx,
+            rgba: bytesToBase64(await rasterizeSvgToRgba(svg, sizePx, sizePx)),
+          }))
+        )
+        await invoke("set_provider_tray_icons", { icons })
+        const wasShowing = showingRef.current
+        showingRef.current = icons.length > 0
+        appIconHidden = showingRef.current
+        // The app icon can't take a new image while hidden, so redraw it once it's back.
+        if (wasShowing && !showingRef.current) onAppIconShown()
+      }
+      update()
         .catch((error) => console.error("Failed to update provider tray icons:", error))
     }, UPDATE_DEBOUNCE_MS)
     return () => window.clearTimeout(timer)

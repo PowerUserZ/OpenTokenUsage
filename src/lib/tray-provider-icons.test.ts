@@ -16,6 +16,16 @@ describe("makeProviderRingSvg", () => {
     expect(half).toContain('mask="url(#logo)"')
   })
 
+  it("shrinks a logo that reaches its corners so it stays inside the ring", () => {
+    const logoSize = (extent: number) =>
+      Number(/<rect x="[\d.]+" y="[\d.]+" width="([\d.]+)"/.exec(makeProviderRingSvg({ iconUrl: ICON, sizePx: 16, color: "white", logoExtent: extent }))?.[1])
+    const round = logoSize(0.8)
+    const square = logoSize(1.3)
+    expect(round).toBeGreaterThan(square)
+    // The square's corners (1.3 x half its box) end inside the ring's inner edge (8 - 1.28 px).
+    expect((square / 2) * 1.3).toBeLessThan(8 - 1.28)
+  })
+
   it("draws only the empty track without data", () => {
     const svg = makeProviderRingSvg({ iconUrl: ICON, sizePx: 32, color: "black" })
     expect(svg).not.toContain("stroke-dasharray")

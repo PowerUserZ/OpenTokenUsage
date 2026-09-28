@@ -51,6 +51,7 @@ const TRAY_HIDDEN_PLUGINS_KEY = "trayHiddenPlugins";
 const USAGE_ALERTS_KEY = "usageAlerts";
 const TRAY_LOGO_COLORS_KEY = "trayLogoColors";
 const TASKBAR_STRIP_KEY = "taskbarStrip";
+const TASKBAR_STRIP_STYLE_KEY = "taskbarStripStyle";
 const SENT_USAGE_ALERTS_KEY = "sentUsageAlerts";
 /** Enough for every provider x line x level for a few windows; oldest keys drop off first. */
 const MAX_SENT_USAGE_ALERTS = 300;
@@ -390,6 +391,92 @@ export const saveTrayLogoColors = (value: boolean) => saveBoolean(TRAY_LOGO_COLO
 /** Experimental: usage text embedded in the taskbar next to the tray (`taskbar_strip.rs`). */
 export const loadTaskbarStrip = () => loadBoolean(TASKBAR_STRIP_KEY, false);
 export const saveTaskbarStrip = (value: boolean) => saveBoolean(TASKBAR_STRIP_KEY, value);
+
+export const MAX_TASKBAR_STRIP_PROVIDERS = 6;
+
+/** Fonts that ship with Windows 11 and have clear digits. */
+export const TASKBAR_STRIP_FONTS = [
+  { id: "segoe-variable", label: "Segoe UI Variable", css: `"Segoe UI Variable Text", "Segoe UI", sans-serif` },
+  { id: "segoe", label: "Segoe UI", css: `"Segoe UI", sans-serif` },
+  { id: "bahnschrift", label: "Bahnschrift", css: `Bahnschrift, "Segoe UI", sans-serif` },
+  { id: "cascadia", label: "Cascadia Mono", css: `"Cascadia Mono", Consolas, monospace` },
+  { id: "consolas", label: "Consolas", css: `Consolas, monospace` },
+  { id: "calibri", label: "Calibri", css: `Calibri, "Segoe UI", sans-serif` },
+  { id: "verdana", label: "Verdana", css: `Verdana, sans-serif` },
+  { id: "arial", label: "Arial", css: `Arial, sans-serif` },
+] as const;
+
+export type TaskbarStripFont = (typeof TASKBAR_STRIP_FONTS)[number]["id"];
+
+/** Look of the taskbar strip; everything the user can restyle. */
+export type TaskbarStripStyle = {
+  /** Providers shown, in strip order (own order, independent of the nav); null = first enabled ones. */
+  providers: string[] | null;
+  font: TaskbarStripFont;
+  fontSize: number;
+  bold: boolean;
+  /** Text color; null follows the taskbar (white on dark, black on light). */
+  textColor: string | null;
+  /** Color a number by how much of the limit is used. */
+  usageColors: boolean;
+  warnAt: number;
+  criticalAt: number;
+  warnColor: string;
+  criticalColor: string;
+  showWeekly: boolean;
+  showPercentSign: boolean;
+};
+
+export const DEFAULT_TASKBAR_STRIP_STYLE: TaskbarStripStyle = {
+  providers: null,
+  font: "segoe-variable",
+  fontSize: 12,
+  bold: true,
+  textColor: null,
+  usageColors: true,
+  warnAt: 70,
+  criticalAt: 90,
+  warnColor: "#F5A524",
+  criticalColor: "#F04438",
+  showWeekly: true,
+  showPercentSign: true,
+};
+
+const isHexColor = (value: unknown): value is string => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
+const isPercent = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 1 && value <= 100;
+
+/** Stored style with every unknown or broken field replaced by its default. */
+export function normalizeTaskbarStripStyle(value: unknown): TaskbarStripStyle {
+  const raw = (value && typeof value === "object" ? value : {}) as Partial<Record<keyof TaskbarStripStyle, unknown>>;
+  const d = DEFAULT_TASKBAR_STRIP_STYLE;
+  const providers = Array.isArray(raw.providers)
+    ? raw.providers.filter((id): id is string => typeof id === "string").slice(0, MAX_TASKBAR_STRIP_PROVIDERS)
+    : null;
+  return {
+    providers,
+    font: TASKBAR_STRIP_FONTS.some((font) => font.id === raw.font) ? (raw.font as TaskbarStripFont) : d.font,
+    fontSize: typeof raw.fontSize === "number" && raw.fontSize >= 10 && raw.fontSize <= 15 ? raw.fontSize : d.fontSize,
+    bold: typeof raw.bold === "boolean" ? raw.bold : d.bold,
+    textColor: isHexColor(raw.textColor) ? raw.textColor : null,
+    usageColors: typeof raw.usageColors === "boolean" ? raw.usageColors : d.usageColors,
+    warnAt: isPercent(raw.warnAt) ? raw.warnAt : d.warnAt,
+    criticalAt: isPercent(raw.criticalAt) ? raw.criticalAt : d.criticalAt,
+    warnColor: isHexColor(raw.warnColor) ? raw.warnColor : d.warnColor,
+    criticalColor: isHexColor(raw.criticalColor) ? raw.criticalColor : d.criticalColor,
+    showWeekly: typeof raw.showWeekly === "boolean" ? raw.showWeekly : d.showWeekly,
+    showPercentSign: typeof raw.showPercentSign === "boolean" ? raw.showPercentSign : d.showPercentSign,
+  };
+}
+
+export async function loadTaskbarStripStyle(): Promise<TaskbarStripStyle> {
+  return normalizeTaskbarStripStyle(await store.get<unknown>(TASKBAR_STRIP_STYLE_KEY));
+}
+
+export async function saveTaskbarStripStyle(value: TaskbarStripStyle): Promise<void> {
+  await store.set(TASKBAR_STRIP_STYLE_KEY, value);
+  await store.save();
+}
 
 export async function loadSentUsageAlerts(): Promise<string[]> {
   const stored = await store.get<unknown>(SENT_USAGE_ALERTS_KEY);

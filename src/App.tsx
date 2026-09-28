@@ -72,6 +72,8 @@ function App() {
     setTrayLogoColors,
     taskbarStrip,
     setTaskbarStrip,
+    taskbarStripStyle,
+    setTaskbarStripStyle,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setTimeFormatMode,
@@ -98,6 +100,8 @@ function App() {
       setUsageAlerts: state.setUsageAlerts,
       trayLogoColors: state.trayLogoColors,
       taskbarStrip: state.taskbarStrip,
+      taskbarStripStyle: state.taskbarStripStyle,
+      setTaskbarStripStyle: state.setTaskbarStripStyle,
       setTrayLogoColors: state.setTrayLogoColors,
       setTaskbarStrip: state.setTaskbarStrip,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
@@ -169,10 +173,11 @@ function App() {
   useTaskbarStrip({
     enabled: taskbarStrip,
     pluginsMeta,
-    pluginSettings: trayPluginSettings,
+    pluginSettings,
     pluginStates,
     displayMode,
     logoColors: trayLogoColors,
+    style: taskbarStripStyle,
     themeMode,
   })
 
@@ -196,6 +201,7 @@ function App() {
     setUsageAlerts,
     setTrayLogoColors,
     setTaskbarStrip,
+    setTaskbarStripStyle,
     setResetTimerDisplayMode,
     setTimeFormatMode,
     setGlobalShortcut,

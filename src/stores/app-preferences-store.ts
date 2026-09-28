@@ -6,6 +6,7 @@ import {
   DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
+  DEFAULT_TASKBAR_STRIP_STYLE,
   DEFAULT_THEME_MODE,
   DEFAULT_TIME_FORMAT_MODE,
   DEFAULT_TRAY_METRIC,
@@ -16,6 +17,7 @@ import {
   type GlobalShortcut,
   type MenubarIconStyle,
   type ResetTimerDisplayMode,
+  type TaskbarStripStyle,
   type ThemeMode,
   type TimeFormatMode,
   type TrayMetric,
@@ -39,6 +41,7 @@ type AppPreferencesStore = {
   usageAlerts: boolean
   trayLogoColors: boolean
   taskbarStrip: boolean
+  taskbarStripStyle: TaskbarStripStyle
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
@@ -54,6 +57,7 @@ type AppPreferencesStore = {
   setUsageAlerts: (value: boolean) => void
   setTrayLogoColors: (value: boolean) => void
   setTaskbarStrip: (value: boolean) => void
+  setTaskbarStripStyle: (value: TaskbarStripStyle) => void
   resetState: () => void
 }
 
@@ -73,6 +77,7 @@ const initialState = {
   usageAlerts: true,
   trayLogoColors: true,
   taskbarStrip: false,
+  taskbarStripStyle: DEFAULT_TASKBAR_STRIP_STYLE,
 }
 
 export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
@@ -92,5 +97,6 @@ export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
   setUsageAlerts: (value) => set({ usageAlerts: value }),
   setTrayLogoColors: (value) => set({ trayLogoColors: value }),
   setTaskbarStrip: (value) => set({ taskbarStrip: value }),
+  setTaskbarStripStyle: (value) => set({ taskbarStripStyle: value }),
   resetState: () => set(initialState),
 }))

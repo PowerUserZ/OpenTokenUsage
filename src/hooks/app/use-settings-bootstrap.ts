@@ -27,6 +27,7 @@ import {
   loadUsageAlerts,
   loadTrayLogoColors,
   loadTaskbarStrip,
+  loadTaskbarStripStyle,
   loadTrayPercentColor,
   loadTrayProvider,
   migrateLegacyTraySettings,
@@ -44,6 +45,7 @@ import {
   type MenubarIconStyle,
   type PluginSettings,
   type ResetTimerDisplayMode,
+  type TaskbarStripStyle,
   type ThemeMode,
   type TimeFormatMode,
   type TrayMetric,
@@ -70,6 +72,7 @@ type UseSettingsBootstrapArgs = {
   setUsageAlerts: (value: boolean) => void
   setTrayLogoColors: (value: boolean) => void
   setTaskbarStrip: (value: boolean) => void
+  setTaskbarStripStyle: (value: TaskbarStripStyle) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -93,6 +96,7 @@ export function useSettingsBootstrap({
   setUsageAlerts,
   setTrayLogoColors,
   setTaskbarStrip,
+  setTaskbarStripStyle,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -129,10 +133,15 @@ export function useSettingsBootstrap({
         console.error("Failed to load usage alerts setting:", error)
       }
       try {
-        const [logoColors, strip] = await Promise.all([loadTrayLogoColors(), loadTaskbarStrip()])
+        const [logoColors, strip, stripStyle] = await Promise.all([
+          loadTrayLogoColors(),
+          loadTaskbarStrip(),
+          loadTaskbarStripStyle(),
+        ])
         if (isMounted) {
           setTrayLogoColors(logoColors)
           setTaskbarStrip(strip)
+          setTaskbarStripStyle(stripStyle)
         }
       } catch (error) {
         console.error("Failed to load tray logo/taskbar strip settings:", error)
@@ -284,6 +293,7 @@ export function useSettingsBootstrap({
     setUsageAlerts,
     setTrayLogoColors,
     setTaskbarStrip,
+    setTaskbarStripStyle,
     migrateWindsurfToDevin,
     migrateLegacyTraySettings,
     setPluginSettings,

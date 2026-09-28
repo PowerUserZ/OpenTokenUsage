@@ -1,0 +1,304 @@
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+import { GripVertical } from "lucide-react"
+import type { ReactNode } from "react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { SettingsSection } from "@/components/settings-section"
+import { useTaskbarStripPreview } from "@/hooks/app/use-taskbar-strip"
+import { t } from "@/lib/i18n"
+import {
+  DEFAULT_TASKBAR_STRIP_STYLE,
+  MAX_TASKBAR_STRIP_PROVIDERS,
+  saveTaskbarStrip,
+  saveTaskbarStripStyle,
+  saveTrayLogoColors,
+  TASKBAR_STRIP_FONTS,
+  type MenubarIconStyle,
+  type TaskbarStripFont,
+  type TaskbarStripStyle,
+} from "@/lib/settings"
+import { stripPluginSettings } from "@/lib/taskbar-strip"
+import { cn } from "@/lib/utils"
+import { useAppPluginStore } from "@/stores/app-plugin-store"
+import { useAppPreferencesStore } from "@/stores/app-preferences-store"
+
+const FONT_SIZES = [10, 11, 12, 13, 14, 15]
+
+let saveTimer: number | undefined
+/** Color pickers fire on every drag step; write the file once the user pauses. */
+function saveStyleSoon(style: TaskbarStripStyle) {
+  window.clearTimeout(saveTimer)
+  saveTimer = window.setTimeout(() => {
+    saveTaskbarStripStyle(style).catch((error) => console.error("Failed to save taskbar strip style:", error))
+  }, 300)
+}
+
+function CheckRow({ checked, onChange, children }: { checked: boolean; onChange: (next: boolean) => void; children: ReactNode }) {
+  return (
+    <label className="flex items-center gap-2 text-[13px] select-none text-foreground">
+      <Checkbox key={String(checked)} checked={checked} onCheckedChange={(next) => onChange(next === true)} />
+      {children}
+    </label>
+  )
+}
+
+function ColorInput({ value, onChange, label }: { value: string; onChange: (next: string) => void; label: string }) {
+  return (
+    <input
+      type="color"
+      value={value}
+      aria-label={label}
+      title={label}
+      onChange={(e) => onChange(e.target.value)}
+      className="fluent-control h-7 w-10 cursor-pointer px-1"
+    />
+  )
+}
+
+function StripProviderRow({
+  id,
+  name,
+  checked,
+  disabled,
+  onToggle,
+}: {
+  id: string
+  name: string
+  checked: boolean
+  disabled: boolean
+  onToggle: (id: string) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn("flex items-center gap-2.5 px-2 h-8 rounded-md hover:bg-accent", isDragging && "opacity-50 bg-accent")}
+    >
+      <button
+        type="button"
+        className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+        aria-label={t("settings.strip.drag", { name })}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <span className={cn("flex-1 text-[13px]", !checked && "text-muted-foreground")}>{name}</span>
+      <Checkbox
+        key={`${id}-${checked}`}
+        checked={checked}
+        disabled={disabled}
+        aria-label={name}
+        onCheckedChange={() => onToggle(id)}
+      />
+    </div>
+  )
+}
+
+/** Experimental taskbar strip: on/off, live preview and its own look (fonts, colors, providers). */
+export function TaskbarStripSection({ onMenubarIconStyleChange }: { onMenubarIconStyleChange: (style: MenubarIconStyle) => void }) {
+  const enabled = useAppPreferencesStore((state) => state.taskbarStrip)
+  const setEnabled = useAppPreferencesStore((state) => state.setTaskbarStrip)
+  const style = useAppPreferencesStore((state) => state.taskbarStripStyle)
+  const setStyle = useAppPreferencesStore((state) => state.setTaskbarStripStyle)
+  const logoColors = useAppPreferencesStore((state) => state.trayLogoColors)
+  const setLogoColors = useAppPreferencesStore((state) => state.setTrayLogoColors)
+  const pluginsMeta = useAppPluginStore((state) => state.pluginsMeta)
+  const pluginSettings = useAppPluginStore((state) => state.pluginSettings)
+  const preview = useTaskbarStripPreview((state) => state.preview)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  const update = (patch: Partial<TaskbarStripStyle>) => {
+    const next = { ...style, ...patch }
+    setStyle(next)
+    saveStyleSoon(next)
+  }
+
+  const setStripEnabled = (next: boolean) => {
+    setEnabled(next)
+    void saveTaskbarStrip(next).catch((error) => console.error("Failed to save taskbar strip:", error))
+    // The strip replaces the tray styles that show numbers: keep just the app icon in the tray.
+    if (next) onMenubarIconStyleChange("icon")
+  }
+
+  const nameOf = (id: string) => pluginsMeta.find((meta) => meta.id === id)?.name ?? id
+  const enabledIds = pluginSettings ? pluginSettings.order.filter((id) => !pluginSettings.disabled.includes(id)) : []
+  const shown = pluginSettings ? stripPluginSettings(style.providers, pluginSettings).order : []
+  const rows = [...shown, ...enabledIds.filter((id) => !shown.includes(id))]
+  const full = shown.length >= MAX_TASKBAR_STRIP_PROVIDERS
+
+  const toggleProvider = (id: string) => {
+    const next = shown.includes(id) ? shown.filter((other) => other !== id) : [...shown, id]
+    update({ providers: next.slice(0, MAX_TASKBAR_STRIP_PROVIDERS) })
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const reordered = arrayMove(rows, rows.indexOf(String(active.id)), rows.indexOf(String(over.id)))
+    update({ providers: reordered.filter((id) => shown.includes(id)) })
+  }
+
+  return (
+    <SettingsSection title={t("settings.strip.title")} description={t("settings.strip.desc")}>
+      <label className="flex items-start gap-2 text-[13px] select-none text-foreground">
+        <Checkbox key={`strip-${enabled}`} checked={enabled} className="mt-0.5" onCheckedChange={(next) => setStripEnabled(next === true)} />
+        <span>
+          {t("settings.strip.enable")}
+          <span className="block text-xs text-muted-foreground">{t("settings.strip.enableHint")}</span>
+        </span>
+      </label>
+
+      {enabled && (
+        <div className="mt-3 space-y-3">
+          {preview && (
+            <div
+              className={cn(
+                "flex h-12 items-center justify-center overflow-hidden rounded-md border border-surface-stroke",
+                preview.onLightTaskbar ? "bg-[#eeeeee]" : "bg-[#1c1c1c]"
+              )}
+              aria-label={t("settings.strip.preview")}
+            >
+              <img
+                alt=""
+                src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(preview.svg)}`}
+                style={{ width: preview.width / preview.scale, height: preview.height / preview.scale }}
+              />
+            </div>
+          )}
+
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">
+              {t("settings.strip.providers", { max: MAX_TASKBAR_STRIP_PROVIDERS })}
+            </div>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={rows} strategy={verticalListSortingStrategy}>
+                {rows.map((id) => (
+                  <StripProviderRow
+                    key={id}
+                    id={id}
+                    name={nameOf(id)}
+                    checked={shown.includes(id)}
+                    disabled={full && !shown.includes(id)}
+                    onToggle={toggleProvider}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+            <p className="mt-1 text-xs text-muted-foreground">{t("settings.strip.providersHint")}</p>
+          </div>
+
+          <div className="flex gap-2">
+            <label className="flex-1 text-xs text-muted-foreground">
+              <span className="mb-1 block">{t("settings.strip.font")}</span>
+              <select
+                value={style.font}
+                onChange={(e) => update({ font: e.target.value as TaskbarStripFont })}
+                className="fluent-control w-full"
+              >
+                {TASKBAR_STRIP_FONTS.map((font) => (
+                  <option key={font.id} value={font.id} style={{ fontFamily: font.css }}>
+                    {font.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="w-20 text-xs text-muted-foreground">
+              <span className="mb-1 block">{t("settings.strip.size")}</span>
+              <select
+                value={style.fontSize}
+                onChange={(e) => update({ fontSize: Number(e.target.value) })}
+                className="fluent-control w-full"
+              >
+                {FONT_SIZES.map((size) => (
+                  <option key={size} value={size}>
+                    {size} px
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <CheckRow checked={style.bold} onChange={(bold) => update({ bold })}>
+              {t("settings.strip.bold")}
+            </CheckRow>
+            <CheckRow checked={style.showWeekly} onChange={(showWeekly) => update({ showWeekly })}>
+              {t("settings.strip.showWeekly")}
+            </CheckRow>
+            <CheckRow checked={style.showPercentSign} onChange={(showPercentSign) => update({ showPercentSign })}>
+              {t("settings.strip.showPercentSign")}
+            </CheckRow>
+            <CheckRow
+              checked={logoColors}
+              onChange={(next) => {
+                setLogoColors(next)
+                void saveTrayLogoColors(next).catch((error) => console.error("Failed to save logo colors:", error))
+              }}
+            >
+              {t("settings.tray.logoColors")}
+            </CheckRow>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <CheckRow checked={style.textColor !== null} onChange={(custom) => update({ textColor: custom ? "#ffffff" : null })}>
+              {t("settings.strip.customTextColor")}
+            </CheckRow>
+            {style.textColor !== null && (
+              <ColorInput value={style.textColor} label={t("settings.strip.customTextColor")} onChange={(textColor) => update({ textColor })} />
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <CheckRow checked={style.usageColors} onChange={(usageColors) => update({ usageColors })}>
+              {t("settings.strip.usageColors")}
+            </CheckRow>
+            {style.usageColors && (
+              <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-1.5 pl-6 text-xs text-muted-foreground">
+                {(
+                  [
+                    ["warnAt", "warnColor", "settings.strip.warnAt"],
+                    ["criticalAt", "criticalColor", "settings.strip.criticalAt"],
+                  ] as const
+                ).map(([atKey, colorKey, labelKey]) => (
+                  <div key={atKey} className="contents">
+                    <span>{t(labelKey)}</span>
+                    <span className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={style[atKey]}
+                        onChange={(e) => {
+                          const value = Math.min(100, Math.max(1, Math.round(Number(e.target.value) || 1)))
+                          update({ [atKey]: value })
+                        }}
+                        className="fluent-control w-16"
+                      />
+                      %
+                    </span>
+                    <ColorInput value={style[colorKey]} label={t(labelKey)} onChange={(color) => update({ [colorKey]: color })} />
+                  </div>
+                ))}
+                <span className="col-span-3">{t("settings.strip.usageColorsHint")}</span>
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className="text-xs text-primary underline-offset-2 hover:underline"
+            onClick={() => update({ ...DEFAULT_TASKBAR_STRIP_STYLE, providers: style.providers })}
+          >
+            {t("settings.strip.reset")}
+          </button>
+        </div>
+      )}
+    </SettingsSection>
+  )
+}

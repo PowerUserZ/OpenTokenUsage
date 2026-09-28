@@ -21,8 +21,10 @@ export function makeProviderRingSvg(args: {
   color: string
   /** Brand color for the logo; the ring always uses `color`. */
   logoColor?: string
+  /** How far the logo's pixels reach from its center, in half box widths (see measureLogoExtent). */
+  logoExtent?: number
 }): string {
-  const { iconUrl, fraction, sizePx, color, logoColor = color } = args
+  const { iconUrl, fraction, sizePx, color, logoColor = color, logoExtent = 1 } = args
   // Thin ring, big logo: at 16 px the logo is what you recognize.
   const stroke = sizePx * 0.08
   const center = sizePx / 2
@@ -32,7 +34,9 @@ export function makeProviderRingSvg(args: {
     typeof fraction === "number" && Number.isFinite(fraction)
       ? Math.max(0, Math.min(1, fraction)) * circumference
       : 0
-  const logo = sizePx * 0.8
+  // As big as fits inside the ring: a round logo grows, a square one's corners stay inside.
+  const innerRadius = radius - stroke / 2 - sizePx * 0.06
+  const logo = Math.min(sizePx, (2 * innerRadius) / Math.max(0.3, logoExtent))
   const offset = (sizePx - logo) / 2
   const ring = `cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="${color}" stroke-width="${stroke}"`
   return [
@@ -70,6 +74,39 @@ export function readableBrandColor(brandColor: string | undefined, onLightTaskba
   return contrast >= 3 ? brandColor : undefined
 }
 
+const logoExtents = new Map<string, number>()
+
+/**
+ * How far a logo's visible pixels reach from the center of its box, in half box widths: about
+ * 0.8 for a round logo, up to 1.4 for a square filling its box. Measured once per logo.
+ */
+export async function measureLogoExtent(iconUrl: string): Promise<number> {
+  const cached = logoExtents.get(iconUrl)
+  if (cached !== undefined) return cached
+  const size = 64
+  const image = new window.Image()
+  image.src = iconUrl
+  await image.decode()
+  const canvas = document.createElement("canvas")
+  canvas.width = size
+  canvas.height = size
+  const context = canvas.getContext("2d")
+  if (!context) return 1
+  context.drawImage(image, 0, 0, size, size)
+  const alpha = context.getImageData(0, 0, size, size).data
+  let farthest = 0
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      if (alpha[(y * size + x) * 4 + 3]! > 64) {
+        farthest = Math.max(farthest, Math.hypot(x + 0.5 - size / 2, y + 0.5 - size / 2))
+      }
+    }
+  }
+  const extent = farthest > 0 ? farthest / (size / 2) : 1
+  logoExtents.set(iconUrl, extent)
+  return extent
+}
+
 /** One icon per provider bar, in the nav order the bars come in. */
 export function buildProviderTrayIconSpecs(args: {
   bars: TrayPrimaryBar[]
@@ -78,8 +115,9 @@ export function buildProviderTrayIconSpecs(args: {
   sizePx: number
   onLightTaskbar: boolean
   logoColors: boolean
+  logoExtents?: Map<string, number>
 }): ProviderTrayIconSpec[] {
-  const { bars, pluginsMeta, style, sizePx, onLightTaskbar, logoColors } = args
+  const { bars, pluginsMeta, style, sizePx, onLightTaskbar, logoColors, logoExtents } = args
   const color = onLightTaskbar ? "black" : "white"
   const metaById = new Map(pluginsMeta.map((meta) => [meta.id, meta]))
   return bars.flatMap((bar) => {
@@ -94,6 +132,7 @@ export function buildProviderTrayIconSpecs(args: {
             sizePx,
             color,
             logoColor: (logoColors && readableBrandColor(meta.brandColor, onLightTaskbar)) || color,
+            logoExtent: logoExtents?.get(meta.iconUrl),
           })
         : makeTrayBarsSvg({
             bars: [bar],

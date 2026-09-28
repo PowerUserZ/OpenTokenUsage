@@ -1,15 +1,22 @@
 import type { PluginMeta } from "@/lib/plugin-types"
+import {
+  MAX_TASKBAR_STRIP_PROVIDERS,
+  TASKBAR_STRIP_FONTS,
+  type DisplayMode,
+  type PluginSettings,
+  type TaskbarStripStyle,
+} from "@/lib/settings"
 import type { TrayPrimaryBar } from "@/lib/tray-primary-progress"
 import { formatTrayPercentText } from "@/lib/tray-tooltip"
 import { readableBrandColor } from "@/lib/tray-provider-icons"
 
+export type TaskbarStripLine = { text: string; color: string }
+
 export type TaskbarStripItem = {
   iconUrl: string
   logoColor: string
-  /** Session-like value (the provider's primary line). */
-  top: string
-  /** Weekly value; empty when the provider has no separate weekly line. */
-  bottom: string
+  /** Primary (session-like) value first, then weekly when the provider has a separate one. */
+  lines: TaskbarStripLine[]
 }
 
 /** Logical px; the Windows 11 taskbar is 48 px tall. */
@@ -17,44 +24,74 @@ const HEIGHT = 40
 const LOGO = 22
 const LOGO_GAP = 5
 const ITEM_GAP = 12
-const FONT_SIZE = 12
-const FONT = `"Segoe UI Variable Text", "Segoe UI", sans-serif`
 
-/** Rough text width for tests and non-canvas environments; the app measures with a canvas. */
-export function estimateTextWidth(text: string, fontSize: number): number {
-  return text.length * fontSize * 0.58
-}
+export type MeasureText = (text: string, fontSizePx: number, fontCss: string, weight: number) => number
 
-export function measureTextWithCanvas(text: string, fontSize: number): number {
+/** Rough text width for tests; the app measures with a canvas. */
+export const estimateTextWidth: MeasureText = (text, fontSizePx) => text.length * fontSizePx * 0.58
+
+export const measureTextWithCanvas: MeasureText = (text, fontSizePx, fontCss, weight) => {
   const context = document.createElement("canvas").getContext("2d")
-  if (!context) return estimateTextWidth(text, fontSize)
-  context.font = `600 ${fontSize}px ${FONT}`
+  if (!context) return estimateTextWidth(text, fontSizePx, fontCss, weight)
+  context.font = `${weight} ${fontSizePx}px ${fontCss}`
   return context.measureText(text).width
 }
 
-/** One strip item per provider: primary value on top, weekly below (like the macOS menu bar). */
+export function fontCssOf(style: TaskbarStripStyle): string {
+  return (TASKBAR_STRIP_FONTS.find((font) => font.id === style.font) ?? TASKBAR_STRIP_FONTS[0]).css
+}
+
+/**
+ * The providers the strip shows, as plugin settings for `getTrayPrimaryBars`: the user's own strip
+ * list (independent of the nav order) or the first enabled providers, never a disabled one.
+ */
+export function stripPluginSettings(selected: string[] | null, settings: PluginSettings): PluginSettings {
+  const enabled = settings.order.filter((id) => !settings.disabled.includes(id))
+  const ids = (selected ?? enabled).filter((id) => enabled.includes(id))
+  return { order: ids.slice(0, MAX_TASKBAR_STRIP_PROVIDERS), disabled: [] }
+}
+
+function lineColor(bar: TrayPrimaryBar | undefined, base: string, style: TaskbarStripStyle, displayMode: DisplayMode) {
+  const fraction = bar?.fraction
+  if (!style.usageColors || typeof fraction !== "number") return base
+  const usedPercent = (displayMode === "left" ? 1 - fraction : fraction) * 100
+  if (usedPercent >= style.criticalAt) return style.criticalColor
+  if (usedPercent >= style.warnAt) return style.warnColor
+  return base
+}
+
 export function buildTaskbarStripItems(args: {
   primaryBars: TrayPrimaryBar[]
   weeklyBars: TrayPrimaryBar[]
   pluginsMeta: PluginMeta[]
   onLightTaskbar: boolean
   logoColors: boolean
+  displayMode: DisplayMode
+  style: TaskbarStripStyle
 }): TaskbarStripItem[] {
-  const { primaryBars, weeklyBars, pluginsMeta, onLightTaskbar, logoColors } = args
-  const color = onLightTaskbar ? "black" : "white"
+  const { primaryBars, weeklyBars, pluginsMeta, onLightTaskbar, logoColors, displayMode, style } = args
+  const taskbarColor = onLightTaskbar ? "black" : "white"
+  const base = style.textColor ?? taskbarColor
   const metaById = new Map(pluginsMeta.map((meta) => [meta.id, meta]))
   const weeklyById = new Map(weeklyBars.map((bar) => [bar.id, bar]))
+  const text = (bar: TrayPrimaryBar | undefined) => {
+    const percent = formatTrayPercentText(bar?.fraction)
+    if (percent === "--%") return "--"
+    return style.showPercentSign ? percent : percent.replace(/%$/, "")
+  }
   return primaryBars.flatMap((primary) => {
     const meta = metaById.get(primary.id)
     if (!meta) return []
     const weekly = weeklyById.get(primary.id)
-    const hasWeekly = weekly?.weekly === true && weekly.label !== primary.label
+    const lines = [{ text: text(primary), color: lineColor(primary, base, style, displayMode) }]
+    if (style.showWeekly && weekly?.weekly === true && weekly.label !== primary.label) {
+      lines.push({ text: text(weekly), color: lineColor(weekly, base, style, displayMode) })
+    }
     return [
       {
         iconUrl: meta.iconUrl,
-        logoColor: (logoColors && readableBrandColor(meta.brandColor, onLightTaskbar)) || color,
-        top: formatTrayPercentText(primary.fraction).replace("--%", "--"),
-        bottom: hasWeekly ? formatTrayPercentText(weekly.fraction).replace("--%", "--") : "",
+        logoColor: (logoColors && readableBrandColor(meta.brandColor, onLightTaskbar)) || taskbarColor,
+        lines,
       },
     ]
   })
@@ -63,14 +100,16 @@ export function buildTaskbarStripItems(args: {
 /** The strip as one SVG, sized in physical px (`scale` = devicePixelRatio). */
 export function makeTaskbarStripSvg(args: {
   items: TaskbarStripItem[]
-  color: string
+  style: TaskbarStripStyle
   scale: number
-  measure?: (text: string, fontSize: number) => number
+  measure?: MeasureText
 }): { svg: string; width: number; height: number } {
-  const { items, color, scale, measure = estimateTextWidth } = args
+  const { items, style, scale, measure = estimateTextWidth } = args
   const px = (value: number) => Math.round(value * scale)
   const height = px(HEIGHT)
-  const fontSize = FONT_SIZE * scale
+  const fontSize = style.fontSize * scale
+  const fontCss = fontCssOf(style)
+  const weight = style.bold ? 600 : 400
   const logo = px(LOGO)
   const parts: string[] = []
   let x = 0
@@ -82,15 +121,14 @@ export function makeTaskbarStripSvg(args: {
       `<rect x="${x}" y="${logoY}" width="${logo}" height="${logo}" fill="${item.logoColor}" mask="url(#logo${index})"/>`
     )
     x += logo + px(LOGO_GAP)
-    const lines = item.bottom ? [item.top, item.bottom] : [item.top]
     const lineHeight = fontSize * 1.2
-    const firstBaseline = height / 2 - ((lines.length - 1) * lineHeight) / 2
-    lines.forEach((line, i) => {
+    const firstCenter = height / 2 - ((item.lines.length - 1) * lineHeight) / 2
+    item.lines.forEach((line, i) => {
       parts.push(
-        `<text x="${x}" y="${firstBaseline + i * lineHeight}" dominant-baseline="central" fill="${color}" font-family='${FONT}' font-size="${fontSize}" font-weight="600">${line}</text>`
+        `<text x="${x}" y="${firstCenter + i * lineHeight}" dominant-baseline="central" fill="${line.color}" font-family='${fontCss}' font-size="${fontSize}" font-weight="${weight}" style="font-variant-numeric:tabular-nums">${line.text}</text>`
       )
     })
-    x += Math.ceil(Math.max(...lines.map((line) => measure(line, fontSize))))
+    x += Math.ceil(Math.max(0, ...item.lines.map((line) => measure(line.text, fontSize, fontCss, weight))))
   })
   const width = Math.max(1, x)
   // Alpha 1/255 everywhere: invisible, but makes the whole strip clickable (Windows lets clicks

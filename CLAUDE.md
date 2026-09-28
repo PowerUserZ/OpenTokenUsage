@@ -54,6 +54,11 @@ This file holds the project facts that are easy to get wrong.
   hold a lock across Win32 calls). Layered child windows need the Win8+ `<compatibility>` in
   `src-tauri/app.manifest` (wired in `build.rs`) — don't drop it. The frontend draws the image
   (`src/lib/taskbar-strip.ts`); its 1/255-alpha background keeps the whole strip clickable.
+  Its look lives in `taskbarStripStyle` (fonts, colors, usage thresholds, and its own provider list
+  and order, max 6, independent of the nav order). The strip and the tray styles that show numbers
+  exclude each other: enabling the strip sets the tray to "icon", picking another style turns it off.
+- Ring logos are sized by `measureLogoExtent` (how far the logo's pixels reach) so square logos stay
+  inside the ring and round ones grow.
 - Themes: system | light | dark | oled (`.oled` = opaque pure black, even over Mica).
 - Notifications (`src/lib/usage-alerts.ts`, pure + tested): 80/95%, pace, reset; each once per
   provider+line+window, keys persisted in settings (`sentUsageAlerts`).
