@@ -57,7 +57,7 @@ ctx.host.log.error("API request failed: " + error.message)
 ```typescript
 host.fs.exists(path: string): boolean
 host.fs.readText(path: string): string   // Throws on error
-host.fs.writeText(path: string, content: string): void  // Throws on error
+host.fs.writeText(path: string, content: string): void  // Throws on error; atomic (temp file + rename, in-place write if the rename fails)
 host.fs.listDir(path: string): string[]  // Throws if directory cannot be opened; per-entry errors are silently skipped
 ```
 
@@ -187,6 +187,7 @@ host.http.request({
 - **No redirects**: The HTTP client does not follow redirects (policy: none)
 - **Throws on network errors**: Connection failures, DNS errors, and timeouts throw
 - **No domain allowlist**: Any URL is allowed (for now)
+- **Shared 429 gate**: After an HTTP 429, further requests from the same plugin to the same URL (query ignored) get a synthetic `{ status: 429, headers: { "retry-after": "<seconds left>" }, bodyText: "" }` without touching the network until `Retry-After` passes (default 5 min, max 1 h)
 
 ### Example: GET request
 
@@ -341,6 +342,8 @@ try {
 - The auto-update timer fires (configurable: 5/15/30/60 minutes)
 
 Any token refresh logic (e.g., OAuth refresh) must run inside `probe(ctx)` at those times.
+
+Each probe runs in a fresh JS runtime: module-scope variables do not survive between probes, so persist state in `ctx.app.pluginDataDir`. A plugin never has two probes running at once; a refresh requested while one is in flight is skipped and the running probe's result is used.
 
 ## Line Builders
 
@@ -555,6 +558,8 @@ Returns a status envelope:
 - **Legacy fallback**: If `ccusage@20.0.14` cannot run through the package manager release-age policy, retries with release-age-safe `ccusage@18.0.11` for Claude or `@ccusage/codex@18.0.11` for Codex
 - **No provider API calls**: Usage is computed from local JSONL session files; the host does not call Claude/Codex (or other provider) APIs, but package runners may contact a package registry to download the `ccusage` CLI if it is not already available locally
 - **Graceful degradation**: returns `no_runner` when no runner exists, `runner_failed` when execution fails
+- **Probe budget**: each run gets at most 15s and never the last 5s of the probe budget (skipped as `runner_failed` when less is left); on timeout the whole runner process tree is killed
+- **Runner discovery**: done once per app process; a runner installed later is found after an app restart
 - **Pricing**: Uses ccusage's built-in LiteLLM pricing data
 
 ### DailyUsage
