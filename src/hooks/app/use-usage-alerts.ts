@@ -1,15 +1,19 @@
 import { useEffect, useRef } from "react"
+import { invoke } from "@tauri-apps/api/core"
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification"
 import type { PluginState } from "@/hooks/app/types"
 import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
-import { loadSentUsageAlerts, saveSentUsageAlerts } from "@/lib/settings"
+import { loadSentUsageAlerts, saveSentUsageAlerts, type AlertSettings } from "@/lib/settings"
 import { collectUsageAlerts, type UsageAlert } from "@/lib/usage-alerts"
 
-async function showNotifications(alerts: UsageAlert[]) {
+// The toasts stay silent (an unpackaged app can't give them its own sound); one sound per batch
+// is played by the host, which also keeps quiet during Do Not Disturb.
+async function showNotifications(alerts: UsageAlert[], settings: AlertSettings) {
   let granted = await isPermissionGranted()
   if (!granted) granted = (await requestPermission()) === "granted"
   if (!granted) return
   for (const alert of alerts) sendNotification({ title: alert.title, body: alert.body })
+  await invoke("play_alert_sound", { sound: settings.sound, preview: false })
 }
 
 /** Windows notifications for usage thresholds, pace and resets, checked on every fresh probe result. */
@@ -17,10 +21,12 @@ export function useUsageAlerts({
   pluginStates,
   pluginsMeta,
   enabled,
+  settings,
 }: {
   pluginStates: Record<string, PluginState | undefined>
   pluginsMeta: PluginMeta[]
   enabled: boolean
+  settings: AlertSettings
 }) {
   // Keys of alerts already shown; persisted so a restart doesn't repeat them. null = still loading.
   const sentRef = useRef<Set<string> | null>(null)
@@ -55,6 +61,7 @@ export function useUsageAlerts({
           previousLines: previous?.lines,
           sent,
           nowMs: Date.now(),
+          levels: settings.levels,
         })
       )
     }
@@ -62,6 +69,6 @@ export function useUsageAlerts({
 
     for (const alert of alerts) alert.keys.forEach((key) => sent.add(key))
     void saveSentUsageAlerts([...sent]).catch((error) => console.error("Failed to save sent usage alerts:", error))
-    void showNotifications(alerts).catch((error) => console.error("Failed to show usage notification:", error))
-  }, [pluginStates, pluginsMeta, enabled])
+    void showNotifications(alerts, settings).catch((error) => console.error("Failed to show usage notification:", error))
+  }, [pluginStates, pluginsMeta, enabled, settings])
 }

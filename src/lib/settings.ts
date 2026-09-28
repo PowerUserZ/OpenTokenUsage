@@ -49,6 +49,11 @@ const TRAY_METRIC_KEY = "trayMetric";
 const TRAY_PERCENT_COLOR_KEY = "trayPercentColor";
 const TRAY_HIDDEN_PLUGINS_KEY = "trayHiddenPlugins";
 const USAGE_ALERTS_KEY = "usageAlerts";
+const ALERT_SETTINGS_KEY = "alertSettings";
+const PANEL_PINNED_KEY = "panelPinned";
+// Read by src-tauri/src/tray.rs, which also writes the position while the user drags the panel.
+const REMEMBER_PANEL_POSITION_KEY = "rememberPanelPosition";
+const PANEL_POSITION_KEY = "panelPosition";
 const TRAY_LOGO_COLORS_KEY = "trayLogoColors";
 const TASKBAR_STRIP_KEY = "taskbarStrip";
 const TASKBAR_STRIP_STYLE_KEY = "taskbarStripStyle";
@@ -375,6 +380,60 @@ export async function saveUsageAlerts(value: boolean): Promise<void> {
   await store.save();
 }
 
+/** Usage levels (percent) a notification can be sent at. */
+export const USAGE_ALERT_LEVELS = [50, 60, 70, 80, 90, 95, 100] as const;
+
+/**
+ * Notification sounds: Windows' own, the bundled ones (`src-tauri/sounds`, ids must match
+ * `alert_sound.rs`), none, or the user's file.
+ */
+export const ALERT_SOUNDS = [
+  "windows",
+  "chime",
+  "glass",
+  "steel",
+  "pizzicato",
+  "retro",
+  "two-tone",
+  "three-tone",
+  "rise",
+  "none",
+  "custom",
+] as const;
+export type AlertSound = (typeof ALERT_SOUNDS)[number];
+
+export type AlertSettings = {
+  /** Usage levels (percent) that send a notification, ascending. */
+  levels: number[];
+  sound: AlertSound;
+  /** Name of the user's file; the converted sound lives in the app data folder. */
+  customSoundName: string | null;
+};
+
+export const DEFAULT_ALERT_SETTINGS: AlertSettings = { levels: [80, 95], sound: "windows", customSoundName: null };
+
+/** Stored alert settings with every unknown or broken field replaced by its default. */
+export function normalizeAlertSettings(value: unknown): AlertSettings {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const levels = Array.isArray(raw.levels)
+    ? USAGE_ALERT_LEVELS.filter((level) => (raw.levels as unknown[]).includes(level))
+    : DEFAULT_ALERT_SETTINGS.levels;
+  const customSoundName =
+    typeof raw.customSoundName === "string" && raw.customSoundName.length > 0 ? raw.customSoundName : null;
+  const known = (ALERT_SOUNDS as readonly unknown[]).includes(raw.sound);
+  const sound = known && (raw.sound !== "custom" || customSoundName) ? (raw.sound as AlertSound) : DEFAULT_ALERT_SETTINGS.sound;
+  return { levels, sound, customSoundName };
+}
+
+export async function loadAlertSettings(): Promise<AlertSettings> {
+  return normalizeAlertSettings(await store.get<unknown>(ALERT_SETTINGS_KEY));
+}
+
+export async function saveAlertSettings(value: AlertSettings): Promise<void> {
+  await store.set(ALERT_SETTINGS_KEY, value);
+  await store.save();
+}
+
 async function loadBoolean(key: string, fallback: boolean): Promise<boolean> {
   const stored = await store.get<unknown>(key);
   return typeof stored === "boolean" ? stored : fallback;
@@ -382,6 +441,21 @@ async function loadBoolean(key: string, fallback: boolean): Promise<boolean> {
 
 async function saveBoolean(key: string, value: boolean): Promise<void> {
   await store.set(key, value);
+  await store.save();
+}
+
+/** Title bar pin: keep the panel above other windows. */
+export const loadPanelPinned = () => loadBoolean(PANEL_PINNED_KEY, false);
+export const savePanelPinned = (value: boolean) => saveBoolean(PANEL_PINNED_KEY, value);
+
+/** Open the panel where the user last dragged it instead of above the taskbar (`tray.rs`). */
+export const loadRememberPanelPosition = () => loadBoolean(REMEMBER_PANEL_POSITION_KEY, false);
+
+/** Turning it on keeps the panel's current spot (outer top-left, physical px); off forgets it. */
+export async function saveRememberPanelPosition(value: boolean, position: { x: number; y: number } | null): Promise<void> {
+  await store.set(REMEMBER_PANEL_POSITION_KEY, value);
+  if (value && position) await store.set(PANEL_POSITION_KEY, { x: position.x, y: position.y });
+  else await store.delete(PANEL_POSITION_KEY);
   await store.save();
 }
 

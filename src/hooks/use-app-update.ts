@@ -12,6 +12,8 @@ export type UpdateStatus =
   | { status: "ready" }
   | { status: "error"; message: string }
 
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+
 interface UseAppUpdateReturn {
   updateStatus: UpdateStatus
   triggerInstall: () => void
@@ -104,10 +106,10 @@ export function useAppUpdate(): UseAppUpdateReturn {
     mountedRef.current = true
     void checkForUpdates()
 
-    // Check every 15 minutes
+    // Every 6 hours: each check downloads latest.json from the release (and counts as a download).
     const intervalId = setInterval(() => {
       void checkForUpdates()
-    }, 15 * 60 * 1000)
+    }, UPDATE_CHECK_INTERVAL_MS)
 
     return () => {
       mountedRef.current = false

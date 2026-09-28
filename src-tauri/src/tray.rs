@@ -265,6 +265,7 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
 
     app_handle.manage(TrayMenu(menu));
     app_handle.manage(ProviderTrays::default());
+    promote_tray_icons_later();
 
     Ok(())
 }
@@ -316,21 +317,38 @@ fn on_icon_event(tray: &TrayIcon, event: TrayIconEvent) {
         return;
     };
     let app_handle = tray.app_handle();
-    let Some(window) = app_handle.get_webview_window("main") else {
-        return;
-    };
-    if window.is_visible().unwrap_or(false) {
-        log::debug!("tray click: hiding window");
-        let _ = window.hide();
+    if !toggle_panel_at(app_handle, rect.position, rect.size) {
         return;
     }
-    log::debug!("tray click: showing window");
-    let _ = window.show();
-    let _ = window.set_focus();
-    position_window_at_tray_icon(&window, rect.position, rect.size);
     if let Some(provider_id) = tray.id().as_ref().strip_prefix(PROVIDER_TRAY_PREFIX) {
         let _ = app_handle.emit("tray:navigate", provider_id);
     }
+}
+
+/// A click on a tray icon or the taskbar strip (`position`/`size` = what was clicked): hides a
+/// visible panel, otherwise shows it above that spot, or where the user left it when "Remember
+/// position" is on. Returns whether the panel is now shown.
+pub fn toggle_panel_at(
+    app_handle: &AppHandle,
+    position: tauri::Position,
+    size: tauri::Size,
+) -> bool {
+    let Some(window) = app_handle.get_webview_window("main") else {
+        return false;
+    };
+    if window.is_visible().unwrap_or(false) {
+        log::debug!("panel click: hiding window");
+        let _ = window.hide();
+        return false;
+    }
+    log::debug!("panel click: showing window");
+    let _ = window.show();
+    let _ = window.set_focus();
+    match remembered_position(&window) {
+        Some(spot) => place_at_remembered(&window, spot),
+        None => position_window_at_tray_icon(&window, position, size),
+    }
+    true
 }
 
 #[derive(serde::Deserialize)]
@@ -352,7 +370,9 @@ pub fn set_provider_tray_icons(
     icons: Vec<ProviderTrayIcon>,
 ) -> Result<(), String> {
     if icons.len() > MAX_PROVIDER_TRAY_ICONS {
-        return Err(format!("at most {MAX_PROVIDER_TRAY_ICONS} provider tray icons"));
+        return Err(format!(
+            "at most {MAX_PROVIDER_TRAY_ICONS} provider tray icons"
+        ));
     }
     let state = app_handle
         .try_state::<ProviderTrays>()
@@ -406,46 +426,150 @@ pub fn set_provider_tray_icons(
         }
     }
     if created {
-        promote_new_tray_icons_later();
+        promote_tray_icons_later();
     }
     Ok(())
 }
 
-/// Windows puts new tray icons in the overflow (^). The user picked "one icon per provider" to see
-/// them next to the clock, so mark our icons as shown, like Settings > Taskbar > Other system tray
+/// Windows puts new tray icons in the overflow (^). Mark ours (the app icon, and the provider icons
+/// the user asked for) as shown next to the clock, like Settings > Taskbar > Other system tray
 /// icons does. Only entries without a user choice yet: an icon the user turned off stays off.
-/// Explorer writes an icon's entry shortly after the icon appears, hence the delay.
-fn promote_new_tray_icons_later() {
+/// Explorer writes an icon's entry some time after the icon appears (longer on a first run or at
+/// sign-in), so look a few times.
+pub fn promote_tray_icons_later() {
     #[cfg(windows)]
     std::thread::spawn(|| {
-        use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
-        use winreg::RegKey;
-        std::thread::sleep(std::time::Duration::from_secs(2));
-        let Some(exe_name) = std::env::current_exe().ok().and_then(|exe| {
-            exe.file_name()
-                .map(|name| name.to_string_lossy().to_lowercase())
-        }) else {
-            return;
+        for _ in 0..10 {
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            promote_unset_tray_icons();
+        }
+    });
+}
+
+#[cfg(windows)]
+fn promote_unset_tray_icons() {
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
+    use winreg::RegKey;
+    let Some(exe_name) = std::env::current_exe().ok().and_then(|exe| {
+        exe.file_name()
+            .map(|name| name.to_string_lossy().to_lowercase())
+    }) else {
+        return;
+    };
+    let Ok(settings) =
+        RegKey::predef(HKEY_CURRENT_USER).open_subkey(r"Control Panel\NotifyIconSettings")
+    else {
+        return;
+    };
+    for name in settings.enum_keys().flatten() {
+        let Ok(entry) = settings.open_subkey_with_flags(&name, KEY_READ | KEY_WRITE) else {
+            continue;
         };
-        let Ok(settings) =
-            RegKey::predef(HKEY_CURRENT_USER).open_subkey(r"Control Panel\NotifyIconSettings")
-        else {
-            return;
-        };
-        for name in settings.enum_keys().flatten() {
-            let Ok(entry) = settings.open_subkey_with_flags(&name, KEY_READ | KEY_WRITE) else {
-                continue;
-            };
-            // Paths under Program Files are stored with a known-folder GUID prefix; match the file name.
-            let path: String = entry.get_value("ExecutablePath").unwrap_or_default();
-            let ours = path.to_lowercase().ends_with(&format!(r"\{exe_name}"));
-            if ours && entry.get_raw_value("IsPromoted").is_err() {
-                if let Err(error) = entry.set_value("IsPromoted", &1u32) {
-                    log::warn!("could not show tray icon {name} next to the clock: {error}");
+        // Paths under Program Files are stored with a known-folder GUID prefix
+        // ({6D809377-...}\OpenTokenUsage\opentokenusage.exe): match the file name.
+        let path: String = entry.get_value("ExecutablePath").unwrap_or_default();
+        let ours = path.to_lowercase().ends_with(&format!(r"\{exe_name}"));
+        if ours && entry.get_raw_value("IsPromoted").is_err() {
+            match entry.set_value("IsPromoted", &1u32) {
+                Ok(()) => log::info!("tray icon {name} shown next to the clock"),
+                Err(error) => {
+                    log::warn!("could not show tray icon {name} next to the clock: {error}")
                 }
             }
         }
+    }
+}
+
+const REMEMBER_POSITION_KEY: &str = "rememberPanelPosition";
+const PANEL_POSITION_KEY: &str = "panelPosition";
+
+/// The last position we set ourselves; a move to anywhere else is the user dragging the panel.
+fn placed_slot() -> &'static Mutex<Option<(i32, i32)>> {
+    static SLOT: OnceLock<Mutex<Option<(i32, i32)>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
+}
+
+fn place(window: &tauri::WebviewWindow, x: i32, y: i32) {
+    if let Ok(mut slot) = placed_slot().lock() {
+        *slot = Some((x, y));
+    }
+    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
+/// The settings store, if "Remember position" is on.
+fn remember_position_store(
+    app_handle: &AppHandle,
+) -> Option<std::sync::Arc<tauri_plugin_store::Store<tauri::Wry>>> {
+    let store = app_handle.store("settings.json").ok()?;
+    let enabled = store
+        .get(REMEMBER_POSITION_KEY)
+        .and_then(|value| value.as_bool())
+        == Some(true);
+    enabled.then_some(store)
+}
+
+/// With "Remember position" on: where the user last dragged the panel (outer top-left, physical
+/// px), if that spot is still on a screen (a monitor may have been unplugged since).
+fn remembered_position(window: &tauri::WebviewWindow) -> Option<(i32, i32)> {
+    let store = remember_position_store(window.app_handle())?;
+    let saved = store.get(PANEL_POSITION_KEY)?;
+    let x = i32::try_from(saved.get("x")?.as_i64()?).ok()?;
+    let y = i32::try_from(saved.get("y")?.as_i64()?).ok()?;
+    let width = window.outer_size().ok()?.width as i32;
+    let title_bar = (x + width / 2, y + 8);
+    window
+        .available_monitors()
+        .ok()?
+        .iter()
+        .map(work_area_of)
+        .any(|area| contains(area, title_bar))
+        .then_some((x, y))
+}
+
+fn contains(area: (i32, i32, i32, i32), (x, y): (i32, i32)) -> bool {
+    x >= area.0 && x < area.2 && y >= area.1 && y < area.3
+}
+
+/// Puts the panel at the remembered spot, moved only as much as its current height needs to fit.
+fn place_at_remembered(window: &tauri::WebviewWindow, (x, y): (i32, i32)) {
+    let Ok(size) = window.outer_size() else {
+        return;
+    };
+    let (width, height) = (size.width as i32, size.height as i32);
+    let area = window.available_monitors().ok().and_then(|monitors| {
+        monitors
+            .iter()
+            .map(work_area_of)
+            .find(|area| contains(*area, (x + width / 2, y + 8)))
     });
+    let Some(area) = area else {
+        return;
+    };
+    let (x, y) = fit_into(x, y, width, height, area);
+    place(window, x, y);
+}
+
+/// Pure clamp (physical px): keep the top-left unless the panel would stick out of the work area.
+fn fit_into(x: i32, y: i32, width: i32, height: i32, area: (i32, i32, i32, i32)) -> (i32, i32) {
+    let (left, top, right, bottom) = area;
+    (
+        x.min(right - width).max(left),
+        y.min(bottom - height).max(top),
+    )
+}
+
+/// Window moved: with "Remember position" on, a move we didn't make is the user's drag; keep it.
+pub fn panel_moved(window: &tauri::WebviewWindow, position: tauri::PhysicalPosition<i32>) {
+    let ours = placed_slot().lock().ok().and_then(|slot| *slot) == Some((position.x, position.y));
+    if ours || !window.is_visible().unwrap_or(false) {
+        return;
+    }
+    if let Some(store) = remember_position_store(window.app_handle()) {
+        store.set(
+            PANEL_POSITION_KEY,
+            serde_json::json!({ "x": position.x, "y": position.y }),
+        );
+    }
 }
 
 /// Position the window above the tray icon, centered horizontally.
@@ -523,7 +647,12 @@ fn work_area_of(monitor: &tauri::Monitor) -> (i32, i32, i32, i32) {
 /// Keep the panel's bottom edge just above the taskbar after it is shown or resized, so a short
 /// view never leaves a gap under the panel. Uses the tray-click anchor when there is one;
 /// otherwise (shortcut / menu) the panel goes to the bottom-right corner of the work area.
+/// With "Remember position", the panel keeps the spot the user dragged it to instead.
 pub fn anchor_panel(window: &tauri::WebviewWindow) {
+    if let Some(spot) = remembered_position(window) {
+        place_at_remembered(window, spot);
+        return;
+    }
     let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
         return;
     };
@@ -552,7 +681,7 @@ pub fn anchor_panel(window: &tauri::WebviewWindow) {
         size.height as i32,
         area,
     );
-    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    place(window, x, y);
 }
 
 /// Position the window above the tray icon, centered horizontally on it.
@@ -604,7 +733,7 @@ fn position_window_at_tray_icon(
         size.height as i32,
         area,
     );
-    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    place(window, x, y);
 }
 
 #[cfg(test)]
@@ -615,7 +744,10 @@ mod decode_rgba_tests {
     #[test]
     fn accepts_exactly_the_announced_image() {
         let pixels = BASE64_STANDARD.encode([7u8; 2 * 2 * 4]);
-        assert_eq!(decode_rgba(&pixels, 2, 2, (256, 256)).unwrap(), vec![7u8; 16]);
+        assert_eq!(
+            decode_rgba(&pixels, 2, 2, (256, 256)).unwrap(),
+            vec![7u8; 16]
+        );
     }
 
     #[test]
@@ -631,7 +763,7 @@ mod decode_rgba_tests {
 
 #[cfg(test)]
 mod flyout_tests {
-    use super::flyout_origin;
+    use super::{fit_into, flyout_origin};
 
     const AREA: (i32, i32, i32, i32) = (0, 0, 2560, 1392); // 1440p screen, 48px taskbar
 
@@ -646,5 +778,12 @@ mod flyout_tests {
     fn clamps_into_the_work_area() {
         assert_eq!(flyout_origin(2400, 1380, 400, 541, AREA), (2160, 839)); // off the right edge
         assert_eq!(flyout_origin(-50, 1380, 400, 2000, AREA), (0, 0)); // taller than the screen
+    }
+
+    #[test]
+    fn remembered_spot_moves_only_as_much_as_needed() {
+        assert_eq!(fit_into(100, 200, 400, 541, AREA), (100, 200)); // fits: stays put
+        assert_eq!(fit_into(100, 1000, 400, 541, AREA), (100, 851)); // taller view: up to fit
+        assert_eq!(fit_into(2400, -20, 400, 541, AREA), (2160, 0)); // dragged past the edges
     }
 }

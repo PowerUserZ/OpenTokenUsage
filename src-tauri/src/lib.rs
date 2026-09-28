@@ -1,3 +1,4 @@
+mod alert_sound;
 mod config;
 mod local_http_api;
 mod log_path;
@@ -473,63 +474,31 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
         .collect()
 }
 
-/// On Windows 11, newly added tray icons go into the overflow area by default.
-/// This function searches the registry for our icon entry and sets IsPromoted=1
-/// so it appears in the visible part of the taskbar (next to the clock).
-/// Only promotes once — if the user later hides it, Windows remembers that choice.
-#[cfg(target_os = "windows")]
-fn promote_tray_icon(exe_path: &str) {
-    let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
-    let base = match hkcu.open_subkey("Control Panel\\NotifyIconSettings") {
-        Ok(k) => k,
-        Err(_) => return,
-    };
-
-    let exe_lower = exe_path.to_lowercase();
-
-    for subkey_name in base.enum_keys().filter_map(|r| r.ok()) {
-        let subkey = match base.open_subkey_with_flags(
-            &subkey_name,
-            winreg::enums::KEY_READ | winreg::enums::KEY_WRITE,
-        ) {
-            Ok(k) => k,
-            Err(_) => continue,
-        };
-
-        let path: String = match subkey.get_value("ExecutablePath") {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
-
-        // Use canonical path comparison to prevent spoofing via substring matching
-        let path_match = match (
-            std::fs::canonicalize(&path),
-            std::fs::canonicalize(exe_path),
-        ) {
-            (Ok(a), Ok(b)) => a == b,
-            _ => path.to_lowercase() == exe_lower,
-        };
-        if !path_match {
-            continue;
-        }
-
-        // Found our icon entry — check if already promoted
-        let promoted: u32 = subkey.get_value("IsPromoted").unwrap_or(0);
-        if promoted == 0 {
-            let _ = subkey.set_value("IsPromoted", &1u32);
-            log::info!("Tray icon promoted to visible area");
-        }
-        return;
-    }
-    log::debug!("Tray icon registry entry not found yet (first launch)");
+/// An installer running as SYSTEM (winget through Intune or an auto-updater) launches the app in
+/// session 0, where no one can see it, yet it would keep running and hold the local API port.
+#[cfg(windows)]
+fn in_service_session() -> bool {
+    use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
+    use windows_sys::Win32::System::Threading::GetCurrentProcessId;
+    let mut session = u32::MAX;
+    unsafe { ProcessIdToSessionId(GetCurrentProcessId(), &mut session) != 0 && session == 0 }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    if in_service_session() {
+        return;
+    }
+
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
     let _guard = runtime.enter();
 
     tauri::Builder::default()
+        // First, so a second launch (Start menu, installer) only opens the running app's panel.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            panel::show_panel(app);
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -569,7 +538,9 @@ pub fn run() {
             setup_actions::run_in_terminal,
             setup_actions::open_env_editor,
             setup_actions::open_taskbar_settings,
-            taskbar_strip::set_taskbar_strip
+            taskbar_strip::set_taskbar_strip,
+            alert_sound::play_alert_sound,
+            alert_sound::save_custom_alert_sound
         ])
         .setup(|app| {
             use tauri::Manager;
@@ -579,6 +550,12 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_shadow(false);
                 window_style::apply(&window);
+                let panel = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Moved(position) = event {
+                        tray::panel_moved(&panel, *position);
+                    }
+                });
             }
 
             let version = app.package_info().version.to_string();
@@ -614,19 +591,6 @@ pub fn run() {
             local_http_api::start_server();
 
             tray::create(app.handle())?;
-
-            // On Windows, try to promote the tray icon to the visible area
-            // (not hidden in the overflow) on first launch.
-            #[cfg(target_os = "windows")]
-            {
-                let exe = std::env::current_exe().unwrap_or_default();
-                let exe_str = exe.to_string_lossy().to_string();
-                std::thread::spawn(move || {
-                    // Give Explorer a moment to register the icon
-                    std::thread::sleep(std::time::Duration::from_secs(2));
-                    promote_tray_icon(&exe_str);
-                });
-            }
 
             // Native auto-updater, restored to match upstream. Requires the
             // signed updater artifacts (latest.json + .sig) produced by the
@@ -680,7 +644,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{InFlightProbe, MAX_CONCURRENT_PROBES, catch_probe_panic, probe_worker_count};
+    use super::{catch_probe_panic, probe_worker_count, InFlightProbe, MAX_CONCURRENT_PROBES};
 
     #[test]
     fn probe_panic_still_yields_an_error_result() {

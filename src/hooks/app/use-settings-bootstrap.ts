@@ -25,6 +25,9 @@ import {
   loadLanguage,
   loadTrayHiddenPlugins,
   loadUsageAlerts,
+  loadAlertSettings,
+  loadPanelPinned,
+  loadRememberPanelPosition,
   loadTrayLogoColors,
   loadTaskbarStrip,
   loadTaskbarStripStyle,
@@ -39,6 +42,7 @@ import {
   loadTimeFormatMode,
   normalizePluginSettings,
   savePluginSettings,
+  type AlertSettings,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type GlobalShortcut,
@@ -70,6 +74,9 @@ type UseSettingsBootstrapArgs = {
   setTrayPercentColor: (value: TrayPercentColor) => void
   setTrayHiddenPlugins: (value: string[]) => void
   setUsageAlerts: (value: boolean) => void
+  setAlertSettings: (value: AlertSettings) => void
+  setPanelPinned: (value: boolean) => void
+  setRememberPanelPosition: (value: boolean) => void
   setTrayLogoColors: (value: boolean) => void
   setTaskbarStrip: (value: boolean) => void
   setTaskbarStripStyle: (value: TaskbarStripStyle) => void
@@ -94,6 +101,9 @@ export function useSettingsBootstrap({
   setTrayPercentColor,
   setTrayHiddenPlugins,
   setUsageAlerts,
+  setAlertSettings,
+  setPanelPinned,
+  setRememberPanelPosition,
   setTrayLogoColors,
   setTaskbarStrip,
   setTaskbarStripStyle,
@@ -127,10 +137,22 @@ export function useSettingsBootstrap({
         console.error("Failed to load tray-hidden providers:", error)
       }
       try {
-        const alerts = await loadUsageAlerts()
-        if (isMounted) setUsageAlerts(alerts)
+        const [alerts, alertSettings] = await Promise.all([loadUsageAlerts(), loadAlertSettings()])
+        if (isMounted) {
+          setUsageAlerts(alerts)
+          setAlertSettings(alertSettings)
+        }
       } catch (error) {
         console.error("Failed to load usage alerts setting:", error)
+      }
+      try {
+        const [pinned, rememberPosition] = await Promise.all([loadPanelPinned(), loadRememberPanelPosition()])
+        if (isMounted) {
+          setPanelPinned(pinned)
+          setRememberPanelPosition(rememberPosition)
+        }
+      } catch (error) {
+        console.error("Failed to load panel settings:", error)
       }
       try {
         const [logoColors, strip, stripStyle] = await Promise.all([
@@ -291,6 +313,9 @@ export function useSettingsBootstrap({
     setTrayPercentColor,
     setTrayHiddenPlugins,
     setUsageAlerts,
+    setAlertSettings,
+    setPanelPinned,
+    setRememberPanelPosition,
     setTrayLogoColors,
     setTaskbarStrip,
     setTaskbarStripStyle,

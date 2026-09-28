@@ -7,12 +7,10 @@ type ProgressLine = Extract<MetricLine, { type: "progress" }>
 export type UsageAlert = {
   title: string
   body: string
-  /** Dedupe keys to remember once this alert is sent (a 95% alert also covers 80%). */
+  /** Dedupe keys to remember once this alert is sent (a 95% alert also covers the lower levels). */
   keys: string[]
 }
 
-/** Usage levels (percent) that trigger a notification, highest first. */
-const LEVELS = [95, 80]
 /** Pace alerts only once a window is at least half used, so early spikes stay quiet. */
 const PACE_MIN_FRACTION = 0.5
 /** A reset is worth announcing only if the window was nearly full before it. */
@@ -35,8 +33,11 @@ export function collectUsageAlerts(args: {
   previousLines?: MetricLine[]
   sent: ReadonlySet<string>
   nowMs: number
+  /** Usage levels (percent) that notify, from the settings. */
+  levels: readonly number[]
 }): UsageAlert[] {
   const { pluginId, providerName, lines, previousLines, sent, nowMs } = args
+  const levels = [...args.levels].sort((a, b) => b - a)
   const alerts: UsageAlert[] = []
   const previousByLabel = new Map(progressLines(previousLines).map((line) => [line.label, line]))
 
@@ -61,9 +62,9 @@ export function collectUsageAlerts(args: {
     }
 
     // Thresholds: announce only the highest level crossed; it also marks the lower ones as sent.
-    const level = LEVELS.find((value) => fraction * 100 >= value)
+    const level = levels.find((value) => fraction * 100 >= value)
     if (level !== undefined) {
-      const keys = LEVELS.filter((value) => value <= level).map((value) => `${base}|t${value}`)
+      const keys = levels.filter((value) => value <= level).map((value) => `${base}|t${value}`)
       if (!sent.has(keys[0]!)) {
         const timeLeft = Number.isFinite(resetsAtMs) ? formatCompactDuration(resetsAtMs - nowMs) : null
         alerts.push({

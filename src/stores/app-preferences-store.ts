@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import {
+  DEFAULT_ALERT_SETTINGS,
   DEFAULT_AUTO_UPDATE_INTERVAL,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
@@ -12,6 +13,7 @@ import {
   DEFAULT_TRAY_METRIC,
   DEFAULT_TRAY_PERCENT_COLOR,
   DEFAULT_TRAY_PROVIDER,
+  type AlertSettings,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type GlobalShortcut,
@@ -39,6 +41,9 @@ type AppPreferencesStore = {
   trayPercentColor: TrayPercentColor
   trayHiddenPlugins: string[]
   usageAlerts: boolean
+  alertSettings: AlertSettings
+  panelPinned: boolean
+  rememberPanelPosition: boolean
   trayLogoColors: boolean
   taskbarStrip: boolean
   taskbarStripStyle: TaskbarStripStyle
@@ -55,6 +60,9 @@ type AppPreferencesStore = {
   setTrayPercentColor: (value: TrayPercentColor) => void
   setTrayHiddenPlugins: (value: string[]) => void
   setUsageAlerts: (value: boolean) => void
+  setAlertSettings: (value: AlertSettings) => void
+  setPanelPinned: (value: boolean) => void
+  setRememberPanelPosition: (value: boolean) => void
   setTrayLogoColors: (value: boolean) => void
   setTaskbarStrip: (value: boolean) => void
   setTaskbarStripStyle: (value: TaskbarStripStyle) => void
@@ -75,6 +83,9 @@ const initialState = {
   trayPercentColor: DEFAULT_TRAY_PERCENT_COLOR,
   trayHiddenPlugins: [] as string[],
   usageAlerts: true,
+  alertSettings: DEFAULT_ALERT_SETTINGS,
+  panelPinned: false,
+  rememberPanelPosition: false,
   trayLogoColors: true,
   taskbarStrip: false,
   taskbarStripStyle: DEFAULT_TASKBAR_STRIP_STYLE,
@@ -95,6 +106,9 @@ export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
   setTrayPercentColor: (value) => set({ trayPercentColor: value }),
   setTrayHiddenPlugins: (value) => set({ trayHiddenPlugins: value }),
   setUsageAlerts: (value) => set({ usageAlerts: value }),
+  setAlertSettings: (value) => set({ alertSettings: value }),
+  setPanelPinned: (value) => set({ panelPinned: value }),
+  setRememberPanelPosition: (value) => set({ rememberPanelPosition: value }),
   setTrayLogoColors: (value) => set({ trayLogoColors: value }),
   setTaskbarStrip: (value) => set({ taskbarStrip: value }),
   setTaskbarStripStyle: (value) => set({ taskbarStripStyle: value }),

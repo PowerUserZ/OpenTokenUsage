@@ -22,11 +22,11 @@ The app checks for new releases in-app and updates itself.
 
 ## What It Does
 
-- **One glance.** All your AI tools in one panel, opened from the tray or a global shortcut.
+- **One glance.** All your AI tools in one panel, opened from the tray or a global shortcut. Pin it above other windows, or have it open where you left it.
 - **Next to the clock.** The tray shows the app icon, a percent, bars, or one number or logo ring per provider.
 - **Taskbar strip (experimental).** Provider logos with session and weekly usage right in the taskbar, in your own fonts, colors and order.
 - **Pace.** Every limit says whether you're ahead or behind, and when it runs out at this rate.
-- **Notifications.** At 80% and 95%, when you're on pace to run out before a reset, and when a limit resets.
+- **Notifications.** At the usage levels you pick, when you're on pace to run out before a reset, and when a limit resets, with a built-in sound or your own.
 - **One-click fixes.** Errors come with the fix: run the login command in a terminal, or open the provider's API key page and Windows' Environment Variables.
 - **Service status.** A badge on the card when the provider's status page reports an incident.
 - **Windows 11 native.** Mica, your accent color, a pure black dark theme and a light one.

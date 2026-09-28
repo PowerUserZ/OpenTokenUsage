@@ -68,6 +68,10 @@ function App() {
     setTrayHiddenPlugins,
     usageAlerts,
     setUsageAlerts,
+    alertSettings,
+    setAlertSettings,
+    setPanelPinned,
+    setRememberPanelPosition,
     trayLogoColors,
     setTrayLogoColors,
     taskbarStrip,
@@ -98,6 +102,10 @@ function App() {
       setTrayHiddenPlugins: state.setTrayHiddenPlugins,
       usageAlerts: state.usageAlerts,
       setUsageAlerts: state.setUsageAlerts,
+      alertSettings: state.alertSettings,
+      setAlertSettings: state.setAlertSettings,
+      setPanelPinned: state.setPanelPinned,
+      setRememberPanelPosition: state.setRememberPanelPosition,
       trayLogoColors: state.trayLogoColors,
       taskbarStrip: state.taskbarStrip,
       taskbarStripStyle: state.taskbarStripStyle,
@@ -142,7 +150,7 @@ function App() {
     [pluginSettings, trayHiddenPlugins]
   )
 
-  useUsageAlerts({ pluginStates, pluginsMeta, enabled: usageAlerts })
+  useUsageAlerts({ pluginStates, pluginsMeta, enabled: usageAlerts, settings: alertSettings })
 
   const { scheduleTrayIconUpdate, traySettingsPreview } = useTrayIcon({
     pluginsMeta,
@@ -199,6 +207,9 @@ function App() {
     setTrayPercentColor,
     setTrayHiddenPlugins,
     setUsageAlerts,
+    setAlertSettings,
+    setPanelPinned,
+    setRememberPanelPosition,
     setTrayLogoColors,
     setTaskbarStrip,
     setTaskbarStripStyle,

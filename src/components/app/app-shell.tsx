@@ -1,5 +1,7 @@
+import { useEffect } from "react"
 import { useShallow } from "zustand/react/shallow"
-import { invoke } from "@tauri-apps/api/core"
+import { invoke, isTauri } from "@tauri-apps/api/core"
+import { getCurrentWindow } from "@tauri-apps/api/window"
 import { AppContent, type AppContentActionProps } from "@/components/app/app-content"
 import { PanelFooter } from "@/components/panel-footer"
 import { SideNav, type NavPlugin, type PluginContextAction } from "@/components/side-nav"
@@ -10,6 +12,9 @@ import { usePanel } from "@/hooks/app/use-panel"
 import type { useAppUpdate } from "@/hooks/use-app-update"
 import { useWindowsAppearance } from "@/hooks/use-windows-appearance"
 import { t } from "@/lib/i18n"
+import { savePanelPinned } from "@/lib/settings"
+import { cn } from "@/lib/utils"
+import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
 
 type AppShellProps = {
@@ -27,13 +32,50 @@ type AppShellProps = {
   appUpdate: ReturnType<typeof useAppUpdate>
 }
 
-/** Windows 11 title bar: app icon + caption, and a Fluent caption button that hides to the tray. */
+const FLUENT_ICONS = { fontFamily: '"Segoe Fluent Icons", "Segoe MDL2 Assets"' }
+
+/** Caption button that keeps the panel above other windows; stored, and applied on every start. */
+function PinButton() {
+  const pinned = useAppPreferencesStore((state) => state.panelPinned)
+  const setPinned = useAppPreferencesStore((state) => state.setPanelPinned)
+  useEffect(() => {
+    if (!isTauri()) return
+    getCurrentWindow()
+      .setAlwaysOnTop(pinned)
+      .catch((error) => console.error("Failed to keep the panel on top:", error))
+  }, [pinned])
+  const label = t(pinned ? "app.unpin" : "app.pin")
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setPinned(!pinned)
+        void savePanelPinned(!pinned).catch((error) => console.error("Failed to save the pin:", error))
+      }}
+      className={cn(
+        "titlebar-button inline-flex items-center justify-center w-[46px] h-8 hover:bg-accent active:bg-accent/60 transition-colors",
+        pinned ? "text-primary" : "text-foreground"
+      )}
+      title={label}
+      aria-label={label}
+      aria-pressed={pinned}
+    >
+      {/* Segoe Fluent Icons: Pin / PinnedFill */}
+      <span aria-hidden className="text-[12px]" style={FLUENT_ICONS}>
+        {pinned ? "" : ""}
+      </span>
+    </button>
+  )
+}
+
+/** Windows 11 title bar: app icon + caption, a pin, and a Fluent caption button that hides to the tray. */
 function TitleBar() {
   return (
     <div data-tauri-drag-region className="titlebar flex items-center h-8 pl-3 shrink-0">
       <img src="/icon.png" alt="" className="size-4 pointer-events-none" draggable={false} />
       <span className="ml-2.5 text-xs text-foreground/80 select-none pointer-events-none">OpenTokenUsage</span>
       <span className="flex-1" />
+      <PinButton />
       <button
         type="button"
         onClick={() => invoke("hide_panel")}
@@ -41,7 +83,7 @@ function TitleBar() {
         title={t("app.minimize")}
         aria-label={t("app.minimize")}
       >
-        <span aria-hidden className="text-[10px]" style={{ fontFamily: '"Segoe Fluent Icons", "Segoe MDL2 Assets"' }}>
+        <span aria-hidden className="text-[10px]" style={FLUENT_ICONS}>
           {""}
         </span>
       </button>

@@ -17,8 +17,8 @@ function line(used: number, resetsInMs: number, periodMs = 5 * HOUR): MetricLine
   }
 }
 
-const collect = (lines: MetricLine[], sent: string[] = [], previousLines?: MetricLine[]) =>
-  collectUsageAlerts({ pluginId: "claude", providerName: "Claude", lines, previousLines, sent: new Set(sent), nowMs: NOW })
+const collect = (lines: MetricLine[], sent: string[] = [], previousLines?: MetricLine[], levels = [80, 95]) =>
+  collectUsageAlerts({ pluginId: "claude", providerName: "Claude", lines, previousLines, sent: new Set(sent), nowMs: NOW, levels })
 
 describe("collectUsageAlerts", () => {
   it("stays quiet below the thresholds and at an easy pace", () => {
@@ -37,6 +37,14 @@ describe("collectUsageAlerts", () => {
     expect(alerts).toHaveLength(1)
     expect(alerts[0]!.keys).toHaveLength(2)
     expect(collect([line(98, HOUR)], alerts[0]!.keys)).toEqual([])
+  })
+
+  it("uses the levels from the settings", () => {
+    expect(collect([line(55, 4 * HOUR)], [], undefined, [50, 100]).map((a) => a.title)).toEqual(["Claude: Session at 55%"])
+    const full = collect([line(100, HOUR)], [], undefined, [50, 100])
+    expect(full[0]!.keys).toEqual(["claude|Session|" + line(100, HOUR).resetsAt + "|t100", "claude|Session|" + line(100, HOUR).resetsAt + "|t50"])
+    // No levels picked: no threshold alert (a pace alert can still come; here it resets first).
+    expect(collect([line(97, 60 * 1000)], [], undefined, [])).toEqual([])
   })
 
   it("warns when the pace runs out before the reset", () => {

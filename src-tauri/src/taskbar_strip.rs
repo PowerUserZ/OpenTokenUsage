@@ -209,9 +209,22 @@ mod win {
                 }
                 // Clicking the strip must not take focus from the panel or the taskbar.
                 WM_MOUSEACTIVATE => MA_NOACTIVATE as LRESULT,
+                // Open the panel above the strip, like a tray icon. Hand off to the main thread:
+                // this one shares Explorer's input queue and must never wait on the app.
                 WM_LBUTTONUP => {
+                    let mut strip: RECT = std::mem::zeroed();
                     if let Some(app) = APP.get() {
-                        crate::panel::toggle_panel(app);
+                        if GetWindowRect(hwnd, &mut strip) != 0 {
+                            let handle = app.clone();
+                            let _ = app.run_on_main_thread(move || {
+                                let position = tauri::PhysicalPosition::new(strip.left, strip.top);
+                                let size = tauri::PhysicalSize::new(
+                                    (strip.right - strip.left).max(1) as u32,
+                                    (strip.bottom - strip.top).max(1) as u32,
+                                );
+                                crate::tray::toggle_panel_at(&handle, position.into(), size.into());
+                            });
+                        }
                     }
                     0
                 }
@@ -247,13 +260,14 @@ mod win {
             }
             let notify = FindWindowExW(taskbar, null_mut(), wide("TrayNotifyWnd").as_ptr(), null());
             let mut tray: RECT = std::mem::zeroed();
-            let right =
-                if !notify.is_null() && GetWindowRect(notify, &mut tray) != 0 && tray.right > tray.left
-                {
-                    tray.left
-                } else {
-                    bar.right - 300 // ponytail: guess when Explorer stops exposing TrayNotifyWnd
-                };
+            let right = if !notify.is_null()
+                && GetWindowRect(notify, &mut tray) != 0
+                && tray.right > tray.left
+            {
+                tray.left
+            } else {
+                bar.right - 300 // ponytail: guess when Explorer stops exposing TrayNotifyWnd
+            };
             let x = right - bar.left - pixels.width - GAP;
             let y = (bar.bottom - bar.top - pixels.height) / 2;
             SetWindowPos(
@@ -287,7 +301,11 @@ mod win {
             let mut bits: *mut core::ffi::c_void = null_mut();
             let bitmap = CreateDIBSection(screen, &info, DIB_RGB_COLORS, &mut bits, null_mut(), 0);
             if !bitmap.is_null() && !bits.is_null() {
-                std::ptr::copy_nonoverlapping(pixels.bgra.as_ptr(), bits as *mut u8, pixels.bgra.len());
+                std::ptr::copy_nonoverlapping(
+                    pixels.bgra.as_ptr(),
+                    bits as *mut u8,
+                    pixels.bgra.len(),
+                );
                 let previous = SelectObject(memory, bitmap);
                 let size = SIZE {
                     cx: pixels.width,
@@ -334,9 +352,17 @@ mod tests {
     #[test]
     fn sizes_that_would_overflow_are_refused() {
         // 65536 x 65536 x 4 wraps to 0 in u32: an empty payload must not pass as that image.
-        let huge = StripImage { rgba: String::new(), width: 65536, height: 65536 };
+        let huge = StripImage {
+            rgba: String::new(),
+            width: 65536,
+            height: 65536,
+        };
         assert!(to_pixels(huge).is_err());
-        let wide = StripImage { rgba: String::new(), width: 5000, height: 40 };
+        let wide = StripImage {
+            rgba: String::new(),
+            width: 5000,
+            height: 40,
+        };
         assert!(to_pixels(wide).is_err());
     }
 

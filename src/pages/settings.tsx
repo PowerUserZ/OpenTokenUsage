@@ -15,26 +15,36 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { invoke } from "@tauri-apps/api/core";
-import { Eye, EyeOff, GripVertical } from "lucide-react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Eye, EyeOff, GripVertical, Play } from "lucide-react";
+import { useRef, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import { TaskbarStripSection } from "@/components/taskbar-strip-section";
 import { SegmentedControl, SettingsSection } from "@/components/settings-section";
+import { audioFileToWav, CUSTOM_SOUND_MAX_SECONDS } from "@/lib/alert-sound";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
+import { bytesToBase64 } from "@/lib/tray-provider-icons";
 import {
+  ALERT_SOUNDS,
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
   isPerProviderTrayStyle,
   MENUBAR_ICON_STYLE_OPTIONS,
   RESET_TIMER_DISPLAY_OPTIONS,
+  saveAlertSettings,
   saveLanguage,
+  saveRememberPanelPosition,
   saveTrayHiddenPlugins,
   saveTrayLogoColors,
   saveTaskbarStrip,
   saveUsageAlerts,
   THEME_OPTIONS,
   TIME_FORMAT_OPTIONS,
+  USAGE_ALERT_LEVELS,
+  type AlertSettings,
+  type AlertSound,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type GlobalShortcut,
@@ -273,6 +283,158 @@ function LanguageSection() {
   );
 }
 
+function playAlertSound(sound: AlertSound) {
+  invoke("play_alert_sound", { sound, preview: true }).catch((error) => console.error("play_alert_sound failed:", error));
+}
+
+/** Which usage levels notify, and the sound (bundled, Windows', or the user's own file). */
+function AlertOptions() {
+  const settings = useAppPreferencesStore((state) => state.alertSettings);
+  const setSettings = useAppPreferencesStore((state) => state.setAlertSettings);
+  const [fileError, setFileError] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const update = (next: AlertSettings) => {
+    setSettings(next);
+    void saveAlertSettings(next).catch((error) => console.error("Failed to save alert settings:", error));
+  };
+  const toggleLevel = (level: number) =>
+    update({
+      ...settings,
+      levels: settings.levels.includes(level)
+        ? settings.levels.filter((value) => value !== level)
+        : [...settings.levels, level].sort((a, b) => a - b),
+    });
+  const chooseSound = (sound: AlertSound) => {
+    update({ ...settings, sound });
+    playAlertSound(sound);
+  };
+  const applySoundFile = async (file: File) => {
+    setFileError(false);
+    try {
+      const wav = await audioFileToWav(file);
+      await invoke("save_custom_alert_sound", { wav: bytesToBase64(wav) });
+      update({ ...settings, sound: "custom", customSoundName: file.name });
+      playAlertSound("custom");
+    } catch (error) {
+      console.error("Failed to use the sound file:", error);
+      setFileError(true);
+    }
+  };
+
+  return (
+    <div className="mt-3 space-y-3">
+      <div>
+        <div className="mb-1 text-xs text-muted-foreground">{t("settings.alerts.levels")}</div>
+        {/* Like SegmentedControl, but any number of levels can be on. */}
+        <div className="flex gap-0.5 rounded-md border bg-secondary p-0.5" role="group" aria-label={t("settings.alerts.levels")}>
+          {USAGE_ALERT_LEVELS.map((level) => {
+            const on = settings.levels.includes(level);
+            return (
+              <button
+                key={level}
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggleLevel(level)}
+                className={cn(
+                  "h-7 min-w-0 flex-1 rounded-[3px] text-[13px] tabular-nums whitespace-nowrap transition-colors",
+                  on
+                    ? "bg-primary text-primary-foreground font-medium"
+                    : "text-foreground hover:bg-accent active:bg-accent/60"
+                )}
+              >
+                {level}%
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground" htmlFor="alert-sound">
+          {t("settings.alerts.sound")}
+        </label>
+        <div className="flex gap-1.5">
+          <select
+            id="alert-sound"
+            value={settings.sound}
+            onChange={(e) => chooseSound(e.target.value as AlertSound)}
+            className="fluent-control min-w-0 flex-1"
+          >
+            {ALERT_SOUNDS.filter((sound) => sound !== "custom" || settings.customSoundName).map((sound) => (
+              <option key={sound} value={sound}>
+                {sound === "custom" ? t("sound.custom", { name: settings.customSoundName ?? "" }) : t(`sound.${sound}`)}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => playAlertSound(settings.sound)}
+            disabled={settings.sound === "none"}
+            title={t("settings.alerts.play")}
+            aria-label={t("settings.alerts.play")}
+            className="fluent-control inline-flex w-9 shrink-0 items-center justify-center px-0 disabled:opacity-40"
+          >
+            <Play className="size-3.5" />
+          </button>
+        </div>
+        <button
+          type="button"
+          className="mt-1.5 text-xs text-primary underline-offset-2 hover:underline"
+          onClick={() => fileInput.current?.click()}
+        >
+          {t("settings.alerts.chooseFile")}
+        </button>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="audio/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) void applySoundFile(file);
+          }}
+        />
+        <p className={cn("mt-0.5 text-xs", fileError ? "text-destructive" : "text-muted-foreground")}>
+          {fileError ? t("settings.alerts.fileError") : t("settings.alerts.fileHint", { seconds: CUSTOM_SOUND_MAX_SECONDS })}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function PanelSection() {
+  const remember = useAppPreferencesStore((state) => state.rememberPanelPosition);
+  const setRemember = useAppPreferencesStore((state) => state.setRememberPanelPosition);
+  const toggle = async (next: boolean) => {
+    setRemember(next);
+    try {
+      // Turning it on keeps where the panel is right now.
+      const position = next && isTauri() ? await getCurrentWindow().outerPosition() : null;
+      await saveRememberPanelPosition(next, position);
+    } catch (error) {
+      console.error("Failed to save the remember-position setting:", error);
+    }
+  };
+  return (
+    <SettingsSection title={t("settings.panel.title")} description={t("settings.panel.desc")}>
+      <label className="flex items-start gap-2 text-[13px] select-none text-foreground">
+        <Checkbox
+          key={`remember-position-${remember}`}
+          checked={remember}
+          className="mt-0.5"
+          onCheckedChange={(checked) => void toggle(checked === true)}
+        />
+        <span>
+          {t("settings.panel.remember")}
+          <span className="block text-xs text-muted-foreground">{t("settings.panel.rememberHint")}</span>
+        </span>
+      </label>
+    </SettingsSection>
+  );
+}
+
 function NotificationsSection() {
   const usageAlerts = useAppPreferencesStore((state) => state.usageAlerts);
   const setUsageAlerts = useAppPreferencesStore((state) => state.setUsageAlerts);
@@ -292,6 +454,7 @@ function NotificationsSection() {
         />
         {t("settings.alerts.label")}
       </label>
+      {usageAlerts && <AlertOptions />}
     </SettingsSection>
   );
 }
@@ -568,6 +731,8 @@ export function SettingsPage({
       <LanguageSection />
 
       <GlobalShortcutSection globalShortcut={globalShortcut} onGlobalShortcutChange={onGlobalShortcutChange} />
+
+      <PanelSection />
 
       <NotificationsSection />
 

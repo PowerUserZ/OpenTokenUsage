@@ -52,8 +52,10 @@ This file holds the project facts that are easy to get wrong.
 - Tray styles `numbers`/`logos` = one tray icon per provider (`use-provider-tray-icons.ts` draws,
   `tray::set_provider_tray_icons` shows them and hides the app icon). Update icons in place, never
   recreate (Windows keys "show next to clock" on tray-icon's creation-counter uID). A hidden tray
-  icon rejects `setIcon`, so the app icon is redrawn after it's shown again. New icons are promoted
-  via `HKCU\Control Panel\NotifyIconSettings\*\IsPromoted` only when the user hasn't chosen yet.
+  icon rejects `setIcon`, so the app icon is redrawn after it's shown again. Our icons (the app icon
+  too) are promoted via `HKCU\Control Panel\NotifyIconSettings\*\IsPromoted` only when the user hasn't
+  chosen yet, matched by exe file name (Program Files paths are stored as `{GUID}\OpenTokenUsage\...`),
+  retried for 30 s because Explorer writes the entry late. Explorer applies the value live.
 - Taskbar strip (experimental, `taskbar_strip.rs`): a layered child window of `Shell_TrayWnd`
   left of `TrayNotifyWnd`, on its own thread (it shares Explorer's input queue: never block, never
   hold a lock across Win32 calls). Layered child windows need the Win8+ `<compatibility>` in
@@ -63,12 +65,23 @@ This file holds the project facts that are easy to get wrong.
   and order, max 6, independent of the nav order; per provider both/session/weekly; color scales
   in `TASKBAR_STRIP_COLOR_SCALES`, "base" = the text color). The strip and the tray styles that show numbers
   exclude each other: enabling the strip sets the tray to "icon", picking another style turns it off.
+  A strip click opens the panel above the strip (`tray::toggle_panel_at`, via `run_on_main_thread`).
+- Panel: the title bar pin (`panelPinned`) keeps it always on top. "Remember position": `tray.rs`
+  records every position it sets itself (`place`); any other move while visible is the user's drag
+  and is saved as `panelPosition` (outer top-left, physical px) in settings.json, then used by
+  `anchor_panel`/`toggle_panel_at`, clamped into the work area. Move the panel only through `place()`,
+  or your move is remembered as a drag.
 - Ring logos are sized by `measureLogoExtent` (how far the logo's pixels reach) so square logos stay
   inside the ring and round ones grow.
 - Themes: `dark` (default, pure black: classes `.dark.oled`) | `light`. `useSettingsTheme` also sets the
   window theme: Mica takes its tint from the window, so a light page on dark Windows needs it.
-- Notifications (`src/lib/usage-alerts.ts`, pure + tested): 80/95%, pace, reset; each once per
-  provider+line+window, keys persisted in settings (`sentUsageAlerts`).
+- Notifications (`src/lib/usage-alerts.ts`, pure + tested): the usage levels the user picks
+  (`alertSettings.levels`, default 80/95), pace, reset; each once per provider+line+window, keys
+  persisted in settings (`sentUsageAlerts`). Toasts are silent (an unpackaged app can't give a toast
+  its own sound): `alert_sound.rs` plays the chosen sound with PlaySound (the `Notification.Default`
+  alias, bundled `src-tauri/sounds/*.wav` from Kenney, CC0, ids test-synced with `ALERT_SOUNDS`, or
+  the user's file, converted to 16-bit PCM WAV in `src/lib/alert-sound.ts`) and skips it during Do
+  Not Disturb.
 - Status badge: optional `statusPageUrl` in plugin.json (Atlassian Statuspage `/api/v2/status.json`
   only — verify the URL returns that JSON before adding one).
 - Local HTTP API (127.0.0.1:6736) is loopback-only: no CORS, Host/Origin must be loopback. Don't add
@@ -94,7 +107,13 @@ This file holds the project facts that are easy to get wrong.
 ## Dependencies & releases
 - `bunfig.toml` has `minimumReleaseAge` (7 days): don't force newer packages.
 - Tauri JS packages and Rust crates must share **major.minor** (`@tauri-apps/api` ↔ `tauri`,
-  `@tauri-apps/plugin-x` ↔ `tauri-plugin-x`); the Tauri CLI refuses to build otherwise.
+  `@tauri-apps/plugin-x` ↔ `tauri-plugin-x`); the Tauri CLI refuses to build otherwise. Adding a
+  crate can silently bump `tauri` in Cargo.lock: check the lock diff (`tauri-plugin-single-instance`
+  is pinned `=2.4.5` because 2.5 needs tauri 2.12).
+- A second launch only shows the running app's panel (single-instance plugin), and the app exits at
+  once in session 0 (an installer running as SYSTEM). Both make the MSI's `AUTOLAUNCHAPP=True`
+  (Tauri's template starts the app after install) safe for winget: add
+  `InstallerSwitches: Custom: AUTOLAUNCHAPP=True` to the winget installer manifest (from 0.7.1).
 - Release: bump the version in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`
   (+ `Cargo.lock`), add a `## vX.Y.Z` section to `CHANGELOG.md` (required: it becomes the release
   body the in-app changelog shows), then push a `v*` tag → `publish.yml` (windows-latest) builds

@@ -39,6 +39,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-autostart = "2.5.1"
+tauri-plugin-single-instance = "=2.4.5"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 regex-lite = "0.1.9"
 aes-gcm = "0.10.3"
@@ -50,7 +51,9 @@ winreg = "0.55"
 # Already pulled in by tauri; listed so we can read the applied backdrop result.
 window-vibrancy = "0.6"
 windows-version = "0.1"
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Media_Audio", "Win32_System_LibraryLoader", "Win32_System_RemoteDesktop", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
+# Already pulled in by the notification plugin; used to read Do Not Disturb.
+windows = { version = "0.62", features = ["UI_Notifications"] }
 
 [dev-dependencies]
 serial_test = "3.5.0"

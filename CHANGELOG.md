@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### New Features
+- Notification sounds: Windows' default, eight built-in sounds or your own file (MP3, WAV, OGG or M4A, cut at 5 seconds), with a play button to preview. Notifications were silent before, and the sound waits while Do Not Disturb is on
+- Choose the usage levels that notify you: 50, 60, 70, 80, 90, 95 and 100%
+- A pin in the title bar keeps the panel above other windows
+- Remember position: drag the panel by its title bar and it opens in the same place next time
+
+### Changes
+- Checks for app updates every 6 hours instead of every 15 minutes
+
+### Bug Fixes
+- The installed app's tray icon is shown next to the clock; it always landed under ^
+- Clicking the taskbar strip opens the panel right above the strip, not above the hidden icons
+- Starting the app while it runs (Start menu, installer) opens its panel instead of a second copy
+
 ## v0.7.0
 
 A Windows 11 redesign with new ways to watch your limits from the taskbar, 11 languages, and a security hardening pass.
