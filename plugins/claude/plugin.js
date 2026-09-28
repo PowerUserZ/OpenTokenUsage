@@ -9,16 +9,9 @@
   const SCOPES =
     "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
-
-  // Rate-limit state. NOTE: the host runs every probe in a fresh runtime, so module scope only
-  // lives for one probe in production (tests reuse one instance); persist cross-probe state to disk.
-  const MIN_USAGE_FETCH_INTERVAL_MS = 5 * 60 * 1000  // never poll more than once per 5 min
-  const DEFAULT_RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000 // fallback when no Retry-After header
-  let rateLimitedUntilMs = 0  // epoch ms; 0 = not rate-limited
-  let lastUsageFetchMs = 0    // epoch ms of the most-recent API attempt
-  let cachedUsageData = null  // last successful API response body (parsed JSON)
-  let lastCredentialFingerprint = null // sha256 of the login's token pair; null until first probe
-  let livePlan = null // { fingerprint, plan } from /api/oauth/profile; plan null = lookup failed
+  // NOTE: the host runs every probe in a fresh runtime, so nothing at module scope survives
+  // between probes. The host remembers 429s (answering them without a network call); anything
+  // else that must persist lives in pluginDataDir.
 
   function utf8DecodeBytes(bytes) {
     // Prefer native TextDecoder when available (QuickJS may not expose it).
@@ -377,18 +370,19 @@
     return true
   }
 
+  // The fingerprint is written to live-plan.json, so without a hash there is none (null):
+  // the raw token pair must never reach disk.
   function credentialFingerprint(ctx, creds) {
     const oauth = (creds && creds.oauth) || {}
     const raw = String(oauth.accessToken || "") + "\n" + String(oauth.refreshToken || "")
     const sha256Hex = ctx.host && ctx.host.crypto && ctx.host.crypto.sha256Hex
-    if (typeof sha256Hex === "function") {
-      try {
-        return sha256Hex(raw)
-      } catch (e) {
-        ctx.host.log.error("credential fingerprint hashing failed: " + String(e))
-      }
+    if (typeof sha256Hex !== "function") return null
+    try {
+      return sha256Hex(raw)
+    } catch (e) {
+      ctx.host.log.error("credential fingerprint hashing failed: " + String(e))
+      return null
     }
-    return raw // kept in module memory only, never logged
   }
 
   function saveCredentials(ctx, source, serviceName, fullData) {
@@ -549,14 +543,19 @@
     }
   }
 
-  function resolveLivePlan(ctx, creds, fingerprint) {
-    if (livePlan && livePlan.fingerprint === fingerprint) return
-    livePlan = { fingerprint: fingerprint, plan: lookupLivePlan(ctx, creds) }
+  // Returns the plan for this token pair, or null when unknown (lookup failed or not yet done).
+  function resolveLivePlan(ctx, creds, fingerprint, usageFetched) {
+    if (!fingerprint) return null
+    const cached = loadLivePlan(ctx)
+    if (cached && cached.fingerprint === fingerprint) return cached.plan
+    if (!usageFetched) return null
+    const livePlan = { fingerprint: fingerprint, plan: lookupLivePlan(ctx, creds) }
     try {
       ctx.host.fs.writeText(livePlanPath(ctx), JSON.stringify(livePlan))
     } catch (e) {
       ctx.host.log.warn("live plan cache write failed: " + String(e))
     }
+    return livePlan.plan
   }
 
   function lookupLivePlan(ctx, creds) {
@@ -606,10 +605,11 @@
     return null
   }
 
-  function fmtRateLimitMinutes(seconds) {
-    if (seconds <= 0) return "now"
-    const mins = Math.ceil(seconds / 60)
-    return mins + "m"
+  function rateLimitedMessage(retryAfterSeconds) {
+    if (retryAfterSeconds === null || retryAfterSeconds <= 0) {
+      return "Rate limited by Anthropic, try again later"
+    }
+    return "Rate limited by Anthropic, retry in ~" + Math.ceil(retryAfterSeconds / 60) + "m"
   }
 
   function queryTokenUsage(ctx, homePath) {
@@ -987,18 +987,6 @@
       throw "Not logged in. Run `claude` to authenticate."
     }
 
-    // A different login (switched account, fresh `claude` login) must not see the previous
-    // login's cached usage or inherit its rate-limit cooldown — reset module-scope state
-    // whenever the credential fingerprint changes.
-    const fingerprint = credentialFingerprint(ctx, creds)
-    if (lastCredentialFingerprint !== null && lastCredentialFingerprint !== fingerprint) {
-      ctx.host.log.info("login changed — resetting cached usage state")
-      cachedUsageData = null
-      rateLimitedUntilMs = 0
-      lastUsageFetchMs = 0
-    }
-    lastCredentialFingerprint = fingerprint
-
     const nowMs = Date.now()
     let accessToken = creds.oauth.accessToken
     const homePath = getClaudeHomeOverride(ctx)
@@ -1006,117 +994,75 @@
 
     let data = null
     let lines = []
-    let rateLimited = false
-    let retryAfterSeconds = null
     let usageFetched = false
     if (canFetchLiveUsage) {
-      if (nowMs < rateLimitedUntilMs) {
-        // Still within a rate-limit window from a previous probe call — skip the
-        // API request entirely and surface the remaining wait time to the user.
-        rateLimited = true
-        retryAfterSeconds = Math.ceil((rateLimitedUntilMs - nowMs) / 1000)
-        data = cachedUsageData
-        ctx.host.log.info("usage fetch skipped: rate-limited for " + retryAfterSeconds + "s more")
-      } else {
-        // Rate-limit window has expired (or was never set).  Check whether we were
-        // previously rate-limited so we can bypass the min-interval guard: a short
-        // Retry-After (< 5 min) must not be swallowed by the normal poll throttle.
-        const wasRateLimited = rateLimitedUntilMs > 0
-        rateLimitedUntilMs = 0
-
-        if (!wasRateLimited && nowMs - lastUsageFetchMs < MIN_USAGE_FETCH_INTERVAL_MS) {
-          // Polled too recently in normal operation — reuse last cached response.
-          data = cachedUsageData
-          ctx.host.log.info(
-            "usage fetch skipped: last fetch was " +
-            Math.round((nowMs - lastUsageFetchMs) / 1000) + "s ago (min interval " +
-            MIN_USAGE_FETCH_INTERVAL_MS / 1000 + "s)"
-          )
+      // Proactively refresh if token is expired or about to expire
+      if (needsRefresh(ctx, creds.oauth, nowMs)) {
+        ctx.host.log.info("token needs refresh (expired or expiring soon)")
+        const refreshed = refreshToken(ctx, creds)
+        if (refreshed) {
+          accessToken = refreshed
         } else {
-        // Proactively refresh if token is expired or about to expire
-        if (needsRefresh(ctx, creds.oauth, nowMs)) {
-          ctx.host.log.info("token needs refresh (expired or expiring soon)")
-          const refreshed = refreshToken(ctx, creds)
-          if (refreshed) {
-            accessToken = refreshed
-          } else {
-            ctx.host.log.warn("proactive refresh failed, trying with existing token")
-          }
+          ctx.host.log.warn("proactive refresh failed, trying with existing token")
         }
-
-        lastUsageFetchMs = nowMs
-        let resp
-        let didRefresh = false
-        try {
-          resp = ctx.util.retryOnceOnAuth({
-            request: (token) => {
-              try {
-                return fetchUsage(ctx, token || accessToken)
-              } catch (e) {
-                ctx.host.log.error("usage request exception: " + String(e))
-                if (didRefresh) {
-                  throw "Usage request failed after refresh. Try again."
-                }
-                throw "Usage request failed. Check your connection."
-              }
-            },
-            refresh: () => {
-              ctx.host.log.info("usage returned 401, attempting refresh")
-              didRefresh = true
-              return refreshToken(ctx, creds)
-            },
-          })
-        } catch (e) {
-          if (typeof e === "string") throw e
-          ctx.host.log.error("usage request failed: " + String(e))
-          throw "Usage request failed. Check your connection."
-        }
-
-        if (ctx.util.isAuthStatus(resp.status)) {
-          ctx.host.log.error("usage returned auth error after all retries: status=" + resp.status)
-          throw "Token expired. Run `claude` to log in again."
-        }
-
-        if (resp.status === 429) {
-          rateLimited = true
-          retryAfterSeconds = parseRetryAfterSeconds(resp.headers)
-          const backoffMs = retryAfterSeconds !== null
-            ? retryAfterSeconds * 1000
-            : DEFAULT_RATE_LIMIT_BACKOFF_MS
-          rateLimitedUntilMs = nowMs + backoffMs
-          data = cachedUsageData
-          ctx.host.log.warn(
-            "usage rate limited (429), backing off for " +
-            Math.round(backoffMs / 1000) + "s"
-          )
-        } else if (resp.status < 200 || resp.status >= 300) {
-          ctx.host.log.error("usage returned error: status=" + resp.status)
-          throw "Usage request failed (HTTP " + String(resp.status) + "). Try again later."
-        } else {
-          ctx.host.log.info("usage fetch succeeded")
-          data = ctx.util.tryParseJson(resp.bodyText)
-          if (data === null) {
-            throw "Usage response invalid. Try again later."
-          }
-          cachedUsageData = data
-          rateLimitedUntilMs = 0
-          usageFetched = true
-        }
-        } // end fetch else-branch
       }
+
+      let resp
+      let didRefresh = false
+      try {
+        resp = ctx.util.retryOnceOnAuth({
+          request: (token) => {
+            try {
+              return fetchUsage(ctx, token || accessToken)
+            } catch (e) {
+              ctx.host.log.error("usage request exception: " + String(e))
+              if (didRefresh) {
+                throw "Usage request failed after refresh. Try again."
+              }
+              throw "Usage request failed. Check your connection."
+            }
+          },
+          refresh: () => {
+            ctx.host.log.info("usage returned 401, attempting refresh")
+            didRefresh = true
+            return refreshToken(ctx, creds)
+          },
+        })
+      } catch (e) {
+        if (typeof e === "string") throw e
+        ctx.host.log.error("usage request failed: " + String(e))
+        throw "Usage request failed. Check your connection."
+      }
+
+      if (ctx.util.isAuthStatus(resp.status)) {
+        ctx.host.log.error("usage returned auth error after all retries: status=" + resp.status)
+        throw "Token expired. Run `claude` to log in again."
+      }
+
+      if (resp.status === 429) {
+        // Throw so the app keeps showing the last good bars under this message. The host holds
+        // further requests to this URL until Retry-After passes (synthetic 429, no network).
+        const message = rateLimitedMessage(parseRetryAfterSeconds(resp.headers))
+        ctx.host.log.warn("usage rate limited (429): " + message)
+        throw message
+      }
+      if (resp.status < 200 || resp.status >= 300) {
+        ctx.host.log.error("usage returned error: status=" + resp.status)
+        throw "Usage request failed (HTTP " + String(resp.status) + "). Try again later."
+      }
+      ctx.host.log.info("usage fetch succeeded")
+      data = ctx.util.tryParseJson(resp.bodyText)
+      if (data === null) {
+        throw "Usage response invalid. Try again later."
+      }
+      usageFetched = true
     } else {
       ctx.host.log.info("skipping live usage fetch for inference-only token")
     }
 
-    // A token refresh above rotates the pair for the SAME login — re-fingerprint so the
-    // rotation isn't mistaken for a login change on the next probe (which would drop the
-    // cache and rate-limit backoff we just established).
-    lastCredentialFingerprint = credentialFingerprint(ctx, creds)
-
-    if (!livePlan) livePlan = loadLivePlan(ctx)
-    if (usageFetched) resolveLivePlan(ctx, creds, lastCredentialFingerprint)
-    const knownLivePlan =
-      livePlan && livePlan.fingerprint === lastCredentialFingerprint ? livePlan.plan : null
+    // Fingerprint after any refresh above, so the live plan is keyed to the pair now on disk.
+    const fingerprint = credentialFingerprint(ctx, creds)
+    const knownLivePlan = resolveLivePlan(ctx, creds, fingerprint, usageFetched)
     const plan =
       knownLivePlan || formatPlan(ctx, creds.oauth.subscriptionType, creds.oauth.rateLimitTier)
 
@@ -1186,34 +1132,12 @@
       pushLocalUsageLines(lines, ctx, usageResult.data)
     }
 
-    if (rateLimited) {
-      const retryText = retryAfterSeconds !== null
-        ? fmtRateLimitMinutes(retryAfterSeconds)
-        : null
-      const waitText = retryText
-        ? "Rate limited, retry in ~" + retryText
-        : "Rate limited, try again later"
-      lines.unshift(ctx.line.badge({ label: "Status", text: waitText, color: "#f59e0b" }))
-      const noteText = retryText
-        ? "Live usage rate limited — retry in ~" + retryText
-        : "Live usage rate limited — data may be stale"
-      lines.push(ctx.line.text({ label: "Note", value: noteText }))
-    } else if (lines.length === 0) {
+    if (lines.length === 0) {
       lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
     }
 
     return { plan: plan, lines: lines }
   }
 
-  // _resetState is a testing hook — resets module-scope rate-limit state between tests.
-  // The production host never calls this.
-  function _resetState() {
-    rateLimitedUntilMs = 0
-    lastUsageFetchMs = 0
-    cachedUsageData = null
-    lastCredentialFingerprint = null
-    livePlan = null
-  }
-
-  globalThis.__openusage_plugin = { id: "claude", probe, _resetState }
+  globalThis.__openusage_plugin = { id: "claude", probe }
 })()
