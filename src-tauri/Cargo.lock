@@ -3299,6 +3299,9 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
+ "window-vibrancy",
+ "windows-sys 0.59.0",
+ "windows-version",
  "winreg 0.55.0",
 ]
 

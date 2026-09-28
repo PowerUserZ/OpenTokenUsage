@@ -4,6 +4,7 @@ mod log_path;
 mod panel;
 mod plugin_engine;
 mod tray;
+mod window_style;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -603,15 +604,18 @@ pub fn run() {
             start_probe_batch,
             list_plugins,
             get_log_path,
-            update_global_shortcut
+            update_global_shortcut,
+            window_style::get_window_backdrop,
+            window_style::get_accent_color
         ])
         .setup(|app| {
             use tauri::Manager;
 
             // Disable the window shadow to avoid a visible border around the
-            // transparent window.
+            // transparent window, then apply the Windows 11 backdrop.
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_shadow(false);
+                window_style::apply(&window);
             }
 
             let version = app.package_info().version.to_string();
