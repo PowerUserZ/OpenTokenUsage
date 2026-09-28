@@ -30,6 +30,8 @@ export function ProviderDetailPage({
   return (
     <ProviderCard
       name={plugin.meta.name}
+      pluginId={plugin.meta.id}
+      statusPageUrl={plugin.meta.statusPageUrl}
       plan={plugin.data?.plan}
       links={plugin.meta.links}
       showSeparator={false}

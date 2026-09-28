@@ -91,6 +91,11 @@ export const zhCN: Messages = {
   "settings.plugins.notInTray": "不在通知区域图标中显示",
 
   "overview.noProviders": "未启用任何提供商",
+  "status.minor": "服务降级",
+  "status.major": "部分中断",
+  "status.critical": "严重中断",
+  "status.maintenance": "维护",
+  "status.open": "打开状态页",
 
   "card.retry": "重试",
   "card.updated": "已更新：{time}",

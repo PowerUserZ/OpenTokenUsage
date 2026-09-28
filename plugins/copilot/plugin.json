@@ -6,6 +6,10 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#A855F7",
+  "statusPageUrl": "https://www.githubstatus.com",
+  "links": [
+    { "label": "Status", "url": "https://www.githubstatus.com/" }
+  ],
   "lines": [
     { "type": "badge", "label": "Status", "scope": "overview" },
     { "type": "progress", "label": "Credits", "scope": "overview", "primaryOrder": 1 },

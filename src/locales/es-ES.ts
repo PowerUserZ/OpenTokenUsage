@@ -91,6 +91,11 @@ export const esES: Messages = {
   "settings.plugins.notInTray": "Oculto en el icono del área de notificación",
 
   "overview.noProviders": "No hay proveedores activados",
+  "status.minor": "Servicio degradado",
+  "status.major": "Interrupción parcial",
+  "status.critical": "Interrupción grave",
+  "status.maintenance": "Mantenimiento",
+  "status.open": "Abrir página de estado",
 
   "card.retry": "Reintentar",
   "card.updated": "Actualizado {time}",

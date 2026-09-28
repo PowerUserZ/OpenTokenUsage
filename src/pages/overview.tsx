@@ -34,6 +34,8 @@ export function OverviewPage({
         <ProviderCard
           key={plugin.meta.id}
           name={plugin.meta.name}
+          pluginId={plugin.meta.id}
+          statusPageUrl={plugin.meta.statusPageUrl}
           plan={plugin.data?.plan}
           showSeparator={index < plugins.length - 1}
           loading={plugin.loading}

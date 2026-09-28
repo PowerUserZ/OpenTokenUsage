@@ -91,6 +91,11 @@ export const en = {
   "settings.plugins.notInTray": "Hidden from the tray icon",
 
   "overview.noProviders": "No providers enabled",
+  "status.minor": "Degraded service",
+  "status.major": "Partial outage",
+  "status.critical": "Major outage",
+  "status.maintenance": "Maintenance",
+  "status.open": "Open status page",
 
   "card.retry": "Retry",
   "card.updated": "Updated {time}",

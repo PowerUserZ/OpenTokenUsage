@@ -3,6 +3,7 @@ mod local_http_api;
 mod log_path;
 mod panel;
 mod plugin_engine;
+mod provider_status;
 mod tray;
 mod window_style;
 
@@ -156,6 +157,7 @@ pub struct PluginMeta {
     /// Label of the progress line marked `"period": "weekly"`, if any.
     /// Drives the menubar weekly-metric preference.
     pub weekly_candidate: Option<String>,
+    pub status_page_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -554,6 +556,7 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
                     .collect(),
                 primary_candidates,
                 weekly_candidate,
+                status_page_url: plugin.manifest.status_page_url,
             }
         })
         .collect()
@@ -645,6 +648,7 @@ pub fn run() {
             open_devtools,
             start_probe_batch,
             list_plugins,
+            provider_status::get_provider_status,
             get_log_path,
             update_global_shortcut,
             window_style::get_window_backdrop,
@@ -820,6 +824,7 @@ mod tests {
                 brand_color: None,
                 lines: vec![],
                 links: vec![],
+                status_page_url: None,
             },
             plugin_dir: std::path::PathBuf::from("."),
             entry_script: String::new(),

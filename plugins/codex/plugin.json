@@ -6,6 +6,7 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#74AA9C",
+  "statusPageUrl": "https://status.openai.com",
   "links": [
     { "label": "Status", "url": "https://status.openai.com/" },
     { "label": "Usage dashboard", "url": "https://chatgpt.com/codex/settings/usage" }

@@ -37,6 +37,8 @@ pub struct PluginManifest {
     pub lines: Vec<ManifestLine>,
     #[serde(default)]
     pub links: Vec<PluginLink>,
+    /// Base URL of an Atlassian Statuspage-compatible page (`<url>/api/v2/status.json`).
+    pub status_page_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +90,8 @@ fn load_single_plugin(
     let manifest_text = std::fs::read_to_string(&manifest_path)?;
     let mut manifest: PluginManifest = serde_json::from_str(&manifest_text)?;
     manifest.links = sanitize_plugin_links(&manifest.id, std::mem::take(&mut manifest.links));
+    manifest.status_page_url =
+        sanitize_status_page_url(&manifest.id, manifest.status_page_url.take());
 
     // Validate primary_order / period: only progress lines can carry them,
     // and period currently only recognizes "weekly".
@@ -177,6 +181,20 @@ fn sanitize_plugin_links(plugin_id: &str, links: Vec<PluginLink>) -> Vec<PluginL
             Some(PluginLink { label, url })
         })
         .collect()
+}
+
+/// Keeps an https status page base URL (without trailing slash); drops anything else.
+fn sanitize_status_page_url(plugin_id: &str, url: Option<String>) -> Option<String> {
+    let url = url?.trim().trim_end_matches('/').to_string();
+    if url.starts_with("https://") {
+        return Some(url);
+    }
+    log::warn!(
+        "plugin {} has non-https statusPageUrl '{}'; ignoring",
+        plugin_id,
+        url
+    );
+    None
 }
 
 #[cfg(test)]
@@ -415,5 +433,32 @@ mod tests {
         assert_eq!(sanitized.len(), 1);
         assert_eq!(sanitized[0].label, "Status");
         assert_eq!(sanitized[0].url, "https://status.example.com");
+    }
+
+    #[test]
+    fn status_page_url_parsed_and_sanitized() {
+        let manifest = parse_manifest(
+            r#"
+            {
+              "schemaVersion": 1,
+              "id": "x",
+              "name": "X",
+              "version": "0.0.1",
+              "entry": "plugin.js",
+              "icon": "icon.svg",
+              "statusPageUrl": " https://status.example.com/ ",
+              "lines": []
+            }
+            "#,
+        );
+        assert_eq!(
+            sanitize_status_page_url("x", manifest.status_page_url),
+            Some("https://status.example.com".to_string())
+        );
+        assert_eq!(
+            sanitize_status_page_url("x", Some("http://status.example.com".to_string())),
+            None
+        );
+        assert_eq!(sanitize_status_page_url("x", None), None);
     }
 }

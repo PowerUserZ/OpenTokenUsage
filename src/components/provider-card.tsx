@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { SkeletonLines } from "@/components/skeleton-lines"
 import { UsageSparkline } from "@/components/usage-sparkline"
 import { PluginError } from "@/components/plugin-error"
+import { ProviderStatusBadge } from "@/components/provider-status-badge"
 import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode, type TimeFormatMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
@@ -22,6 +23,9 @@ import { translatePluginError } from "@/lib/plugin-errors"
 
 interface ProviderCardProps {
   name: string
+  /** Plugin id; with `statusPageUrl` enables the vendor status badge. */
+  pluginId?: string
+  statusPageUrl?: string | null
   plan?: string
   links?: PluginLink[]
   showSeparator?: boolean
@@ -96,6 +100,8 @@ function formatRelativeTime(diffMs: number): string {
 
 export function ProviderCard({
   name,
+  pluginId,
+  statusPageUrl,
   plan,
   links = [],
   showSeparator = true,
@@ -248,6 +254,7 @@ export function ProviderCard({
                 </Tooltip>
               )
             )}
+            {pluginId && <ProviderStatusBadge pluginId={pluginId} statusPageUrl={statusPageUrl} />}
           </div>
           {plan && (
             <Badge

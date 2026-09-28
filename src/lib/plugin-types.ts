@@ -54,6 +54,8 @@ export type PluginMeta = {
   primaryCandidates: string[]
   /** Label of the line marked `"period": "weekly"`, if the provider has one. */
   weeklyCandidate?: string
+  /** Statuspage base URL; the card shows an incident badge from `<url>/api/v2/status.json`. */
+  statusPageUrl?: string | null
 }
 
 export type PluginDisplayState = {

@@ -6,6 +6,10 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#020202",
+  "statusPageUrl": "https://status.factory.ai",
+  "links": [
+    { "label": "Status", "url": "https://status.factory.ai/" }
+  ],
   "lines": [
     { "type": "progress", "label": "Standard", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Premium", "scope": "detail" }

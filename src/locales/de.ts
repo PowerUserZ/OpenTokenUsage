@@ -91,6 +91,11 @@ export const de: Messages = {
   "settings.plugins.notInTray": "Im Infobereich-Symbol ausgeblendet",
 
   "overview.noProviders": "Keine Anbieter aktiviert",
+  "status.minor": "Eingeschränkter Dienst",
+  "status.major": "Teilausfall",
+  "status.critical": "Schwerer Ausfall",
+  "status.maintenance": "Wartung",
+  "status.open": "Statusseite öffnen",
 
   "card.retry": "Wiederholen",
   "card.updated": "Aktualisiert {time}",

@@ -91,6 +91,11 @@ export const tr: Messages = {
   "settings.plugins.notInTray": "Bildirim alanı simgesinde gizli",
 
   "overview.noProviders": "Etkin sağlayıcı yok",
+  "status.minor": "Hizmette aksama",
+  "status.major": "Kısmi kesinti",
+  "status.critical": "Büyük kesinti",
+  "status.maintenance": "Bakım",
+  "status.open": "Durum sayfasını aç",
 
   "card.retry": "Yeniden dene",
   "card.updated": "Güncellendi: {time}",
