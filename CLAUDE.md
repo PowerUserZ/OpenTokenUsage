@@ -49,6 +49,11 @@ This file holds the project facts that are easy to get wrong.
   recreate (Windows keys "show next to clock" on tray-icon's creation-counter uID). A hidden tray
   icon rejects `setIcon`, so the app icon is redrawn after it's shown again. New icons are promoted
   via `HKCU\Control Panel\NotifyIconSettings\*\IsPromoted` only when the user hasn't chosen yet.
+- Taskbar strip (experimental, `taskbar_strip.rs`): a layered child window of `Shell_TrayWnd`
+  left of `TrayNotifyWnd`, on its own thread (it shares Explorer's input queue: never block, never
+  hold a lock across Win32 calls). Layered child windows need the Win8+ `<compatibility>` in
+  `src-tauri/app.manifest` (wired in `build.rs`) — don't drop it. The frontend draws the image
+  (`src/lib/taskbar-strip.ts`); its 1/255-alpha background keeps the whole strip clickable.
 - Themes: system | light | dark | oled (`.oled` = opaque pure black, even over Mica).
 - Notifications (`src/lib/usage-alerts.ts`, pure + tested): 80/95%, pace, reset; each once per
   provider+line+window, keys persisted in settings (`sentUsageAlerts`).

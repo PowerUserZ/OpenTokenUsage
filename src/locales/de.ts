@@ -59,6 +59,8 @@ export const de: Messages = {
   "settings.tray.numbers": "Zahl je Anbieter",
   "settings.tray.logos": "Logo je Anbieter",
   "settings.tray.logoColors": "Farbige Logos",
+  "settings.tray.taskbarStrip": "Nutzung in der Taskleiste (experimentell)",
+  "settings.tray.taskbarStripHint": "Logos mit Sitzungs- und Wochennutzung links neben den Infobereich-Symbolen. Windows bietet dafür keinen offiziellen Platz, daher kann ein Windows-Update die Anzeige verschieben oder ausblenden.",
   "settings.tray.perProviderHint": "Landet ein Symbol unter ^, schalten Sie es in den Taskleisteneinstellungen ein, damit es neben der Uhr bleibt.",
   "settings.tray.openTaskbarSettings": "Taskleisteneinstellungen öffnen",
   "settings.tray.provider": "Anbieter",

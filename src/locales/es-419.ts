@@ -59,6 +59,8 @@ export const es419: Messages = {
   "settings.tray.numbers": "Número por proveedor",
   "settings.tray.logos": "Logo por proveedor",
   "settings.tray.logoColors": "Logos a color",
+  "settings.tray.taskbarStrip": "Uso en la barra de tareas (experimental)",
+  "settings.tray.taskbarStripHint": "Logos con el uso de sesión y semanal, a la izquierda de los íconos del área de notificación. Windows no tiene un lugar oficial para esto, así que una actualización de Windows puede moverlo u ocultarlo.",
   "settings.tray.perProviderHint": "Si un ícono queda en ^, actívalo en la configuración de la barra de tareas para dejarlo junto al reloj.",
   "settings.tray.openTaskbarSettings": "Abrir configuración de la barra de tareas",
   "settings.tray.provider": "Proveedor",

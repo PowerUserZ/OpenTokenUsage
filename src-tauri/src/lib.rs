@@ -5,6 +5,7 @@ mod panel;
 mod plugin_engine;
 mod provider_status;
 mod setup_actions;
+mod taskbar_strip;
 mod tray;
 mod window_style;
 
@@ -659,7 +660,8 @@ pub fn run() {
             tray::set_provider_tray_icons,
             setup_actions::run_in_terminal,
             setup_actions::open_env_editor,
-            setup_actions::open_taskbar_settings
+            setup_actions::open_taskbar_settings,
+            taskbar_strip::set_taskbar_strip
         ])
         .setup(|app| {
             use tauri::Manager;

@@ -9,6 +9,7 @@ import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
 import { findTightestLimit, getTrayPrimaryBars, type TrayPrimaryBar } from "@/lib/tray-primary-progress"
 import { formatTrayPercentText, formatTrayTooltip } from "@/lib/tray-tooltip"
 import type { PluginState } from "@/hooks/app/types"
+import { isAppTrayIconHidden } from "@/hooks/app/use-provider-tray-icons"
 
 type TrayUpdateReason = "probe" | "settings" | "init"
 
@@ -177,6 +178,10 @@ export function useTrayIcon({
       }
 
       const restoreGaugeIcon = () => {
+        if (isAppTrayIconHidden()) {
+          finalizeUpdate()
+          return
+        }
         const gaugePath = trayGaugeIconPathRef.current
         if (gaugePath) {
           Promise.all([
@@ -301,7 +306,7 @@ export function useTrayIcon({
       const tooltip = formatTrayTooltip(tooltipBars, pluginsMetaRef.current, preferWeekly)
       const updateTooltip = () => setTrayTooltip(tooltip)
 
-      if (isPerProviderTrayStyle(style)) {
+      if (isPerProviderTrayStyle(style) || isAppTrayIconHidden()) {
         // This icon is hidden (a hidden tray icon rejects new images); use-provider-tray-icons.ts
         // draws the per-provider icons and asks for a redraw once this one is back.
         finalizeUpdate()

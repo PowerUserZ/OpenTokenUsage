@@ -59,6 +59,8 @@ export const ja: Messages = {
   "settings.tray.numbers": "プロバイダーごとの数値",
   "settings.tray.logos": "プロバイダーごとのロゴ",
   "settings.tray.logoColors": "カラーのロゴ",
+  "settings.tray.taskbarStrip": "タスク バーに使用量を表示（試験的）",
+  "settings.tray.taskbarStripHint": "通知領域アイコンの左に、ロゴとセッション・週間の使用量を表示します。Windows には公式の表示場所がないため、Windows の更新で位置がずれたり非表示になったりすることがあります。",
   "settings.tray.perProviderHint": "アイコンが ^ の中に入った場合は、タスク バーの設定でオンにすると時計の横に表示されます。",
   "settings.tray.openTaskbarSettings": "タスク バーの設定を開く",
   "settings.tray.provider": "プロバイダー",

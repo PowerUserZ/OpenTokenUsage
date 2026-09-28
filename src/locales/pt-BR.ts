@@ -59,6 +59,8 @@ export const ptBR: Messages = {
   "settings.tray.numbers": "Número por provedor",
   "settings.tray.logos": "Logo por provedor",
   "settings.tray.logoColors": "Logos coloridos",
+  "settings.tray.taskbarStrip": "Uso na barra de tarefas (experimental)",
+  "settings.tray.taskbarStripHint": "Logos com uso da sessão e semanal, à esquerda dos ícones da área de notificação. O Windows não tem um lugar oficial para isso, então uma atualização do Windows pode movê-lo ou ocultá-lo.",
   "settings.tray.perProviderHint": "Se um ícone for parar em ^, ative-o nas configurações da barra de tarefas para mantê-lo ao lado do relógio.",
   "settings.tray.openTaskbarSettings": "Abrir configurações da barra de tarefas",
   "settings.tray.provider": "Provedor",

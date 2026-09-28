@@ -59,6 +59,8 @@ export const it: Messages = {
   "settings.tray.numbers": "Numero per provider",
   "settings.tray.logos": "Logo per provider",
   "settings.tray.logoColors": "Loghi a colori",
+  "settings.tray.taskbarStrip": "Utilizzo nella barra delle applicazioni (sperimentale)",
+  "settings.tray.taskbarStripHint": "Loghi con utilizzo di sessione e settimanale, a sinistra delle icone dell'area di notifica. Windows non ha un posto ufficiale per questo, quindi un aggiornamento di Windows può spostarlo o nasconderlo.",
   "settings.tray.perProviderHint": "Se un'icona finisce sotto ^, attivala nelle impostazioni della barra delle applicazioni per tenerla accanto all'orologio.",
   "settings.tray.openTaskbarSettings": "Apri impostazioni della barra delle applicazioni",
   "settings.tray.provider": "Provider",

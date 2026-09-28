@@ -59,6 +59,8 @@ export const tr: Messages = {
   "settings.tray.numbers": "Sağlayıcı başına sayı",
   "settings.tray.logos": "Sağlayıcı başına logo",
   "settings.tray.logoColors": "Renkli logolar",
+  "settings.tray.taskbarStrip": "Görev çubuğunda kullanım (deneysel)",
+  "settings.tray.taskbarStripHint": "Tepsi simgelerinin solunda logolar ile oturum ve haftalık kullanım. Windows'ta bunun resmi bir yeri yok; bir Windows güncellemesi yerini kaydırabilir veya gizleyebilir.",
   "settings.tray.perProviderHint": "Bir ikon ^ altına düşerse, saatin yanında kalması için görev çubuğu ayarlarından açın.",
   "settings.tray.openTaskbarSettings": "Görev çubuğu ayarlarını aç",
   "settings.tray.provider": "Sağlayıcı",

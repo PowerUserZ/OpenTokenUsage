@@ -30,6 +30,7 @@ import {
   saveLanguage,
   saveTrayHiddenPlugins,
   saveTrayLogoColors,
+  saveTaskbarStrip,
   saveUsageAlerts,
   THEME_OPTIONS,
   TIME_FORMAT_OPTIONS,
@@ -147,6 +148,29 @@ function TrayIconStylePreview({
     <span className="text-[13px] font-bold tabular-nums leading-none">
       {(traySettingsPreview.providerPercentText || "0%").replace(/%$/, "")}
     </span>
+  );
+}
+
+function TaskbarStripToggle() {
+  const taskbarStrip = useAppPreferencesStore((state) => state.taskbarStrip);
+  const setTaskbarStrip = useAppPreferencesStore((state) => state.setTaskbarStrip);
+  return (
+    <label className="mt-3 flex items-start gap-2 text-[13px] select-none text-foreground">
+      <Checkbox
+        key={`taskbar-strip-${taskbarStrip}`}
+        checked={taskbarStrip}
+        className="mt-0.5"
+        onCheckedChange={(checked) => {
+          const next = checked === true;
+          setTaskbarStrip(next);
+          void saveTaskbarStrip(next).catch((error) => console.error("Failed to save taskbar strip:", error));
+        }}
+      />
+      <span>
+        {t("settings.tray.taskbarStrip")}
+        <span className="block text-xs text-muted-foreground">{t("settings.tray.taskbarStripHint")}</span>
+      </span>
+    </label>
   );
 }
 
@@ -363,6 +387,7 @@ export function SettingsPage({
   startOnLogin,
   onStartOnLoginChange,
 }: SettingsPageProps) {
+  const taskbarStrip = useAppPreferencesStore((state) => state.taskbarStrip);
   const trayHiddenPlugins = useAppPreferencesStore((state) => state.trayHiddenPlugins);
   const setTrayHiddenPlugins = useAppPreferencesStore((state) => state.setTrayHiddenPlugins);
   const handleToggleTray = (id: string) => {
@@ -509,7 +534,8 @@ export function SettingsPage({
             )}
           </div>
         )}
-        {menubarIconStyle === "logos" && <TrayLogoColorsToggle />}
+        <TaskbarStripToggle />
+        {(menubarIconStyle === "logos" || taskbarStrip) && <TrayLogoColorsToggle />}
         {isPerProviderTrayStyle(menubarIconStyle) && (
           <p className="mt-2 text-xs text-muted-foreground">
             {t("settings.tray.perProviderHint")}{" "}

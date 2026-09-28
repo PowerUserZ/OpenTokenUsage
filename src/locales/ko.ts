@@ -59,6 +59,8 @@ export const ko: Messages = {
   "settings.tray.numbers": "공급자별 숫자",
   "settings.tray.logos": "공급자별 로고",
   "settings.tray.logoColors": "컬러 로고",
+  "settings.tray.taskbarStrip": "작업 표시줄에 사용량 표시(실험적)",
+  "settings.tray.taskbarStripHint": "알림 영역 아이콘 왼쪽에 로고와 세션·주간 사용량을 표시합니다. Windows에는 공식 위치가 없어 Windows 업데이트로 위치가 바뀌거나 숨겨질 수 있습니다.",
   "settings.tray.perProviderHint": "아이콘이 ^ 안으로 들어가면 작업 표시줄 설정에서 켜서 시계 옆에 두세요.",
   "settings.tray.openTaskbarSettings": "작업 표시줄 설정 열기",
   "settings.tray.provider": "공급자",

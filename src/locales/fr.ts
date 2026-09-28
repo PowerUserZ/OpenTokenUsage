@@ -59,6 +59,8 @@ export const fr: Messages = {
   "settings.tray.numbers": "Un nombre par fournisseur",
   "settings.tray.logos": "Un logo par fournisseur",
   "settings.tray.logoColors": "Logos en couleur",
+  "settings.tray.taskbarStrip": "Utilisation dans la barre des tâches (expérimental)",
+  "settings.tray.taskbarStripHint": "Logos avec l'utilisation de session et hebdomadaire, à gauche des icônes de notification. Windows ne prévoit pas d'emplacement officiel pour cela : une mise à jour de Windows peut la déplacer ou la masquer.",
   "settings.tray.perProviderHint": "Si une icône se retrouve sous ^, activez-la dans les paramètres de la barre des tâches pour la garder à côté de l'horloge.",
   "settings.tray.openTaskbarSettings": "Ouvrir les paramètres de la barre des tâches",
   "settings.tray.provider": "Fournisseur",

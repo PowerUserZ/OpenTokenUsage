@@ -10,6 +10,11 @@ import { buildProviderTrayIconSpecs, bytesToBase64 } from "@/lib/tray-provider-i
 const UPDATE_DEBOUNCE_MS = 500
 const MAX_PROVIDER_ICONS = 12
 
+// True while the per-provider icons replace the app icon. A hidden tray icon rejects new images,
+// so use-tray-icon.ts skips it meanwhile and redraws it via `onAppIconShown`.
+let appIconHidden = false
+export const isAppTrayIconHidden = () => appIconHidden
+
 /** Taskbar theme (not the app theme): the tray sits on the taskbar. Re-read on focus and theme change. */
 export function useTaskbarIsLight(themeMode: string): boolean {
   const [isLight, setIsLight] = useState(false)
@@ -85,6 +90,7 @@ export function useProviderTrayIcons(args: {
         .then(() => {
           const wasShowing = showingRef.current
           showingRef.current = specs.length > 0
+          appIconHidden = showingRef.current
           // The app icon can't take a new image while hidden, so redraw it once it's back.
           if (wasShowing && !showingRef.current) onAppIconShown()
         })

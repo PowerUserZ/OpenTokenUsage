@@ -59,6 +59,8 @@ export const en = {
   "settings.tray.numbers": "Number per provider",
   "settings.tray.logos": "Logo per provider",
   "settings.tray.logoColors": "Colored logos",
+  "settings.tray.taskbarStrip": "Usage on the taskbar (experimental)",
+  "settings.tray.taskbarStripHint": "Logos with session and weekly usage, left of the tray icons. Windows has no official place for this, so a Windows update may move or hide it.",
   "settings.tray.perProviderHint": "If an icon ends up under ^, switch it on in the taskbar settings to keep it next to the clock.",
   "settings.tray.openTaskbarSettings": "Open taskbar settings",
   "settings.tray.provider": "Provider",

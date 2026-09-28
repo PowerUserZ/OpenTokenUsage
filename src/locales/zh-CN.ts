@@ -59,6 +59,8 @@ export const zhCN: Messages = {
   "settings.tray.numbers": "每个提供商一个数字",
   "settings.tray.logos": "每个提供商一个徽标",
   "settings.tray.logoColors": "彩色徽标",
+  "settings.tray.taskbarStrip": "在任务栏显示用量（实验性）",
+  "settings.tray.taskbarStripHint": "在通知区域图标左侧显示徽标及会话和每周用量。Windows 没有为此提供官方位置，因此 Windows 更新可能会移动或隐藏它。",
   "settings.tray.perProviderHint": "如果图标被放进了 ^ 里，请在任务栏设置中打开它，让它显示在时钟旁。",
   "settings.tray.openTaskbarSettings": "打开任务栏设置",
   "settings.tray.provider": "提供商",

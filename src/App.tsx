@@ -20,6 +20,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { useAppUpdate } from "@/hooks/use-app-update"
 import { useUsageAlerts } from "@/hooks/app/use-usage-alerts"
 import { useProviderTrayIcons } from "@/hooks/app/use-provider-tray-icons"
+import { useTaskbarStrip } from "@/hooks/app/use-taskbar-strip"
 
 const TRAY_PROBE_DEBOUNCE_MS = 500
 const TRAY_SETTINGS_DEBOUNCE_MS = 2000
@@ -69,6 +70,7 @@ function App() {
     setUsageAlerts,
     trayLogoColors,
     setTrayLogoColors,
+    taskbarStrip,
     setTaskbarStrip,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
@@ -95,6 +97,7 @@ function App() {
       usageAlerts: state.usageAlerts,
       setUsageAlerts: state.setUsageAlerts,
       trayLogoColors: state.trayLogoColors,
+      taskbarStrip: state.taskbarStrip,
       setTrayLogoColors: state.setTrayLogoColors,
       setTaskbarStrip: state.setTaskbarStrip,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
@@ -161,6 +164,16 @@ function App() {
     themeMode,
     logoColors: trayLogoColors,
     onAppIconShown: redrawAppTrayIcon,
+  })
+
+  useTaskbarStrip({
+    enabled: taskbarStrip,
+    pluginsMeta,
+    pluginSettings: trayPluginSettings,
+    pluginStates,
+    displayMode,
+    logoColors: trayLogoColors,
+    themeMode,
   })
 
   useEffect(() => {
