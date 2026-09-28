@@ -2631,34 +2631,39 @@ fn iso_now() -> String {
         })
 }
 
+/// Plugins hardcode the macOS app-data dir. Electron/VS Code forks (Cursor,
+/// Kiro, Devin, Antigravity) keep the same tree under %APPDATA% (Roaming).
+const MAC_APP_SUPPORT_PREFIX: &str = "~/Library/Application Support/";
+
 fn expand_path(path: &str) -> String {
-    let expanded = if path == "~" {
-        match dirs::home_dir() {
-            Some(home) => home,
-            None => return path.to_string(),
-        }
-    } else if path.starts_with("~/") {
-        match dirs::home_dir() {
-            Some(home) => home.join(&path[2..]),
-            None => return path.to_string(),
-        }
+    let (base, rest) = if let Some(rest) = path.strip_prefix(MAC_APP_SUPPORT_PREFIX) {
+        (dirs::data_dir(), rest)
+    } else if path == "~" {
+        (dirs::home_dir(), "")
+    } else if let Some(rest) = path.strip_prefix("~/") {
+        (dirs::home_dir(), rest)
     } else {
         return path.to_string();
     };
+    let Some(base) = base else {
+        return path.to_string();
+    };
+    let expanded = if rest.is_empty() {
+        base.clone()
+    } else {
+        base.join(rest)
+    };
 
-    // Reject path traversal (e.g. "~/../../../etc/passwd").
-    // Canonicalize both paths so the prefix check works on Windows
-    // where canonicalize() returns UNC paths (\\?\C:\...).
-    let result = expanded.to_string_lossy().to_string();
-    if let (Some(home), Ok(canonical)) = (dirs::home_dir(), expanded.canonicalize()) {
-        if let Ok(home_canonical) = home.canonicalize() {
-            if !canonical.starts_with(&home_canonical) {
-                log::warn!("Rejected path traversal attempt: {:?}", path);
-                return home.to_string_lossy().to_string();
-            }
+    // Reject path traversal (e.g. "~/../../../etc/passwd"): the result must
+    // stay under the dir it was joined onto. Canonicalize both paths so the
+    // prefix check works on Windows where canonicalize() returns UNC paths.
+    if let (Ok(canonical), Ok(base_canonical)) = (expanded.canonicalize(), base.canonicalize()) {
+        if !canonical.starts_with(&base_canonical) {
+            log::warn!("Rejected path traversal attempt: {:?}", path);
+            return base.to_string_lossy().to_string();
         }
     }
-    result
+    expanded.to_string_lossy().to_string()
 }
 
 #[cfg(test)]
@@ -3124,6 +3129,32 @@ mod tests {
         let expected = home.join(".claude-custom").to_string_lossy().to_string();
 
         assert_eq!(expand_path("~/.claude-custom"), expected);
+    }
+
+    #[test]
+    fn expand_path_maps_mac_app_support_to_appdata() {
+        let appdata = dirs::data_dir().expect("data dir");
+        let expected = appdata
+            .join("Cursor/User/globalStorage/state.vscdb")
+            .to_string_lossy()
+            .to_string();
+
+        assert_eq!(
+            expand_path("~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"),
+            expected
+        );
+    }
+
+    #[test]
+    fn expand_path_rejects_traversal_out_of_base_dir() {
+        let home = dirs::home_dir().expect("home dir");
+        let appdata = dirs::data_dir().expect("data dir");
+
+        assert_eq!(expand_path("~/.."), home.to_string_lossy());
+        assert_eq!(
+            expand_path("~/Library/Application Support/.."),
+            appdata.to_string_lossy()
+        );
     }
 
     #[test]
