@@ -132,10 +132,12 @@ describe("useProbeEvents", () => {
     expect(onBatchComplete).toHaveBeenCalledTimes(1)
 
     resultListener?.({ payload: { batchId, output } })
-    expect(onResult).toHaveBeenCalledTimes(1)
+    expect(onResult).toHaveBeenCalledTimes(2)
   })
 
-  it("ignores events for inactive batch", async () => {
+  // Regression: after a webview reload the host skips a plugin still probing from the old batch;
+  // its result arrives under that unknown batch id and must still clear the loading state.
+  it("applies results from an unknown batch but ignores its completion", async () => {
     invokeMock.mockImplementation(async (_cmd: string, args: any) => ({
       batchId: args.batchId,
       pluginIds: args.pluginIds ?? [],
@@ -151,7 +153,7 @@ describe("useProbeEvents", () => {
     resultListener?.({ payload: { batchId: "other", output } })
     completeListener?.({ payload: { batchId: "other" } })
 
-    expect(onResult).not.toHaveBeenCalled()
+    expect(onResult).toHaveBeenCalledWith(output)
     expect(onBatchComplete).not.toHaveBeenCalled()
   })
 

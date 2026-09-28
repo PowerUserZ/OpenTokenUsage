@@ -102,6 +102,15 @@ export function useSettingsBootstrap({
     let isMounted = true
 
     const loadSettings = async () => {
+      // Language first and on its own: the UI remounts on a language switch, and a failure in the
+      // plugin chain below must not keep the stored language from applying.
+      try {
+        const storedLanguage = await loadLanguage()
+        if (isMounted) useLocaleStore.getState().setPreference(storedLanguage)
+      } catch (error) {
+        console.error("Failed to load language:", error)
+      }
+
       try {
         const availablePlugins = await invoke<PluginMeta[]>("list_plugins")
         if (!isMounted) return
@@ -190,13 +199,6 @@ export function useSettingsBootstrap({
           storedTrayPercentColor = await loadTrayPercentColor()
         } catch (error) {
           console.error("Failed to load tray provider/metric:", error)
-        }
-
-        try {
-          const storedLanguage = await loadLanguage()
-          if (isMounted) useLocaleStore.getState().setPreference(storedLanguage)
-        } catch (error) {
-          console.error("Failed to load language:", error)
         }
 
         if (isMounted) {

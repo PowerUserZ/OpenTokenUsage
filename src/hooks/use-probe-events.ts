@@ -40,10 +40,11 @@ export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOpti
 
     const setup = async () => {
       try {
+        // Apply every result, even from a batch this page doesn't know: the host skips a plugin
+        // that is still probing from an earlier batch (e.g. before a webview reload), and that
+        // probe's result is the only one that will clear the plugin's loading state.
         const resultUnlisten = await listen<ProbeResult>("probe:result", (event) => {
-          if (activeBatchIds.current.has(event.payload.batchId)) {
-            onResult(event.payload.output)
-          }
+          onResult(event.payload.output)
         })
 
         if (cancelled) {

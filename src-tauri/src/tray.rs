@@ -342,6 +342,63 @@ fn monitor_contains_physical_point(
         && point_y < origin_y + height
 }
 
+/// Windows 11 flyouts float this far (logical px) above the taskbar.
+const FLYOUT_MARGIN: f64 = 12.0;
+
+/// Pure placement math (physical px): bottom edge on `anchor_bottom`, clamped into the work area.
+fn flyout_origin(
+    x: i32,
+    anchor_bottom: i32,
+    width: i32,
+    height: i32,
+    area: (i32, i32, i32, i32), // left, top, right, bottom
+) -> (i32, i32) {
+    let (left, top, right, _) = area;
+    let x = x.min(right - width).max(left);
+    let y = (anchor_bottom - height).max(top);
+    (x, y)
+}
+
+fn work_area_of(monitor: &tauri::Monitor) -> (i32, i32, i32, i32) {
+    let area = monitor.work_area();
+    (
+        area.position.x,
+        area.position.y,
+        area.position.x + area.size.width as i32,
+        area.position.y + area.size.height as i32,
+    )
+}
+
+/// Keep the panel's bottom edge just above the taskbar after it is shown or resized, so a short
+/// view never leaves a gap under the panel. Uses the tray-click anchor when there is one;
+/// otherwise (shortcut / menu) the panel goes to the bottom-right corner of the work area.
+pub fn anchor_panel(window: &tauri::WebviewWindow) {
+    let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+        return;
+    };
+    let Some(monitor) = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten())
+    else {
+        return;
+    };
+    let area = work_area_of(&monitor);
+    let margin = (FLYOUT_MARGIN * window.scale_factor().unwrap_or(1.0)).round() as i32;
+    let (x, anchor_bottom) = match last_anchor_bottom_physical_y() {
+        Some(bottom) => (pos.x, bottom),
+        None => {
+            let bottom = area.3 - margin;
+            set_last_anchor_bottom_physical_y(bottom);
+            (area.2 - size.width as i32 - margin, bottom)
+        }
+    };
+    let (x, y) = flyout_origin(x, anchor_bottom, size.width as i32, size.height as i32, area);
+    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
+/// Position the window above the tray icon, centered horizontally on it.
 fn position_window_at_tray_icon(
     window: &tauri::WebviewWindow,
     icon_position: tauri::Position,
@@ -350,86 +407,59 @@ fn position_window_at_tray_icon(
     let scale = window.scale_factor().unwrap_or(1.0);
     let (icon_x, icon_y) = position_to_physical(&icon_position, scale);
     let (icon_w, _icon_h) = size_to_physical(&icon_size, scale);
-
-    let panel_width = window
-        .outer_size()
-        .ok()
-        .map(|s| s.width as f64)
-        .unwrap_or(400.0);
-    let panel_height = window
-        .outer_size()
-        .ok()
-        .map(|s| s.height as f64)
-        .unwrap_or(500.0);
-
-    // Center horizontally on the tray icon
+    let Ok(size) = window.outer_size() else {
+        return;
+    };
     let icon_center_x = icon_x + icon_w / 2.0;
-    let mut x = icon_center_x - panel_width / 2.0;
 
-    // Bottom edge of window sits just above the tray icon
-    let mut y = icon_y - panel_height;
-
-    // Clamp to the work area (screen minus taskbar)
-    let work_x;
-    let work_y;
-    let work_w;
-    let work_h;
-
-    if let Ok(monitors) = window.available_monitors() {
-        let target_monitor = monitors
-            .into_iter()
-            .find(|monitor| {
+    let monitor = window
+        .available_monitors()
+        .ok()
+        .and_then(|monitors| {
+            monitors.into_iter().find(|monitor| {
                 let origin = monitor.position();
-                let size = monitor.size();
+                let monitor_size = monitor.size();
                 monitor_contains_physical_point(
                     origin.x as f64,
                     origin.y as f64,
-                    size.width as f64,
-                    size.height as f64,
+                    monitor_size.width as f64,
+                    monitor_size.height as f64,
                     icon_center_x,
                     icon_y,
                 )
             })
-            .or_else(|| window.primary_monitor().ok().flatten());
-
-        if let Some(monitor) = target_monitor {
-            let mon_pos = monitor.position();
-            work_x = mon_pos.x as f64;
-            work_y = mon_pos.y as f64;
-            work_w = monitor.size().width as f64;
-            work_h = monitor.size().height as f64;
-        } else {
-            return;
-        }
-    } else if let Ok(Some(monitor)) = window.primary_monitor() {
-        let mon_pos = monitor.position();
-        work_x = mon_pos.x as f64;
-        work_y = mon_pos.y as f64;
-        work_w = monitor.size().width as f64;
-        work_h = monitor.size().height as f64;
-    } else {
+        })
+        .or_else(|| window.primary_monitor().ok().flatten());
+    let Some(monitor) = monitor else {
         return;
+    };
+    let area = work_area_of(&monitor);
+    let margin = (FLYOUT_MARGIN * scale).round() as i32;
+
+    // Bottom taskbar: the icon sits below the work area, so anchor on the work area's bottom.
+    let anchor_bottom = (icon_y.round() as i32).min(area.3) - margin;
+    set_last_anchor_bottom_physical_y(anchor_bottom);
+    let x = (icon_center_x - size.width as f64 / 2.0).round() as i32;
+    let (x, y) = flyout_origin(x, anchor_bottom, size.width as i32, size.height as i32, area);
+    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
+#[cfg(test)]
+mod flyout_tests {
+    use super::flyout_origin;
+
+    const AREA: (i32, i32, i32, i32) = (0, 0, 2560, 1392); // 1440p screen, 48px taskbar
+
+    #[test]
+    fn short_panel_sits_on_the_anchor_not_at_the_old_top() {
+        // Regression: a shorter view kept the old top edge and left a gap above the taskbar.
+        assert_eq!(flyout_origin(2148, 1380, 400, 541, AREA), (2148, 839));
+        assert_eq!(flyout_origin(2148, 1380, 400, 860, AREA), (2148, 520));
     }
 
-    // Horizontal clamping
-    if x < work_x {
-        x = work_x;
+    #[test]
+    fn clamps_into_the_work_area() {
+        assert_eq!(flyout_origin(2400, 1380, 400, 541, AREA), (2160, 839)); // off the right edge
+        assert_eq!(flyout_origin(-50, 1380, 400, 2000, AREA), (0, 0)); // taller than the screen
     }
-    if x + panel_width > work_x + work_w {
-        x = work_x + work_w - panel_width;
-    }
-
-    // Vertical clamping — keep window fully on screen
-    if y < work_y {
-        y = work_y;
-    }
-    if y + panel_height > work_y + work_h {
-        y = work_y + work_h - panel_height;
-    }
-
-    set_last_anchor_bottom_physical_y(icon_y.round() as i32);
-    let _ = window.set_position(tauri::PhysicalPosition::new(
-        x.round() as i32,
-        y.round() as i32,
-    ));
 }

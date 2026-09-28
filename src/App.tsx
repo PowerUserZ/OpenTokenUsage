@@ -17,6 +17,7 @@ import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
 import { t, useLocaleStore } from "@/lib/i18n"
 import { invoke } from "@tauri-apps/api/core"
+import { useAppUpdate } from "@/hooks/use-app-update"
 
 const TRAY_PROBE_DEBOUNCE_MS = 500
 const TRAY_SETTINGS_DEBOUNCE_MS = 2000
@@ -258,6 +259,7 @@ function App() {
 
   // Remount the UI on a language switch so every string (incl. helper-formatted text) re-renders.
   const locale = useLocaleStore((state) => state.locale)
+  const appUpdate = useAppUpdate()
 
   // The tray menu is native (Rust); send it the labels for the current language.
   useEffect(() => {
@@ -276,6 +278,7 @@ function App() {
   return (
     <AppShell
       key={locale}
+      appUpdate={appUpdate}
       onRefreshAll={handleRefreshAll}
       navPlugins={navPlugins}
       displayPlugins={displayPlugins}

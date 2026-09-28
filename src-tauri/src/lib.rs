@@ -249,19 +249,9 @@ fn hide_panel(app_handle: tauri::AppHandle) {
 #[tauri::command]
 fn reanchor_window(app_handle: tauri::AppHandle) {
     use tauri::Manager;
-    let Some(window) = app_handle.get_webview_window("main") else {
-        return;
-    };
-    let Ok(current_pos) = window.outer_position() else {
-        return;
-    };
-    let Ok(current_size) = window.outer_size() else {
-        return;
-    };
-    let anchor_bottom = tray::last_anchor_bottom_physical_y()
-        .unwrap_or(current_pos.y.saturating_add(current_size.height as i32));
-    let new_y = anchor_bottom.saturating_sub(current_size.height as i32).max(0);
-    let _ = window.set_position(tauri::PhysicalPosition::new(current_pos.x, new_y));
+    if let Some(window) = app_handle.get_webview_window("main") {
+        tray::anchor_panel(&window);
+    }
 }
 
 #[tauri::command]

@@ -1362,11 +1362,45 @@ struct LsDiscoverResult {
     extension_port: Option<i32>,
 }
 
-/// Run a PowerShell snippet without flashing a console window.
-fn powershell(script: &str) -> std::io::Result<std::process::Output> {
-    silent_command("powershell")
+/// A stalled WMI/CIM query (hung winmgmt, AV scan) would block the probe forever: the probe
+/// deadline can't interrupt a native call, so every PowerShell run gets its own time limit.
+const POWERSHELL_TIMEOUT: Duration = Duration::from_secs(8);
+
+/// Run a PowerShell snippet without flashing a console window; killed after `timeout`.
+fn powershell_with_timeout(script: &str, timeout: Duration) -> std::io::Result<std::process::Output> {
+    let mut child = silent_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
-        .output()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
+    let mut stdout = child.stdout.take();
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(out) = stdout.as_mut() {
+            let _ = std::io::Read::read_to_end(out, &mut buf);
+        }
+        buf
+    });
+    let start = Instant::now();
+    loop {
+        if let Some(status) = child.try_wait()? {
+            let stdout = reader.join().unwrap_or_default();
+            return Ok(std::process::Output { status, stdout, stderr: Vec::new() });
+        }
+        if start.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("powershell timed out after {}s", timeout.as_secs()),
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn powershell(script: &str) -> std::io::Result<std::process::Output> {
+    powershell_with_timeout(script, POWERSHELL_TIMEOUT)
 }
 
 fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
@@ -2697,6 +2731,18 @@ fn expand_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn powershell_is_killed_when_it_hangs() {
+        // Regression: a stalled CIM query used to block the probe (and its in-flight slot) forever.
+        let start = Instant::now();
+        let err = powershell_with_timeout("Start-Sleep -Seconds 30", Duration::from_secs(2))
+            .expect_err("should time out");
+        assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+        assert!(start.elapsed() < Duration::from_secs(10), "took {:?}", start.elapsed());
+        let ok = powershell("Write-Output 42").expect("runs");
+        assert_eq!(String::from_utf8_lossy(&ok.stdout).trim(), "42");
+    }
     use rquickjs::{Context, Function, Object, Runtime};
 
     fn encrypt_aes_256_gcm_envelope_for_test(key: &[u8], plaintext: &str) -> String {

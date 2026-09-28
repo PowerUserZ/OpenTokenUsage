@@ -7,7 +7,7 @@ import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import { useAppVersion } from "@/hooks/app/use-app-version"
 import { usePanel } from "@/hooks/app/use-panel"
-import { useAppUpdate } from "@/hooks/use-app-update"
+import type { useAppUpdate } from "@/hooks/use-app-update"
 import { useWindowsAppearance } from "@/hooks/use-windows-appearance"
 import { t } from "@/lib/i18n"
 import { useAppUiStore } from "@/stores/app-ui-store"
@@ -23,6 +23,8 @@ type AppShellProps = {
   isPluginRefreshAvailable: (pluginId: string) => boolean
   onNavReorder: (orderedIds: string[]) => void
   appContentProps: AppContentActionProps
+  /** Owned by App so a language switch (which remounts this shell) keeps a downloaded update. */
+  appUpdate: ReturnType<typeof useAppUpdate>
 }
 
 /** Windows 11 title bar: app icon + caption, and a Fluent caption button that hides to the tray. */
@@ -58,6 +60,7 @@ export function AppShell({
   isPluginRefreshAvailable,
   onNavReorder,
   appContentProps,
+  appUpdate,
 }: AppShellProps) {
   const {
     activeView,
@@ -88,7 +91,7 @@ export function AppShell({
 
   useWindowsAppearance()
   const appVersion = useAppVersion()
-  const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
+  const { updateStatus, triggerInstall, checkForUpdates } = appUpdate
 
   return (
     <div ref={containerRef} tabIndex={-1} className="flex flex-col bg-background outline-none">
