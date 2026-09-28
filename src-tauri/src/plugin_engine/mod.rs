@@ -2,6 +2,7 @@ pub mod host_api;
 mod http_gate;
 pub mod manifest;
 pub mod runtime;
+mod sqlite;
 
 use manifest::LoadedPlugin;
 use std::path::{Path, PathBuf};

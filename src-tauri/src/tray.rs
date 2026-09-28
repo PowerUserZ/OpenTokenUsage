@@ -1,17 +1,12 @@
+use std::sync::{Mutex, OnceLock};
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::path::BaseDirectory;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager};
-#[cfg(target_os = "macos")]
-use tauri_nspanel::ManagerExt;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_store::StoreExt;
-#[cfg(not(target_os = "macos"))]
-use std::sync::{Mutex, OnceLock};
 
-#[cfg(target_os = "macos")]
-use crate::panel::{get_or_init_panel, position_panel_at_tray_icon};
 use crate::log_path;
 use crate::panel::show_panel;
 
@@ -52,14 +47,9 @@ fn set_stored_log_level(app_handle: &AppHandle, level: log::LevelFilter) {
 }
 
 pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
-    let icon_name = if cfg!(target_os = "macos") {
-        "icons/tray-icon.png"
-    } else {
-        "icons/tray-icon-light.png"
-    };
     let tray_icon_path = app_handle
         .path()
-        .resolve(icon_name, BaseDirectory::Resource)?;
+        .resolve("icons/tray-icon-light.png", BaseDirectory::Resource)?;
     let icon = Image::from_path(tray_icon_path)?;
 
     // Load persisted log level
@@ -149,7 +139,13 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
     ];
 
     let separator = PredefinedMenuItem::separator(app_handle)?;
-    let about = MenuItem::with_id(app_handle, "about", "About OpenTokenUsage", true, None::<&str>)?;
+    let about = MenuItem::with_id(
+        app_handle,
+        "about",
+        "About OpenTokenUsage",
+        true,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app_handle, "quit", "Quit", true, None::<&str>)?;
 
     let menu = Menu::with_items(
@@ -166,7 +162,6 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
 
     TrayIconBuilder::with_id("tray")
         .icon(icon)
-        .icon_as_template(true)
         .tooltip("OpenTokenUsage")
         .menu(&menu)
         .show_menu_on_left_click(false)
@@ -226,42 +221,24 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
             let app_handle = tray.app_handle();
 
             if let TrayIconEvent::Click {
-                button, button_state, rect, ..
+                button,
+                button_state,
+                rect,
+                ..
             } = event
             {
                 if button == MouseButton::Left && button_state == MouseButtonState::Up {
-                    #[cfg(target_os = "macos")]
-                    {
-                        let Some(panel) = get_or_init_panel!(app_handle) else {
-                            return;
-                        };
-
-                        if panel.is_visible() {
-                            log::debug!("tray click: hiding panel");
-                            panel.hide();
-                            return;
-                        }
-                        log::debug!("tray click: showing panel");
-
-                        // macOS quirk: must show window before positioning to another monitor
-                        panel.show_and_make_key();
-                        position_panel_at_tray_icon(app_handle, rect.position, rect.size);
-                    }
-
-                    #[cfg(not(target_os = "macos"))]
-                    {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            match window.is_visible() {
-                                Ok(true) => {
-                                    log::debug!("tray click: hiding window");
-                                    let _ = window.hide();
-                                }
-                                _ => {
-                                    log::debug!("tray click: showing window");
-                                    let _ = window.show();
-                                    let _ = window.set_focus();
-                                    position_window_at_tray_icon(&window, rect.position, rect.size);
-                                }
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        match window.is_visible() {
+                            Ok(true) => {
+                                log::debug!("tray click: hiding window");
+                                let _ = window.hide();
+                            }
+                            _ => {
+                                log::debug!("tray click: showing window");
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                                position_window_at_tray_icon(&window, rect.position, rect.size);
                             }
                         }
                     }
@@ -275,25 +252,21 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
 
 /// Position the window above the tray icon, centered horizontally.
 /// The window's bottom edge sits just above the tray icon / taskbar.
-#[cfg(not(target_os = "macos"))]
 fn last_anchor_bottom_slot() -> &'static Mutex<Option<i32>> {
     static SLOT: OnceLock<Mutex<Option<i32>>> = OnceLock::new();
     SLOT.get_or_init(|| Mutex::new(None))
 }
 
-#[cfg(not(target_os = "macos"))]
 pub fn last_anchor_bottom_physical_y() -> Option<i32> {
     last_anchor_bottom_slot().lock().ok().and_then(|slot| *slot)
 }
 
-#[cfg(not(target_os = "macos"))]
 fn set_last_anchor_bottom_physical_y(value: i32) {
     if let Ok(mut slot) = last_anchor_bottom_slot().lock() {
         *slot = Some(value);
     }
 }
 
-#[cfg(not(target_os = "macos"))]
 fn position_to_physical(position: &tauri::Position, scale: f64) -> (f64, f64) {
     match position {
         tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
@@ -301,7 +274,6 @@ fn position_to_physical(position: &tauri::Position, scale: f64) -> (f64, f64) {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
 fn size_to_physical(size: &tauri::Size, scale: f64) -> (f64, f64) {
     match size {
         tauri::Size::Physical(s) => (s.width as f64, s.height as f64),
@@ -309,7 +281,6 @@ fn size_to_physical(size: &tauri::Size, scale: f64) -> (f64, f64) {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
 fn monitor_contains_physical_point(
     origin_x: f64,
     origin_y: f64,
@@ -324,7 +295,6 @@ fn monitor_contains_physical_point(
         && point_y < origin_y + height
 }
 
-#[cfg(not(target_os = "macos"))]
 fn position_window_at_tray_icon(
     window: &tauri::WebviewWindow,
     icon_position: tauri::Position,

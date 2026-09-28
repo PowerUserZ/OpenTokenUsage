@@ -156,77 +156,6 @@ fn read_command_stdout(program: &str, args: &[&str]) -> Option<String> {
     Some(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-fn read_env_value_via_command(program: &str, args: &[&str]) -> Option<String> {
-    let stdout = read_command_stdout(program, args)?;
-    sanitize_env_value(&stdout)
-}
-
-fn current_macos_keychain_account_from_user_env(user_env: Option<String>) -> String {
-    user_env
-        .and_then(|value| {
-            let trimmed = value.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            }
-        })
-        .or_else(|| read_env_value_via_command("id", &["-un"]))
-        .unwrap_or_else(|| "openusage-user".to_string())
-}
-
-fn current_macos_keychain_account() -> String {
-    current_macos_keychain_account_from_user_env(read_env_from_process("USER"))
-}
-
-fn keychain_find_generic_password_args(service: &str) -> Vec<OsString> {
-    vec![
-        OsString::from("find-generic-password"),
-        OsString::from("-s"),
-        OsString::from(service),
-        OsString::from("-w"),
-    ]
-}
-
-fn keychain_find_generic_password_args_for_account(service: &str, account: &str) -> Vec<OsString> {
-    vec![
-        OsString::from("find-generic-password"),
-        OsString::from("-a"),
-        OsString::from(account),
-        OsString::from("-s"),
-        OsString::from(service),
-        OsString::from("-w"),
-    ]
-}
-
-fn keychain_add_generic_password_args(service: &str, value: &str) -> Vec<OsString> {
-    vec![
-        OsString::from("add-generic-password"),
-        OsString::from("-U"),
-        OsString::from("-s"),
-        OsString::from(service),
-        OsString::from("-w"),
-        OsString::from(value),
-    ]
-}
-
-fn keychain_add_generic_password_args_for_account(
-    service: &str,
-    account: &str,
-    value: &str,
-) -> Vec<OsString> {
-    vec![
-        OsString::from("add-generic-password"),
-        OsString::from("-U"),
-        OsString::from("-a"),
-        OsString::from(account),
-        OsString::from("-s"),
-        OsString::from(service),
-        OsString::from("-w"),
-        OsString::from(value),
-    ]
-}
-
 fn terminal_env_cache() -> &'static Mutex<HashMap<String, Option<String>>> {
     static CACHE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
@@ -1433,6 +1362,13 @@ struct LsDiscoverResult {
     extension_port: Option<i32>,
 }
 
+/// Run a PowerShell snippet without flashing a console window.
+fn powershell(script: &str) -> std::io::Result<std::process::Output> {
+    silent_command("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .output()
+}
+
 fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
     let ls_obj = Object::new(ctx.clone())?;
     let pid = plugin_id.to_string();
@@ -1453,19 +1389,20 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     opts.markers
                 );
 
-                let ps_output = match silent_command("/bin/ps")
-                    .args(["-ax", "-o", "pid=,command="])
-                    .output()
-                {
+                // One "pid command-line" per line, like `ps -ax -o pid=,command=`.
+                let ps_output = match powershell(
+                    "Get-CimInstance Win32_Process -Filter 'CommandLine IS NOT NULL' | \
+                     ForEach-Object { \"$($_.ProcessId) $($_.CommandLine)\" }",
+                ) {
                     Ok(o) => o,
                     Err(e) => {
-                        log::warn!("[plugin:{}] ps failed: {}", pid, e);
+                        log::warn!("[plugin:{}] process list failed: {}", pid, e);
                         return Ok("null".to_string());
                     }
                 };
 
                 if !ps_output.status.success() {
-                    log::warn!("[plugin:{}] ps returned non-zero", pid);
+                    log::warn!("[plugin:{}] process list returned non-zero", pid);
                     return Ok("null".to_string());
                 }
 
@@ -1519,11 +1456,6 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     return Ok("null".to_string());
                 }
 
-                let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
-                    .iter()
-                    .find(|p| std::path::Path::new(p).exists())
-                    .copied();
-
                 candidates.sort_by_key(|(marker_rank, _, _)| *marker_rank);
                 for (_, process_pid, command) in candidates {
                     let csrf = if opts.csrf_flag.trim().is_empty() {
@@ -1552,33 +1484,17 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                         }
                     }
 
-                    let ports = if let Some(lsof) = lsof_path {
-                        match silent_command(lsof)
-                            .args([
-                                "-nP",
-                                "-iTCP",
-                                "-sTCP:LISTEN",
-                                "-a",
-                                "-p",
-                                &process_pid.to_string(),
-                            ])
-                            .output()
-                        {
-                            Ok(o) if o.status.success() => {
-                                ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
-                            }
-                            Ok(_) => {
-                                log::warn!("[plugin:{}] lsof returned non-zero", pid);
-                                Vec::new()
-                            }
-                            Err(e) => {
-                                log::warn!("[plugin:{}] lsof failed: {}", pid, e);
-                                Vec::new()
-                            }
+                    // Exits 1 when the pid has no listeners; empty stdout covers that.
+                    let ports = match powershell(&format!(
+                        "Get-NetTCPConnection -State Listen -OwningProcess {} \
+                         -ErrorAction SilentlyContinue | ForEach-Object LocalPort",
+                        process_pid
+                    )) {
+                        Ok(o) => ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout)),
+                        Err(e) => {
+                            log::warn!("[plugin:{}] Get-NetTCPConnection failed: {}", pid, e);
+                            Vec::new()
                         }
-                    } else {
-                        log::warn!("[plugin:{}] lsof not found", pid);
-                        Vec::new()
                     };
 
                     if ports.is_empty() && extension_port.is_none() {
@@ -1671,7 +1587,7 @@ fn ls_marker_rank(command: &str, markers_lower: &[String]) -> Option<u8> {
             .then_some(0);
     }
 
-    let command_lower = command.to_lowercase();
+    let command_lower = command.to_lowercase().replace('\\', "/");
     markers_lower
         .iter()
         .any(|m| command_lower.contains(&format!("/{}/", m)))
@@ -1701,7 +1617,7 @@ fn ls_command_matches_process(command: &str, process_name_lower: &str) -> bool {
     let exe_name = Path::new(argv0)
         .file_name()
         .and_then(|name| name.to_str())
-        .map(|name| name.to_lowercase())
+        .map(|name| name.to_lowercase().trim_end_matches(".exe").to_string())
         .unwrap_or_default();
 
     if exe_name == process_name_lower {
@@ -1712,34 +1628,21 @@ fn ls_command_matches_process(command: &str, process_name_lower: &str) -> bool {
         exe_name.starts_with(&format!("{}_", process_name_lower))
             || command.to_lowercase().contains(process_name_lower)
     } else {
-        let command_lower = command.to_lowercase();
+        let command_lower = command.to_lowercase().replace('\\', "/");
         command_lower.ends_with(&format!("/{}", process_name_lower))
             || command_lower.contains(&format!("/{} ", process_name_lower))
             || command_lower.contains(&format!("/{}\t", process_name_lower))
     }
 }
 
-/// Parse listening port numbers from `lsof -nP -iTCP -sTCP:LISTEN` output.
+/// Parse `Get-NetTCPConnection ... | ForEach-Object LocalPort` output: one
+/// port per line. Sorted, deduplicated (IPv4 and IPv6 listeners repeat).
 fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
-    let mut ports = std::collections::BTreeSet::new();
-    for line in output.lines() {
-        if !line.contains("LISTEN") {
-            continue;
-        }
-        // lsof -nP output: ... TCP 127.0.0.1:PORT (LISTEN)  or  ... TCP *:PORT
-        // Scan tokens in reverse to find the address:port token.
-        for token in line.split_whitespace().rev() {
-            if let Some(colon_pos) = token.rfind(':') {
-                let port_str = &token[colon_pos + 1..];
-                if let Ok(port) = port_str.parse::<i32>() {
-                    if port > 0 && port < 65536 {
-                        ports.insert(port);
-                        break;
-                    }
-                }
-            }
-        }
-    }
+    let ports: std::collections::BTreeSet<i32> = output
+        .lines()
+        .filter_map(|line| line.trim().parse::<i32>().ok())
+        .filter(|port| *port > 0 && *port < 65536)
+        .collect();
     ports.into_iter().collect()
 }
 
@@ -2673,302 +2576,47 @@ pub fn patch_ccusage_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
     )
 }
 
+/// Plugins still probe `ctx.host.keychain`. Windows has no macOS Keychain, so
+/// every call fails fast and plugins fall back to their file-based sources.
 fn inject_keychain<'js>(
     ctx: &Ctx<'js>,
     host: &Object<'js>,
-    plugin_id: &str,
+    _plugin_id: &str,
 ) -> rquickjs::Result<()> {
+    const UNSUPPORTED: &str = "keychain API is only supported on macOS";
     let keychain_obj = Object::new(ctx.clone())?;
-    let pid_read = plugin_id.to_string();
-
     keychain_obj.set(
         "readGenericPassword",
         Function::new(
             ctx.clone(),
-            move |ctx_inner: Ctx<'_>,
-                  service: String,
-                  account_args: Rest<Option<String>>|
-                  -> rquickjs::Result<String> {
-                if !cfg!(target_os = "macos") {
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        "keychain API is only supported on macOS",
-                    ));
-                }
-                let account = account_args
-                    .0
-                    .into_iter()
-                    .next()
-                    .flatten()
-                    .and_then(|value| {
-                        let trimmed = value.trim();
-                        if trimmed.is_empty() {
-                            None
-                        } else {
-                            Some(trimmed.to_string())
-                        }
-                    });
-                let redacted_account = account.as_ref().map(|value| redact_value(value));
-                if let Some(ref redacted) = redacted_account {
-                    log::info!(
-                        "[plugin:{}] keychain read: service={}, account={}",
-                        pid_read,
-                        service,
-                        redacted
-                    );
-                } else {
-                    log::info!("[plugin:{}] keychain read: service={}", pid_read, service);
-                }
-                let args = if let Some(ref account) = account {
-                    keychain_find_generic_password_args_for_account(&service, account)
-                } else {
-                    keychain_find_generic_password_args(&service)
-                };
-                let output = silent_command("security")
-                    .args(args)
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("keychain read failed: {}", e),
-                        )
-                    })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let first_line = stderr.lines().next().unwrap_or("").trim();
-                    if let Some(ref redacted) = redacted_account {
-                        log::warn!(
-                            "[plugin:{}] keychain read miss: service={}, account={}, error={}",
-                            pid_read,
-                            service,
-                            redacted,
-                            first_line
-                        );
-                    } else {
-                        log::warn!(
-                            "[plugin:{}] keychain read miss: service={}, error={}",
-                            pid_read,
-                            service,
-                            first_line
-                        );
-                    }
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("keychain item not found: {}", first_line),
-                    ));
-                }
-
-                if let Some(ref redacted) = redacted_account {
-                    log::info!(
-                        "[plugin:{}] keychain read hit: service={}, account={}",
-                        pid_read,
-                        service,
-                        redacted
-                    );
-                } else {
-                    log::info!(
-                        "[plugin:{}] keychain read hit: service={}",
-                        pid_read,
-                        service
-                    );
-                }
-                Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+            |ctx_inner: Ctx<'_>,
+             _service: String,
+             _account: Rest<Option<String>>|
+             -> rquickjs::Result<String> {
+                Err(Exception::throw_message(&ctx_inner, UNSUPPORTED))
             },
         )?,
     )?;
-
-    let pid_read_current_user = plugin_id.to_string();
     keychain_obj.set(
         "readGenericPasswordForCurrentUser",
         Function::new(
             ctx.clone(),
-            move |ctx_inner: Ctx<'_>, service: String| -> rquickjs::Result<String> {
-                if !cfg!(target_os = "macos") {
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        "keychain API is only supported on macOS",
-                    ));
-                }
-                let account = current_macos_keychain_account();
-                let args = keychain_find_generic_password_args_for_account(&service, &account);
-                let redacted_account = redact_value(&account);
-                log::info!(
-                    "[plugin:{}] keychain read: service={}, account={}",
-                    pid_read_current_user,
-                    service,
-                    redacted_account
-                );
-                let output = silent_command("security")
-                    .args(&args)
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("keychain read failed: {}", e),
-                        )
-                    })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let first_line = stderr.lines().next().unwrap_or("").trim();
-                    log::warn!(
-                        "[plugin:{}] keychain read miss: service={}, account={}, error={}",
-                        pid_read_current_user,
-                        service,
-                        redacted_account,
-                        first_line
-                    );
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("keychain item not found: {}", first_line),
-                    ));
-                }
-
-                log::info!(
-                    "[plugin:{}] keychain read hit: service={}, account={}",
-                    pid_read_current_user,
-                    service,
-                    redacted_account
-                );
-                Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+            |ctx_inner: Ctx<'_>, _service: String| -> rquickjs::Result<String> {
+                Err(Exception::throw_message(&ctx_inner, UNSUPPORTED))
             },
         )?,
     )?;
-
-    let pid_write = plugin_id.to_string();
-    keychain_obj.set(
-        "writeGenericPassword",
-        Function::new(
-            ctx.clone(),
-            move |ctx_inner: Ctx<'_>, service: String, value: String| -> rquickjs::Result<()> {
-                if !cfg!(target_os = "macos") {
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        "keychain API is only supported on macOS",
-                    ));
-                }
-                log::info!("[plugin:{}] keychain write: service={}", pid_write, service);
-
-                let mut account_arg: Option<String> = None;
-                let find_output = silent_command("security")
-                    .args(["find-generic-password", "-s", &service])
-                    .output();
-
-                if let Ok(output) = find_output {
-                    if output.status.success() {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        for line in stdout.lines() {
-                            if let Some(start) = line.find("\"acct\"<blob>=\"") {
-                                let rest = &line[start + 14..];
-                                if let Some(end) = rest.find('"') {
-                                    account_arg = Some(rest[..end].to_string());
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                let output = if let Some(ref acct) = account_arg {
-                    silent_command("security")
-                        .args(keychain_add_generic_password_args_for_account(
-                            &service, acct, &value,
-                        ))
-                        .output()
-                } else {
-                    silent_command("security")
-                        .args(keychain_add_generic_password_args(&service, &value))
-                        .output()
-                }
-                .map_err(|e| {
-                    Exception::throw_message(&ctx_inner, &format!("keychain write failed: {}", e))
-                })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let first_line = stderr.lines().next().unwrap_or("").trim();
-                    log::warn!(
-                        "[plugin:{}] keychain write failed: service={}, error={}",
-                        pid_write,
-                        service,
-                        first_line
-                    );
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("keychain write failed: {}", first_line),
-                    ));
-                }
-
-                log::info!(
-                    "[plugin:{}] keychain write succeeded: service={}",
-                    pid_write,
-                    service
-                );
-                Ok(())
-            },
-        )?,
-    )?;
-
-    let pid_write_current_user = plugin_id.to_string();
-    keychain_obj.set(
-        "writeGenericPasswordForCurrentUser",
-        Function::new(
-            ctx.clone(),
-            move |ctx_inner: Ctx<'_>, service: String, value: String| -> rquickjs::Result<()> {
-                if !cfg!(target_os = "macos") {
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        "keychain API is only supported on macOS",
-                    ));
-                }
-                let account = current_macos_keychain_account();
-                let args =
-                    keychain_add_generic_password_args_for_account(&service, &account, &value);
-                let redacted_account = redact_value(&account);
-                log::info!(
-                    "[plugin:{}] keychain write: service={}, account={}",
-                    pid_write_current_user,
-                    service,
-                    redacted_account
-                );
-                let output = silent_command("security")
-                    .args(&args)
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("keychain write failed: {}", e),
-                        )
-                    })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let first_line = stderr.lines().next().unwrap_or("").trim();
-                    log::warn!(
-                        "[plugin:{}] keychain write failed: service={}, account={}, error={}",
-                        pid_write_current_user,
-                        service,
-                        redacted_account,
-                        first_line
-                    );
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("keychain write failed: {}", first_line),
-                    ));
-                }
-
-                log::info!(
-                    "[plugin:{}] keychain write succeeded: service={}, account={}",
-                    pid_write_current_user,
-                    service,
-                    redacted_account
-                );
-                Ok(())
-            },
-        )?,
-    )?;
-
+    for name in ["writeGenericPassword", "writeGenericPasswordForCurrentUser"] {
+        keychain_obj.set(
+            name,
+            Function::new(
+                ctx.clone(),
+                |ctx_inner: Ctx<'_>, _service: String, _value: String| -> rquickjs::Result<()> {
+                    Err(Exception::throw_message(&ctx_inner, UNSUPPORTED))
+                },
+            )?,
+        )?;
+    }
     host.set("keychain", keychain_obj)?;
     Ok(())
 }
@@ -2981,55 +2629,8 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, db_path: String, sql: String| -> rquickjs::Result<String> {
-                if sql.lines().any(|line| line.trim_start().starts_with('.')) {
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        "sqlite3 dot-commands are not allowed",
-                    ));
-                }
-                let expanded = expand_path(&db_path);
-
-                // Prefer a normal read-only open so WAL contents are visible (common for app state DBs).
-                // Fall back to immutable=1 to bypass WAL/SHM lock issues after macOS sleep.
-                let primary = silent_command("sqlite3")
-                    .args(["-readonly", "-json", &expanded, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
-                    })?;
-
-                if primary.status.success() {
-                    return Ok(String::from_utf8_lossy(&primary.stdout).to_string());
-                }
-
-                // Percent-encode special chars for valid URI (% must be first!)
-                let encoded = expanded
-                    .replace('%', "%25")
-                    .replace(' ', "%20")
-                    .replace('#', "%23")
-                    .replace('?', "%3F");
-                let uri_path = format!("file:{}?immutable=1", encoded);
-                let fallback = silent_command("sqlite3")
-                    .args(["-readonly", "-json", &uri_path, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
-                    })?;
-
-                if !fallback.status.success() {
-                    let stderr_primary = String::from_utf8_lossy(&primary.stderr);
-                    let stderr_fallback = String::from_utf8_lossy(&fallback.stderr);
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!(
-                            "sqlite3 error: {} (fallback: {})",
-                            stderr_primary.trim(),
-                            stderr_fallback.trim()
-                        ),
-                    ));
-                }
-
-                Ok(String::from_utf8_lossy(&fallback.stdout).to_string())
+                super::sqlite::query_json(&expand_path(&db_path), &sql)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e))
             },
         )?,
     )?;
@@ -3039,29 +2640,8 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, db_path: String, sql: String| -> rquickjs::Result<()> {
-                if sql.lines().any(|line| line.trim_start().starts_with('.')) {
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        "sqlite3 dot-commands are not allowed",
-                    ));
-                }
-                let expanded = expand_path(&db_path);
-                let output = silent_command("sqlite3")
-                    .args([&expanded, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
-                    })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("sqlite3 error: {}", stderr.trim()),
-                    ));
-                }
-
-                Ok(())
+                super::sqlite::exec(&expand_path(&db_path), &sql)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e))
             },
         )?,
     )?;
@@ -3079,34 +2659,39 @@ fn iso_now() -> String {
         })
 }
 
+/// Plugins hardcode the macOS app-data dir. Electron/VS Code forks (Cursor,
+/// Kiro, Devin, Antigravity) keep the same tree under %APPDATA% (Roaming).
+const MAC_APP_SUPPORT_PREFIX: &str = "~/Library/Application Support/";
+
 fn expand_path(path: &str) -> String {
-    let expanded = if path == "~" {
-        match dirs::home_dir() {
-            Some(home) => home,
-            None => return path.to_string(),
-        }
-    } else if path.starts_with("~/") {
-        match dirs::home_dir() {
-            Some(home) => home.join(&path[2..]),
-            None => return path.to_string(),
-        }
+    let (base, rest) = if let Some(rest) = path.strip_prefix(MAC_APP_SUPPORT_PREFIX) {
+        (dirs::data_dir(), rest)
+    } else if path == "~" {
+        (dirs::home_dir(), "")
+    } else if let Some(rest) = path.strip_prefix("~/") {
+        (dirs::home_dir(), rest)
     } else {
         return path.to_string();
     };
+    let Some(base) = base else {
+        return path.to_string();
+    };
+    let expanded = if rest.is_empty() {
+        base.clone()
+    } else {
+        base.join(rest)
+    };
 
-    // Reject path traversal (e.g. "~/../../../etc/passwd").
-    // Canonicalize both paths so the prefix check works on Windows
-    // where canonicalize() returns UNC paths (\\?\C:\...).
-    let result = expanded.to_string_lossy().to_string();
-    if let (Some(home), Ok(canonical)) = (dirs::home_dir(), expanded.canonicalize()) {
-        if let Ok(home_canonical) = home.canonicalize() {
-            if !canonical.starts_with(&home_canonical) {
-                log::warn!("Rejected path traversal attempt: {:?}", path);
-                return home.to_string_lossy().to_string();
-            }
+    // Reject path traversal (e.g. "~/../../../etc/passwd"): the result must
+    // stay under the dir it was joined onto. Canonicalize both paths so the
+    // prefix check works on Windows where canonicalize() returns UNC paths.
+    if let (Ok(canonical), Ok(base_canonical)) = (expanded.canonicalize(), base.canonicalize()) {
+        if !canonical.starts_with(&base_canonical) {
+            log::warn!("Rejected path traversal attempt: {:?}", path);
+            return base.to_string_lossy().to_string();
         }
     }
-    result
+    expanded.to_string_lossy().to_string()
 }
 
 #[cfg(test)]
@@ -3426,6 +3011,37 @@ mod tests {
     }
 
     #[test]
+    fn ls_command_matches_windows_exe_paths() {
+        assert!(ls_command_matches_process(
+            r"C:\Users\u\AppData\Local\Programs\Antigravity\resources\app\extensions\antigravity\bin\language_server_windows_x64.exe --csrf_token abc",
+            "language_server"
+        ));
+        assert!(ls_command_matches_process(
+            r#""C:\Program Files\Antigravity\agy.exe" --some-flag"#,
+            "agy"
+        ));
+        assert!(!ls_command_matches_process(
+            r"C:\tools\not-agy.exe --some-flag agy",
+            "agy"
+        ));
+        assert_eq!(
+            ls_marker_rank(
+                r"C:\Programs\antigravity\bin\language_server_windows_x64.exe",
+                &["antigravity".to_string()]
+            ),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn ls_parse_listening_ports_reads_one_port_per_line() {
+        assert_eq!(
+            ls_parse_listening_ports("42101\r\n42100\r\n\r\n42100\r\nnoise\r\n0\r\n70000\r\n"),
+            vec![42100, 42101]
+        );
+    }
+
+    #[test]
     fn ls_marker_rank_prefers_exact_flags_over_path_fallback() {
         let markers = vec!["antigravity".to_string()];
 
@@ -3567,19 +3183,37 @@ mod tests {
     }
 
     #[test]
-    fn current_macos_keychain_account_prefers_explicit_user_value() {
-        assert_eq!(
-            current_macos_keychain_account_from_user_env(Some("openusage-test-user".to_string())),
-            "openusage-test-user"
-        );
-    }
-
-    #[test]
     fn expand_path_expands_tilde_prefix() {
         let home = dirs::home_dir().expect("home dir");
         let expected = home.join(".claude-custom").to_string_lossy().to_string();
 
         assert_eq!(expand_path("~/.claude-custom"), expected);
+    }
+
+    #[test]
+    fn expand_path_maps_mac_app_support_to_appdata() {
+        let appdata = dirs::data_dir().expect("data dir");
+        let expected = appdata
+            .join("Cursor/User/globalStorage/state.vscdb")
+            .to_string_lossy()
+            .to_string();
+
+        assert_eq!(
+            expand_path("~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"),
+            expected
+        );
+    }
+
+    #[test]
+    fn expand_path_rejects_traversal_out_of_base_dir() {
+        let home = dirs::home_dir().expect("home dir");
+        let appdata = dirs::data_dir().expect("data dir");
+
+        assert_eq!(expand_path("~/.."), home.to_string_lossy());
+        assert_eq!(
+            expand_path("~/Library/Application Support/.."),
+            appdata.to_string_lossy()
+        );
     }
 
     #[test]
@@ -3600,97 +3234,6 @@ mod tests {
         assert!(!is_valid_node_version("20.11"));
         assert!(!is_valid_node_version(""));
         assert!(!is_valid_node_version("v"));
-    }
-
-    #[test]
-    fn keychain_find_generic_password_args_include_service_only_lookup() {
-        let args = keychain_find_generic_password_args("Claude Code-credentials");
-        let rendered: Vec<String> = args
-            .into_iter()
-            .map(|value| value.to_string_lossy().into_owned())
-            .collect();
-
-        assert_eq!(
-            rendered,
-            vec![
-                "find-generic-password",
-                "-s",
-                "Claude Code-credentials",
-                "-w",
-            ]
-        );
-    }
-
-    #[test]
-    fn keychain_find_generic_password_args_for_account_include_account_and_service() {
-        let args = keychain_find_generic_password_args_for_account(
-            "Claude Code-credentials",
-            "openusage-test-user",
-        );
-        let rendered: Vec<String> = args
-            .into_iter()
-            .map(|value| value.to_string_lossy().into_owned())
-            .collect();
-
-        assert_eq!(
-            rendered,
-            vec![
-                "find-generic-password",
-                "-a",
-                "openusage-test-user",
-                "-s",
-                "Claude Code-credentials",
-                "-w",
-            ]
-        );
-    }
-
-    #[test]
-    fn keychain_add_generic_password_args_include_service_only_write() {
-        let args = keychain_add_generic_password_args("Claude Code-credentials", "secret-value");
-        let rendered: Vec<String> = args
-            .into_iter()
-            .map(|value| value.to_string_lossy().into_owned())
-            .collect();
-
-        assert_eq!(
-            rendered,
-            vec![
-                "add-generic-password",
-                "-U",
-                "-s",
-                "Claude Code-credentials",
-                "-w",
-                "secret-value",
-            ]
-        );
-    }
-
-    #[test]
-    fn keychain_add_generic_password_args_for_account_include_update_account_service_and_value() {
-        let args = keychain_add_generic_password_args_for_account(
-            "Claude Code-credentials",
-            "openusage-test-user",
-            "secret-value",
-        );
-        let rendered: Vec<String> = args
-            .into_iter()
-            .map(|value| value.to_string_lossy().into_owned())
-            .collect();
-
-        assert_eq!(
-            rendered,
-            vec![
-                "add-generic-password",
-                "-U",
-                "-a",
-                "openusage-test-user",
-                "-s",
-                "Claude Code-credentials",
-                "-w",
-                "secret-value",
-            ]
-        );
     }
 
     #[test]
