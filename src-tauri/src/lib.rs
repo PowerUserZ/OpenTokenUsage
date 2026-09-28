@@ -1,13 +1,9 @@
-#[cfg(target_os = "macos")]
-mod app_nap;
 mod config;
 mod local_http_api;
 mod log_path;
 mod panel;
 mod plugin_engine;
 mod tray;
-#[cfg(target_os = "macos")]
-mod webkit_config;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -197,10 +193,9 @@ pub struct ProbeBatchComplete {
     pub batch_id: String,
 }
 
+/// Called by the frontend on mount; the Windows window needs no extra setup.
 #[tauri::command]
-fn init_panel(app_handle: tauri::AppHandle) {
-    panel::init(&app_handle).expect("Failed to initialize panel");
-}
+fn init_panel() {}
 
 #[tauri::command]
 fn hide_panel(app_handle: tauri::AppHandle) {
@@ -209,8 +204,7 @@ fn hide_panel(app_handle: tauri::AppHandle) {
 
 /// Re-anchor the window so its bottom edge aligns with the bottom of the
 /// available work area (just above the taskbar).  Called from the frontend
-/// after every auto-resize on Windows.
-#[cfg(not(target_os = "macos"))]
+/// after every auto-resize.
 #[tauri::command]
 fn reanchor_window(app_handle: tauri::AppHandle) {
     use tauri::Manager;
@@ -227,12 +221,6 @@ fn reanchor_window(app_handle: tauri::AppHandle) {
         .unwrap_or(current_pos.y.saturating_add(current_size.height as i32));
     let new_y = anchor_bottom.saturating_sub(current_size.height as i32).max(0);
     let _ = window.set_position(tauri::PhysicalPosition::new(current_pos.x, new_y));
-}
-
-#[cfg(target_os = "macos")]
-#[tauri::command]
-fn reanchor_window(_app_handle: tauri::AppHandle) {
-    // No-op on macOS — the panel anchors to the menu bar.
 }
 
 #[tauri::command]
@@ -529,16 +517,6 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
         .collect()
 }
 
-#[cfg(target_os = "macos")]
-fn nspanel_plugin() -> impl tauri::plugin::Plugin<tauri::Wry> {
-    panel::init_nspanel_plugin()
-}
-
-#[cfg(not(target_os = "macos"))]
-fn nspanel_plugin() -> impl tauri::plugin::Plugin<tauri::Wry> {
-    tauri::plugin::Builder::<tauri::Wry>::new("nspanel-noop").build()
-}
-
 /// On Windows 11, newly added tray icons go into the overflow area by default.
 /// This function searches the registry for our icon entry and sets IsPromoted=1
 /// so it appears in the visible part of the taskbar (next to the clock).
@@ -600,7 +578,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(nspanel_plugin())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -629,24 +606,12 @@ pub fn run() {
             update_global_shortcut
         ])
         .setup(|app| {
-            #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-
-            #[cfg(target_os = "macos")]
-            {
-                app_nap::disable_app_nap();
-                webkit_config::disable_webview_suspension(app.handle());
-            }
-
             use tauri::Manager;
 
-            // On Windows, disable the window shadow to avoid a visible border
-            // around the transparent window.
-            #[cfg(target_os = "windows")]
-            {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.set_shadow(false);
-                }
+            // Disable the window shadow to avoid a visible border around the
+            // transparent window.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_shadow(false);
             }
 
             let version = app.package_info().version.to_string();
