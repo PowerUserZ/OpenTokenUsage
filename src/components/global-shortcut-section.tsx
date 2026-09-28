@@ -273,7 +273,7 @@ export function GlobalShortcutSection({
             tabIndex={0}
           >
             <span>{getDisplayValue()}</span>
-            {hasShortcut ? (
+            {hasShortcut && (
               <button
                 type="button"
                 onClick={handleClear}
@@ -282,8 +282,6 @@ export function GlobalShortcutSection({
               >
                 <X className="h-3.5 w-3.5" />
               </button>
-            ) : (
-              <span className="ml-auto text-xs text-muted-foreground">{t("settings.shortcut.clickToSet")}</span>
             )}
           </div>
         )}
