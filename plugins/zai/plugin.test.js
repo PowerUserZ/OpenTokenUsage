@@ -660,4 +660,39 @@ describe("zai plugin", () => {
     expect(weekly.used).toBe(75)
     expect(weekly.resetsAt).toBe(new Date(1738972800000).toISOString())
   })
+
+  // Upstream d989c4a4: Z.ai renamed TOKENS_LIMIT to CREDIT_LIMIT (GLM Coding Lite, 2026-08-13)
+  // and dropped nextResetTime for the active 5-hour window.
+  it("maps CREDIT_LIMIT entries to Session and Weekly", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    const creditQuota = {
+      code: 200,
+      data: {
+        limits: [
+          { type: "CREDIT_LIMIT", unit: 3, number: 5, usage: 2000, currentValue: 0, remaining: 2000, percentage: 0 },
+          { type: "CREDIT_LIMIT", unit: 6, number: 1, usage: 10000, currentValue: 9855, remaining: 145, percentage: 98, nextResetTime: 1786685679998 },
+        ],
+        level: "lite",
+      },
+    }
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+      }
+      return { status: 200, bodyText: JSON.stringify(creditQuota) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const session = result.lines.find((l) => l.label === "Session")
+    const weekly = result.lines.find((l) => l.label === "Weekly")
+    expect(session.type).toBe("progress")
+    expect(session.used).toBe(0)
+    expect(session.periodDurationMs).toBe(5 * 60 * 60 * 1000)
+    expect(session.resetsAt).toBeUndefined()
+    expect(weekly.used).toBe(98)
+    expect(weekly.periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
+    expect(weekly.resetsAt).toBe(new Date(1786685679998).toISOString())
+  })
 })

@@ -1,9 +1,9 @@
 use aes_gcm::{
-    AesGcm, Nonce,
-    aead::{Aead, KeyInit, OsRng, generic_array::typenum::U16, rand_core::RngCore},
+    aead::{generic_array::typenum::U16, rand_core::RngCore, Aead, KeyInit, OsRng},
     aes::Aes256,
+    AesGcm, Nonce,
 };
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use rquickjs::{function::Rest, Ctx, Exception, Function, Object};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -391,9 +391,7 @@ fn redact_body(body: &str) -> String {
         })
         .to_string();
 
-    if let Ok(devin_session_re) =
-        regex_lite::Regex::new(r#"devin-session-token\$[^\s"',}\]]+"#)
-    {
+    if let Ok(devin_session_re) = regex_lite::Regex::new(r#"devin-session-token\$[^\s"',}\]]+"#) {
         result = devin_session_re
             .replace_all(&result, |caps: &regex_lite::Captures| {
                 redact_value(&caps[0])
@@ -441,6 +439,8 @@ fn redact_body(body: &str) -> String {
         "email",
         "login",
         "analytics_tracking_id",
+        "uuid",
+        "full_name",
     ];
     for key in sensitive_keys {
         // Match "key": "value" or "key":"value"
@@ -453,6 +453,23 @@ fn redact_body(body: &str) -> String {
                 })
                 .to_string();
         }
+    }
+
+    // [claude] /api/oauth/profile account.display_name is the user's name; the same key under
+    // limits[].scope.model is a model name and stays readable, so only redact it inside "account".
+    if let (Ok(account_re), Ok(display_re)) = (
+        regex_lite::Regex::new(r#""account":\s*\{[^{}]*\}"#),
+        regex_lite::Regex::new(r#""display_name":\s*"([^"]+)""#),
+    ) {
+        result = account_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                display_re
+                    .replace_all(&caps[0], |c: &regex_lite::Captures| {
+                        format!("\"display_name\": \"{}\"", redact_value(&c[1]))
+                    })
+                    .to_string()
+            })
+            .to_string();
     }
 
     if let Ok(path_re) =
@@ -482,9 +499,7 @@ pub(crate) fn redact_log_message(msg: &str) -> String {
             })
             .to_string();
     }
-    if let Ok(devin_session_re) =
-        regex_lite::Regex::new(r#"devin-session-token\$[^\s"',}\]]+"#)
-    {
+    if let Ok(devin_session_re) = regex_lite::Regex::new(r#"devin-session-token\$[^\s"',}\]]+"#) {
         result = devin_session_re
             .replace_all(&result, |caps: &regex_lite::Captures| {
                 redact_value(&caps[0])
@@ -3943,6 +3958,46 @@ mod tests {
     }
 
     #[test]
+    fn redact_body_redacts_claude_profile_identity() {
+        // [claude] GET /api/oauth/profile (live plan badge): identity fields must not reach logs,
+        // while the plan fields the plugin reads stay readable.
+        let body = r#"{"account":{"uuid":"4f2c9a1e-8b3d-4e6f-9a7c-1d2e3f4a5b6c","full_name":"Robin Ebers","display_name":"Robin","email":"rob@sunstory.com","has_claude_max":true},"organization":{"uuid":"9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b","name":"Sunstory","organization_type":"claude_max","rate_limit_tier":"default_claude_max_20x"}}"#;
+        let redacted = redact_body(body);
+        for secret in [
+            "4f2c9a1e-8b3d-4e6f-9a7c-1d2e3f4a5b6c",
+            "9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b",
+            "Robin Ebers",
+            "\"Robin\"",
+            "rob@sunstory.com",
+            "Sunstory\"",
+        ] {
+            assert!(
+                !redacted.contains(secret),
+                "{} leaked: {}",
+                secret,
+                redacted
+            );
+        }
+        assert!(
+            redacted.contains(r#""organization_type":"claude_max""#),
+            "got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains(r#""rate_limit_tier":"default_claude_max_20x""#),
+            "got: {}",
+            redacted
+        );
+    }
+
+    #[test]
+    fn redact_body_preserves_claude_cedar_ember_fields() {
+        // [claude] usage-limit reset grants read by the Rate Limit Resets row.
+        let body = r#"{"cedar_ember":{"eligible":true,"grants":[{"resets_left":1,"ends_at":"2026-10-01T00:00:00Z"}]}}"#;
+        assert_eq!(redact_body(body), body);
+    }
+
+    #[test]
     fn redact_url_preserves_grok_billing_credits_format_param() {
         // [grok] GET /v1/billing?format=credits — the query param is not a secret.
         let url = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
@@ -3971,7 +4026,8 @@ mod tests {
 
     #[test]
     fn redact_body_preserves_cursor_spend_limit_usage_fields() {
-        let body = r#"{"spendLimitUsage":{"individualUsed":12.34,"pooledUsed":0,"totalSpend":12.34}}"#;
+        let body =
+            r#"{"spendLimitUsage":{"individualUsed":12.34,"pooledUsed":0,"totalSpend":12.34}}"#;
         let redacted = redact_body(body);
         assert_eq!(
             redacted, body,

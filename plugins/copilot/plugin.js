@@ -289,6 +289,22 @@
       if (completionsLine) lines.push(completionsLine);
     }
 
+    // Org-managed (token_based_billing) seat: no per-seat allotment to show a percent against,
+    // but the premium bucket can still carry the user's own credits_used. Show a positive count
+    // as Credits; 0/missing stays "No usage data". Extra Usage stays suppressed (see above).
+    if (lines.length === 0 && data.token_based_billing === true) {
+      const premium = snapshots && snapshots.premium_interactions;
+      const creditsUsed = premium && typeof premium.credits_used === "number" ? premium.credits_used : 0;
+      if (creditsUsed > 0) {
+        lines.push(
+          ctx.line.text({
+            label: "Credits",
+            value: String(Math.round(creditsUsed * 100) / 100) + " used",
+          }),
+        );
+      }
+    }
+
     if (lines.length === 0) {
       lines.push(
         ctx.line.badge({

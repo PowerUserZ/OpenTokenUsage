@@ -257,6 +257,15 @@
     var weeklyReset = unixSecondsToIso(ctx, planStatus.weeklyQuotaResetAtUnix)
     var extraUsageBalance = formatDollarsFromMicros(planStatus.overageBalanceMicros)
 
+    // A present-but-unparsable weekly percentage is schema drift, not an omitted zero:
+    // fail loud instead of letting the exhausted-quota fallback below show 100% used.
+    if (hasOwn(planStatus, "weeklyQuotaRemainingPercent") && weeklyRemaining === null) {
+      ctx.host.log.warn("Devin weeklyQuotaRemainingPercent is not a number")
+      throw QUOTA_HINT
+    }
+    // Proto3 JSON omits zero values. A weekly reset identifies an existing weekly window.
+    if (weeklyRemaining === null && weeklyReset) weeklyRemaining = 0
+
     var dailyLine = !hideDailyQuota
       ? buildQuotaLine(ctx, "Daily quota", dailyRemaining, dailyReset, DAY_MS)
       : null

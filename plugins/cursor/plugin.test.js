@@ -1900,4 +1900,194 @@ describe("cursor plugin", () => {
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Usage request failed. Check your connection.")
   })
+
+  // Upstream 022286fc: Enterprise fallback combines /api/usage with /api/usage-summary.
+  function mockEnterpriseFallback(ctx, { requestUsage = {}, summary = {}, grokBot = {} } = {}) {
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      const json = (body) => ({ status: 200, bodyText: JSON.stringify(body) })
+      if (url.includes("GetCurrentPeriodUsage")) return json({ billingCycleStart: "1770539602363", billingCycleEnd: "1770539602363" })
+      if (url.includes("GetPlanInfo")) return json({ planInfo: { planName: "Enterprise" } })
+      if (url.includes("cursor.com/api/usage-summary")) return json(summary)
+      if (url.includes("cursor.com/api/usage")) return json(requestUsage)
+      if (url.includes("GetSandUsageStatus")) return json(grokBot)
+      return json({})
+    })
+  }
+
+  it("combines enterprise included requests with usage-summary percentages and user on-demand", async () => {
+    const ctx = makeCtx()
+    mockEnterpriseFallback(ctx, {
+      requestUsage: { "gpt-4": { numRequests: 120, maxRequestUsage: 500 }, startOfMonth: "2026-07-01T00:00:00.000Z" },
+      summary: {
+        billingCycleStart: "2026-07-01T00:00:00.000Z",
+        billingCycleEnd: "2026-08-01T00:00:00.000Z",
+        membershipType: "enterprise",
+        limitType: "team",
+        individualUsage: {
+          plan: { autoPercentUsed: 12.5, apiPercentUsed: 7.5 },
+          onDemand: { enabled: true, used: 2500, limit: 10000 },
+        },
+        teamUsage: { onDemand: { enabled: true, used: 900000, limit: 5000000 } },
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Enterprise")
+    expect(result.lines.map((line) => line.label)).toEqual(["Requests", "Auto usage", "API usage", "On-demand"])
+    const requests = result.lines[0]
+    expect(requests).toMatchObject({ used: 120, limit: 500, format: { kind: "count", suffix: "requests" } })
+    expect(requests.resetsAt).toBe("2026-08-01T00:00:00.000Z")
+    expect(requests.periodDurationMs).toBe(31 * 24 * 60 * 60 * 1000)
+    expect(result.lines[1].used).toBe(12.5)
+    expect(result.lines[2].used).toBe(7.5)
+    // User-scoped cap wins over the team aggregate.
+    expect(result.lines[3]).toMatchObject({ used: 25, limit: 100, format: { kind: "dollars" } })
+  })
+
+  it("maps enterprise usage-summary total when no request allowance exists", async () => {
+    const ctx = makeCtx()
+    mockEnterpriseFallback(ctx, {
+      summary: { limitType: "team", teamUsage: { pooled: { enabled: true, used: 150000, limit: 600000 } } },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Total usage")).toMatchObject({
+      used: 1500,
+      limit: 6000,
+      format: { kind: "dollars" },
+    })
+    expect(result.lines.find((line) => line.label === "Requests")).toBeUndefined()
+  })
+
+  it("falls back to team on-demand when the individual bucket is a disabled placeholder", async () => {
+    const ctx = makeCtx()
+    mockEnterpriseFallback(ctx, {
+      summary: {
+        individualUsage: { plan: { totalPercentUsed: 40 }, onDemand: { enabled: false, used: 0, limit: 0 } },
+        teamUsage: { onDemand: { enabled: true, used: 12345 } },
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Total usage")).toMatchObject({ used: 40, limit: 100 })
+    expect(result.lines.find((line) => line.label === "On-demand")).toEqual({
+      type: "text",
+      label: "On-demand",
+      value: "$123.45 spent",
+    })
+  })
+
+  it("throws enterprise unavailable instead of a blank card when only detail lines exist", async () => {
+    const ctx = makeCtx()
+    mockEnterpriseFallback(ctx, {
+      summary: {
+        individualUsage: {
+          plan: { autoPercentUsed: 12.5 },
+          onDemand: { enabled: true, used: 2500, limit: 10000 },
+        },
+      },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Enterprise usage data unavailable")
+  })
+
+  // Upstream 65324c6c + 0b7653c5: Grok Bot weekly allowance from GetSandUsageStatus,
+  // ordered after Auto/API usage.
+  it("adds Grok Bot usage after Auto/API usage", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            planUsage: { limit: 40000, remaining: 32000, totalPercentUsed: 20, autoPercentUsed: 12.5, apiPercentUsed: 7.5 },
+            spendLimitUsage: { individualLimit: 5000, individualUsed: 2000 },
+          }),
+        }
+      }
+      if (url.includes("GetSandUsageStatus")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            usagePercent: 37.5,
+            currentPeriodStart: "2026-08-20T00:00:00Z",
+            nextResetTimestampUtc: "2026-08-27T00:00:00Z",
+            hasNonZeroIncludedLimit: true,
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.map((line) => line.label)).toEqual([
+      "Total usage", "Auto usage", "API usage", "Grok Bot usage", "On-demand",
+    ])
+    expect(result.lines[3]).toEqual({
+      type: "progress",
+      label: "Grok Bot usage",
+      used: 37.5,
+      limit: 100,
+      format: { kind: "percent" },
+      resetsAt: "2026-08-27T00:00:00.000Z",
+      periodDurationMs: 7 * 24 * 60 * 60 * 1000,
+    })
+    const grokRequest = ctx.host.http.request.mock.calls.find((call) => String(call[0].url).includes("GetSandUsageStatus"))[0]
+    expect(grokRequest.method).toBe("POST")
+    expect(grokRequest.headers.Authorization).toBe("Bearer " + accessToken)
+  })
+
+  it.each([
+    [{ usagePercent: 42, usesPooledEnterpriseAllowance: true }, false],
+    [{ usagePercent: 0, hasNonZeroIncludedLimit: false }, false],
+    [{ includedLimitZero: true }, false],
+    [{}, false],
+    [{ usagePercent: true, hasNonZeroIncludedLimit: true }, true],
+    [{ usagePercent: -1 }, true],
+  ])("hides Grok Bot usage for ineligible or invalid payload %j (warns=%s)", async (grokBot, warns) => {
+    const ctx = makeCtx()
+    mockEnterpriseFallback(ctx, { requestUsage: { "gpt-4": { numRequests: 1, maxRequestUsage: 10 } }, grokBot })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Grok Bot usage")).toBeUndefined()
+    expect(result.lines.find((line) => line.label === "Requests")).toBeTruthy()
+    const warned = ctx.host.log.warn.mock.calls.some((call) => String(call[0]).includes("Grok Bot usage response contained invalid usage metadata"))
+    expect(warned).toBe(warns)
+  })
+
+  it("clamps Grok Bot overage and keeps primary usage when Grok Bot request fails", async () => {
+    const ctx = makeCtx()
+    mockEnterpriseFallback(ctx, { requestUsage: { "gpt-4": { numRequests: 1, maxRequestUsage: 10 } }, grokBot: { usagePercent: 125 } })
+    const plugin = await loadPlugin()
+    expect(plugin.probe(ctx).lines.find((line) => line.label === "Grok Bot usage").used).toBe(100)
+
+    const failing = makeCtx()
+    mockEnterpriseFallback(failing, { requestUsage: { "gpt-4": { numRequests: 1, maxRequestUsage: 10 } } })
+    const baseImpl = failing.host.http.request.getMockImplementation()
+    failing.host.http.request.mockImplementation((opts) =>
+      String(opts.url).includes("GetSandUsageStatus") ? { status: 503, bodyText: "" } : baseImpl(opts)
+    )
+    const result = plugin.probe(failing)
+    expect(result.lines.find((line) => line.label === "Requests")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Grok Bot usage")).toBeUndefined()
+    expect(failing.host.log.warn).toHaveBeenCalledWith("Grok Bot usage returned status=503")
+  })
 })

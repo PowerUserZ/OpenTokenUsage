@@ -8,7 +8,11 @@
   const PLAN_URL = BASE_URL + "/aiserver.v1.DashboardService/GetPlanInfo"
   const REFRESH_URL = BASE_URL + "/oauth/token"
   const CREDITS_URL = BASE_URL + "/aiserver.v1.DashboardService/GetCreditGrantsBalance"
+  const GROK_BOT_USAGE_URL = BASE_URL + "/aiserver.v1.DashboardService/GetSandUsageStatus"
   const REST_USAGE_URL = "https://cursor.com/api/usage"
+  const USAGE_SUMMARY_URL = "https://cursor.com/api/usage-summary"
+  const BILLING_PERIOD_MS = 30 * 24 * 60 * 60 * 1000
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000
   const STRIPE_URL = "https://cursor.com/api/auth/stripe"
   const CLIENT_ID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
@@ -262,30 +266,39 @@
     return { userId: userId, sessionToken: userId + "%3A%3A" + accessToken }
   }
 
-  function fetchRequestBasedUsage(ctx, accessToken) {
-    var session = buildSessionToken(ctx, accessToken)
-    if (!session) {
-      ctx.host.log.warn("request-based: cannot build session token")
-      return null
-    }
+  function fetchSessionJson(ctx, session, url, label) {
     try {
       var resp = ctx.util.request({
         method: "GET",
-        url: REST_USAGE_URL + "?user=" + encodeURIComponent(session.userId),
+        url: url,
         headers: {
           Cookie: "WorkosCursorSessionToken=" + session.sessionToken,
         },
         timeoutMs: 10000,
       })
       if (resp.status < 200 || resp.status >= 300) {
-        ctx.host.log.warn("request-based usage returned status=" + resp.status)
+        ctx.host.log.warn(label + " returned status=" + resp.status)
         return null
       }
       return ctx.util.tryParseJson(resp.bodyText)
     } catch (e) {
-      ctx.host.log.warn("request-based usage fetch failed: " + String(e))
+      ctx.host.log.warn(label + " fetch failed: " + String(e))
       return null
     }
+  }
+
+  // Ports upstream ProviderParse.number: finite numbers and numeric strings.
+  function readNumber(value) {
+    if (typeof value === "number") return Number.isFinite(value) ? value : null
+    if (typeof value === "string" && value.trim() !== "") {
+      var n = Number(value.trim())
+      return Number.isFinite(n) ? n : null
+    }
+    return null
+  }
+
+  function readDateMs(ctx, value) {
+    return typeof value === "string" ? ctx.util.parseDateMs(value) : null
   }
 
   function fetchStripeBalance(ctx, accessToken) {
@@ -319,41 +332,158 @@
     }
   }
 
+  function cycleProgress(ctx, cycle, label, used, limit, format) {
+    return ctx.line.progress({
+      label: label,
+      used: used,
+      limit: limit,
+      format: format,
+      resetsAt: cycle.resetsAt,
+      periodDurationMs: cycle.periodDurationMs,
+    })
+  }
+
+  // Exact bounds from usage-summary when present, else startOfMonth + 30 days.
+  function billingCycle(ctx, summary, requestUsage) {
+    var start = readDateMs(ctx, summary && summary.billingCycleStart)
+    var end = readDateMs(ctx, summary && summary.billingCycleEnd)
+    if (start !== null && end !== null && end > start) {
+      return { resetsAt: ctx.util.toIso(end), periodDurationMs: end - start }
+    }
+    var monthStart = readDateMs(ctx, requestUsage && requestUsage.startOfMonth)
+    return {
+      resetsAt: monthStart !== null ? ctx.util.toIso(monthStart + BILLING_PERIOD_MS) : null,
+      periodDurationMs: BILLING_PERIOD_MS,
+    }
+  }
+
+  // Cents meter from a usage-summary bucket; null when disabled or without a positive limit.
+  function dollarMeter(bucket) {
+    if (!bucket || typeof bucket !== "object" || bucket.enabled === false) return null
+    var limit = readNumber(bucket.limit)
+    if (limit === null || limit <= 0) return null
+    var reported = readNumber(bucket.used)
+    var remaining = readNumber(bucket.remaining)
+    var used = reported !== null && reported > 0 ? reported : limit - (remaining === null ? limit : remaining)
+    return { used: Math.max(0, used), limit: limit }
+  }
+
+  function dollarLine(ctx, cycle, label, meter) {
+    return cycleProgress(ctx, cycle, label, ctx.fmt.dollars(meter.used), ctx.fmt.dollars(meter.limit), { kind: "dollars" })
+  }
+
+  // Only used when /api/usage has no request allowance.
+  function summaryTotalLine(ctx, summary, cycle) {
+    if (!summary) return null
+    var individual = summary.individualUsage || {}
+    var pooled = dollarMeter((summary.teamUsage || {}).pooled)
+    var isTeamLimit = typeof summary.limitType === "string" && summary.limitType.toLowerCase() === "team"
+    if (isTeamLimit && pooled) return dollarLine(ctx, cycle, "Total usage", pooled)
+    var percent = readNumber((individual.plan || {}).totalPercentUsed)
+    if (percent !== null) return cycleProgress(ctx, cycle, "Total usage", percent, 100, { kind: "percent" })
+    var overall = dollarMeter(individual.overall)
+    if (overall) return dollarLine(ctx, cycle, "Total usage", overall)
+    return pooled ? dollarLine(ctx, cycle, "Total usage", pooled) : null
+  }
+
+  function onDemandBucketLine(ctx, cycle, bucket) {
+    if (!bucket || typeof bucket !== "object" || bucket.enabled === false) return null
+    var meter = dollarMeter(bucket)
+    if (meter) return dollarLine(ctx, cycle, "On-demand", meter)
+    var usedCents = readNumber(bucket.used)
+    if (usedCents === null || usedCents <= 0) return null
+    return ctx.line.text({ label: "On-demand", value: "$" + String(ctx.fmt.dollars(usedCents)) + " spent" })
+  }
+
+  // Grok Bot ("Sand") has its own weekly allowance. Pooled enterprise accounts and accounts
+  // without an included allowance have no personal meter; that is normal, not an error.
+  function fetchGrokBotLine(ctx, accessToken) {
+    var resp
+    try {
+      resp = connectPost(ctx, GROK_BOT_USAGE_URL, accessToken)
+    } catch (e) {
+      ctx.host.log.warn("Grok Bot usage fetch failed: " + String(e))
+      return null
+    }
+    if (resp.status < 200 || resp.status >= 300) {
+      ctx.host.log.warn("Grok Bot usage returned status=" + resp.status)
+      return null
+    }
+    var usage = ctx.util.tryParseJson(resp.bodyText)
+    if (!usage || typeof usage !== "object") {
+      ctx.host.log.warn("Grok Bot usage response invalid")
+      return null
+    }
+    if (usage.usesPooledEnterpriseAllowance === true ||
+      usage.hasNonZeroIncludedLimit === false ||
+      usage.includedLimitZero === true) {
+      return null
+    }
+    var percent = readNumber(usage.usagePercent)
+    if (percent === null || percent < 0) {
+      if (usage.usagePercent !== undefined || usage.hasNonZeroIncludedLimit === true || usage.hasAvailableUsage === true) {
+        ctx.host.log.warn("Grok Bot usage response contained invalid usage metadata")
+      }
+      return null
+    }
+    var resetMs = readDateMs(ctx, usage.nextResetTimestampUtc)
+    var startMs = readDateMs(ctx, usage.currentPeriodStart)
+    return ctx.line.progress({
+      label: "Grok Bot usage",
+      used: Math.min(100, percent),
+      limit: 100,
+      format: { kind: "percent" },
+      resetsAt: resetMs !== null ? ctx.util.toIso(resetMs) : null,
+      periodDurationMs: startMs !== null && resetMs !== null && resetMs > startMs ? resetMs - startMs : WEEK_MS,
+    })
+  }
+
+  // Enterprise/team dashboards split data across two REST payloads: /api/usage has the included
+  // request allowance; /api/usage-summary has percentages, user-scoped on-demand spend and exact
+  // billing-cycle bounds. Neither is enough alone.
   function buildRequestBasedResult(ctx, accessToken, planName, unavailableMessage) {
-    var requestUsage = fetchRequestBasedUsage(ctx, accessToken)
+    var session = buildSessionToken(ctx, accessToken)
+    if (!session) ctx.host.log.warn("request-based: cannot build session token")
+    var requestUsage = session
+      ? fetchSessionJson(ctx, session, REST_USAGE_URL + "?user=" + encodeURIComponent(session.userId), "request-based usage")
+      : null
+    var summary = session ? fetchSessionJson(ctx, session, USAGE_SUMMARY_URL, "usage-summary") : null
+    var cycle = billingCycle(ctx, summary, requestUsage)
     var lines = []
 
-    if (requestUsage) {
-      var gpt4 = requestUsage["gpt-4"]
-      if (gpt4 && typeof gpt4.maxRequestUsage === "number" && gpt4.maxRequestUsage > 0) {
-        var used = gpt4.numRequests || 0
-        var limit = gpt4.maxRequestUsage
-
-        var billingPeriodMs = 30 * 24 * 60 * 60 * 1000
-        var cycleStart = requestUsage.startOfMonth
-          ? ctx.util.parseDateMs(requestUsage.startOfMonth)
-          : null
-        var cycleEndMs = cycleStart ? cycleStart + billingPeriodMs : null
-
-        lines.push(ctx.line.progress({
-          label: "Requests",
-          used: used,
-          limit: limit,
-          format: { kind: "count", suffix: "requests" },
-          resetsAt: ctx.util.toIso(cycleEndMs),
-          periodDurationMs: billingPeriodMs,
-        }))
-      }
+    var gpt4 = requestUsage && requestUsage["gpt-4"]
+    if (gpt4 && typeof gpt4.maxRequestUsage === "number" && gpt4.maxRequestUsage > 0) {
+      lines.push(cycleProgress(ctx, cycle, "Requests", gpt4.numRequests || 0, gpt4.maxRequestUsage,
+        { kind: "count", suffix: "requests" }))
+    } else {
+      var totalLine = summaryTotalLine(ctx, summary, cycle)
+      if (totalLine) lines.push(totalLine)
     }
-
+    // Requests / Total usage are the only overview lines here; without one the card would be blank.
     if (lines.length === 0) {
       ctx.host.log.warn("request-based: no usage data available")
       throw unavailableMessage
     }
 
+    var individual = (summary && summary.individualUsage) || {}
+    var planPercents = individual.plan || {}
+    var autoPercent = readNumber(planPercents.autoPercentUsed)
+    if (autoPercent !== null) lines.push(cycleProgress(ctx, cycle, "Auto usage", autoPercent, 100, { kind: "percent" }))
+    var apiPercent = readNumber(planPercents.apiPercentUsed)
+    if (apiPercent !== null) lines.push(cycleProgress(ctx, cycle, "API usage", apiPercent, 100, { kind: "percent" }))
+
+    // The dashboard's On-demand card is user-scoped; the team aggregate is only a fallback.
+    var onDemand = onDemandBucketLine(ctx, cycle, individual.onDemand) ||
+      onDemandBucketLine(ctx, cycle, summary && summary.teamUsage && summary.teamUsage.onDemand)
+
+    var grokBot = fetchGrokBotLine(ctx, accessToken)
+    if (grokBot) lines.push(grokBot)
+    if (onDemand) lines.push(onDemand)
+
     var plan = null
-    if (planName) {
-      var planLabel = ctx.fmt.planLabel(planName)
+    var planSource = planName || (summary && typeof summary.membershipType === "string" ? summary.membershipType : "")
+    if (planSource) {
+      var planLabel = ctx.fmt.planLabel(planSource)
       if (planLabel) plan = planLabel
     }
 
@@ -661,6 +791,9 @@
         periodDurationMs: billingPeriodMs
       }))
     }
+
+    const grokBot = fetchGrokBotLine(ctx, accessToken)
+    if (grokBot) lines.push(grokBot)
 
     // On-demand (if available) - not a primary candidate
     if (su) {

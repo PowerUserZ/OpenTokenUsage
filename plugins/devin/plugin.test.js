@@ -308,7 +308,7 @@ describe("devin plugin", () => {
     expect(ctx.host.log.warn).toHaveBeenCalledWith("Devin credentials missing windsurf_api_key")
   })
 
-  it("uses Devin's hidden daily quota field as weekly usage when weekly percentage is absent", async () => {
+  it("uses Devin's hidden daily quota field as weekly usage when weekly percentage and reset are absent", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml())
     ctx.host.http.request.mockReturnValue({
@@ -318,6 +318,7 @@ describe("devin plugin", () => {
           planInfo: { hideDailyQuota: true },
           dailyQuotaRemainingPercent: 25,
           weeklyQuotaRemainingPercent: undefined,
+          weeklyQuotaResetAtUnix: undefined,
         })
       ),
     })
@@ -331,7 +332,6 @@ describe("devin plugin", () => {
       used: 75,
       limit: 100,
       format: { kind: "percent" },
-      resetsAt: "2026-03-22T08:00:00.000Z",
       periodDurationMs: 7 * 24 * 60 * 60 * 1000,
     })
     expect(ctx.host.log.info).toHaveBeenCalledWith(
@@ -353,6 +353,7 @@ describe("devin plugin", () => {
           planInfo: { hideDailyQuota: true },
           dailyQuotaRemainingPercent: 100,
           weeklyQuotaRemainingPercent: undefined,
+          weeklyQuotaResetAtUnix: undefined,
         })
       ),
     })
@@ -365,6 +366,52 @@ describe("devin plugin", () => {
       used: 0,
       limit: 100,
     })
+  })
+
+  // Upstream 6a28acec: proto3 JSON omits a zero weeklyQuotaRemainingPercent, so a weekly
+  // reset with no percentage means the weekly quota is exhausted, not "fall back to daily".
+  it.each([true, false])("treats an omitted weekly percentage with a weekly reset as exhausted (hideDailyQuota=%s)", async (hideDailyQuota) => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml())
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(
+        makeQuotaResponse({
+          planInfo: { hideDailyQuota },
+          dailyQuotaRemainingPercent: 100,
+          weeklyQuotaRemainingPercent: undefined,
+          weeklyQuotaResetAtUnix: "1789286400",
+          overageBalanceMicros: "-44347",
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Weekly quota")).toEqual({
+      type: "progress",
+      label: "Weekly quota",
+      used: 100,
+      limit: 100,
+      format: { kind: "percent" },
+      resetsAt: new Date(1789286400 * 1000).toISOString(),
+      periodDurationMs: 7 * 24 * 60 * 60 * 1000,
+    })
+  })
+
+  it.each(["abc", true, null])("rejects a malformed weekly percentage (%s) instead of showing it as exhausted", async (malformed) => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(CREDENTIALS_PATH, makeCredentialsToml())
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(makeQuotaResponse({ weeklyQuotaRemainingPercent: malformed })),
+    })
+
+    const plugin = await loadPlugin()
+
+    expect(() => plugin.probe(ctx)).toThrow("Devin quota data unavailable. Try again later.")
+    expect(ctx.host.log.warn).toHaveBeenCalledWith("Devin weeklyQuotaRemainingPercent is not a number")
   })
 
   it("renders quota percentages when reset timestamps are absent", async () => {
@@ -412,6 +459,7 @@ describe("devin plugin", () => {
         makeQuotaResponse({
           dailyQuotaRemainingPercent: undefined,
           weeklyQuotaRemainingPercent: undefined,
+          weeklyQuotaResetAtUnix: undefined,
           overageBalanceMicros: undefined,
         })
       ),

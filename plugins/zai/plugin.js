@@ -112,11 +112,15 @@
     return Math.min(100, Math.max(0, parsed))
   }
 
-  function findLimit(limits, type, unit) {
+  // Current Z.ai responses call the percentage quota CREDIT_LIMIT; older plans used
+  // TOKENS_LIMIT for the same shape.
+  const PERCENT_LIMIT_TYPES = ["CREDIT_LIMIT", "TOKENS_LIMIT"]
+
+  function findLimit(limits, types, unit) {
     let fallback = null
     for (let i = 0; i < limits.length; i++) {
       const item = limits[i]
-      if (item.type === type || item.name === type) {
+      if (types.indexOf(item.type) >= 0 || types.indexOf(item.name) >= 0) {
         if (unit === undefined) {
           return item
         }
@@ -151,7 +155,7 @@
       return { plan, lines }
     }
 
-    const tokenLimit = findLimit(limits, "TOKENS_LIMIT", 3)
+    const tokenLimit = findLimit(limits, PERCENT_LIMIT_TYPES, 3)
 
     if (!tokenLimit) {
       lines.push(ctx.line.badge({ label: "Session", text: "No usage data", color: "#a3a3a3" }))
@@ -173,7 +177,7 @@
     }
     lines.push(ctx.line.progress(progressOpts))
 
-    const weeklyTokenLimit = findLimit(limits, "TOKENS_LIMIT", 6)
+    const weeklyTokenLimit = findLimit(limits, PERCENT_LIMIT_TYPES, 6)
     if (weeklyTokenLimit) {
       const weeklyUsed = requireQuotaPercent(weeklyTokenLimit.percentage)
       const weeklyResetsAt = weeklyTokenLimit.nextResetTime ? ctx.util.toIso(weeklyTokenLimit.nextResetTime) : undefined
@@ -191,7 +195,7 @@
       lines.push(ctx.line.progress(weeklyOpts))
     }
 
-    const timeLimit = findLimit(limits, "TIME_LIMIT")
+    const timeLimit = findLimit(limits, ["TIME_LIMIT"])
 
     if (timeLimit) {
       const webUsed = requireQuotaValue(timeLimit.currentValue)

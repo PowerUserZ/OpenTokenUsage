@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
@@ -329,6 +330,62 @@ describe("codex plugin", () => {
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
     expect(credits.value).toBe("$4.00 · 100 credits")
+  })
+
+  it("maps self_serve_business_prolite to Business Premium and routes a weekly-only primary window to Weekly", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "99" },
+      bodyText: JSON.stringify({
+        plan_type: "self_serve_business_prolite",
+        rate_limit: {
+          primary_window: { used_percent: 5, limit_window_seconds: 604800, reset_after_seconds: 60 },
+          secondary_window: null,
+        },
+      }),
+    })
+    ctx.host.ccusage.query.mockReturnValue({ status: "runner_failed" })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Business Premium")
+    expect(result.lines.map((line) => line.label)).toEqual(["Weekly"])
+    expect(result.lines[0].used).toBe(5)
+    expect(result.lines[0].periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
+  })
+
+  it("keeps the slot mapping when window durations are unfamiliar", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 11, limit_window_seconds: 86400 },
+          secondary_window: { used_percent: 22, limit_window_seconds: 2592000 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session").used).toBe(11)
+    expect(result.lines.find((line) => line.label === "Weekly").used).toBe(22)
+  })
+
+  it("declares Weekly as a tray fallback so weekly-only accounts still get a menubar bar", () => {
+    const manifest = JSON.parse(readFileSync("plugins/codex/plugin.json", "utf8"))
+    const weekly = manifest.lines.find((line) => line.label === "Weekly")
+    expect(weekly).toMatchObject({ scope: "overview", primaryOrder: 2 })
   })
 
   it("uses zero credits from the response body when the account has no credits", async () => {
@@ -1738,6 +1795,34 @@ describe("codex plugin", () => {
     expect(sparkWeekly.resetsAt).toBe(new Date((nowSec + 86400) * 1000).toISOString())
 
     nowSpy.mockRestore()
+  })
+
+  it("routes a weekly-only additional_rate_limits primary window to the Weekly line", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        additional_rate_limits: [{
+          limit_name: "GPT-5.3-Codex-Spark",
+          rate_limit: {
+            primary_window: { used_percent: 7, limit_window_seconds: 604800, reset_after_seconds: 60 },
+            secondary_window: null,
+          },
+        }],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Spark")).toBeUndefined()
+    const sparkWeekly = result.lines.find((l) => l.label === "Spark Weekly")
+    expect(sparkWeekly.used).toBe(7)
+    expect(sparkWeekly.periodDurationMs).toBe(604800000)
   })
 
   it("handles additional_rate_limits with missing fields and fallback labels", async () => {

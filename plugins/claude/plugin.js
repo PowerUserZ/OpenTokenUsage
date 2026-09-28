@@ -10,13 +10,15 @@
     "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
 
-  // Rate-limit state persisted across probe() calls (module scope survives re-invocations).
+  // Rate-limit state. NOTE: the host runs every probe in a fresh runtime, so module scope only
+  // lives for one probe in production (tests reuse one instance); persist cross-probe state to disk.
   const MIN_USAGE_FETCH_INTERVAL_MS = 5 * 60 * 1000  // never poll more than once per 5 min
   const DEFAULT_RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000 // fallback when no Retry-After header
   let rateLimitedUntilMs = 0  // epoch ms; 0 = not rate-limited
   let lastUsageFetchMs = 0    // epoch ms of the most-recent API attempt
   let cachedUsageData = null  // last successful API response body (parsed JSON)
   let lastCredentialFingerprint = null // sha256 of the login's token pair; null until first probe
+  let livePlan = null // { fingerprint, plan } from /api/oauth/profile; plan null = lookup failed
 
   function utf8DecodeBytes(bytes) {
     // Prefer native TextDecoder when available (QuickJS may not expose it).
@@ -197,7 +199,10 @@
 
     return {
       baseApiUrl: baseApiUrl,
-      usageUrl: baseApiUrl + "/api/oauth/usage",
+      // cedar_ember=1 opts in to the usage-limit reset grants block (null without it), like
+      // Claude Code does (upstream #1290).
+      usageUrl: baseApiUrl + "/api/oauth/usage?cedar_ember=1",
+      profileUrl: baseApiUrl + "/api/oauth/profile",
       refreshUrl: refreshUrl,
       clientId: clientId,
       oauthFileSuffix: oauthFileSuffix,
@@ -508,10 +513,79 @@
         Accept: "application/json",
         "Content-Type": "application/json",
         "anthropic-beta": "oauth-2025-04-20",
-        "User-Agent": "claude-code/2.1.69",
+        // Claude Code's own UA format: Anthropic gates reset-grant eligibility by client surface,
+        // and the old `claude-code/2.1.69` came back `ineligible_reason: "surface"` (upstream #1290).
+        "User-Agent": "claude-cli/2.1.280 (external, cli)",
       },
       timeoutMs: 10000,
     })
+  }
+
+  function formatPlan(ctx, subscriptionType, rateLimitTier) {
+    const basePlan = subscriptionType ? ctx.fmt.planLabel(subscriptionType) : ""
+    if (!basePlan) return null
+    const tierMatch = String(rateLimitTier || "").match(/(\d+)x/)
+    return tierMatch ? basePlan + " " + tierMatch[1] + "x" : basePlan
+  }
+
+  // Claude Code stamps subscriptionType/rateLimitTier into the login at sign-in and never updates
+  // them, so a Max 5x -> 20x upgrade kept the stale badge until re-login (upstream #1258). Read the
+  // live plan from /api/oauth/profile at most once per token pair (failures included), only after a
+  // successful usage fetch. A failure keeps the stored plan and never touches the usage lines.
+  // The host runs every probe in a fresh runtime, so the result lives in pluginDataDir, not memory.
+  function livePlanPath(ctx) {
+    return ctx.app.pluginDataDir + "/live-plan.json"
+  }
+
+  function loadLivePlan(ctx) {
+    const path = livePlanPath(ctx)
+    try {
+      if (!ctx.host.fs.exists(path)) return null
+      const data = ctx.util.tryParseJson(ctx.host.fs.readText(path))
+      return data && typeof data.fingerprint === "string" ? data : null
+    } catch (e) {
+      ctx.host.log.warn("live plan cache read failed: " + String(e))
+      return null
+    }
+  }
+
+  function resolveLivePlan(ctx, creds, fingerprint) {
+    if (livePlan && livePlan.fingerprint === fingerprint) return
+    livePlan = { fingerprint: fingerprint, plan: lookupLivePlan(ctx, creds) }
+    try {
+      ctx.host.fs.writeText(livePlanPath(ctx), JSON.stringify(livePlan))
+    } catch (e) {
+      ctx.host.log.warn("live plan cache write failed: " + String(e))
+    }
+  }
+
+  function lookupLivePlan(ctx, creds) {
+    let body = null
+    try {
+      const resp = ctx.util.request({
+        method: "GET",
+        url: getOauthConfig(ctx).profileUrl,
+        headers: {
+          Authorization: "Bearer " + creds.oauth.accessToken.trim(),
+          Accept: "application/json",
+          "anthropic-beta": "oauth-2025-04-20",
+        },
+        timeoutMs: 10000,
+      })
+      if (resp.status >= 200 && resp.status < 300) body = ctx.util.tryParseJson(resp.bodyText)
+      if (!body) ctx.host.log.warn("live plan lookup failed (status=" + resp.status + "); showing stored plan")
+    } catch (e) {
+      ctx.host.log.warn("live plan lookup failed: " + String(e) + "; showing stored plan")
+    }
+    const org = body && body.organization
+    if (!org || typeof org !== "object") return null
+    // organization_type arrives as `claude_max` / `claude_pro`; omitted fields fall back to the login.
+    const orgType = typeof org.organization_type === "string" ? org.organization_type.replace(/^claude_/, "") : null
+    return formatPlan(
+      ctx,
+      orgType || creds.oauth.subscriptionType,
+      org.rate_limit_tier || creds.oauth.rateLimitTier
+    )
   }
 
   function parseRetryAfterSeconds(headers) {
@@ -791,6 +865,35 @@
     }))
   }
 
+  // The API may serialize numbers as numeric strings — accept both, like upstream's
+  // ProviderParse.number.
+  function parseNumber(value) {
+    if (typeof value === "number") return Number.isFinite(value) ? value : null
+    if (typeof value !== "string" || value.trim() === "") return null
+    const parsed = Number(value.trim())
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  // Anthropic's one-off usage-limit reset grants (`cedar_ember`, e.g. a model-launch reset for
+  // Pro/Max), read-only like Codex's Rate Limit Resets row (upstream #1290). Grants past their
+  // `ends_at` deadline or with no resets left are skipped; an ineligible account reads
+  // "0 available"; a missing/null block (plans outside the program) emits no row.
+  function pushResetGrantsLine(lines, ctx, block) {
+    if (!block || typeof block !== "object") return
+    let count = 0
+    if (block.eligible === true && Array.isArray(block.grants)) {
+      const nowMs = Date.now()
+      for (const grant of block.grants) {
+        const left = grant ? parseNumber(grant.resets_left) : null
+        if (left === null || left < 1) continue
+        const endsAtMs = ctx.util.parseDateMs(ctx.util.toIso(grant.ends_at))
+        if (endsAtMs !== null && endsAtMs <= nowMs) continue
+        count += Math.floor(left)
+      }
+    }
+    lines.push(ctx.line.text({ label: "Rate Limit Resets", value: count + " available" }))
+  }
+
   // A model-scoped weekly limit from the `limits` array — `kind: "weekly_scoped"` with
   // `scope.model.display_name` naming the model (e.g. "Fable"). Anthropic moved the per-model
   // weekly windows off the legacy top-level `seven_day_<model>` keys (which now come back null)
@@ -803,15 +906,7 @@
       if (entry.kind !== "weekly_scoped") continue
       const model = entry.scope && entry.scope.model
       if (!model || model.display_name !== modelName) continue
-      // The API may serialize percent as a numeric string — accept both, like
-      // upstream's ProviderParse.number.
-      let percent = null
-      if (typeof entry.percent === "number" && Number.isFinite(entry.percent)) {
-        percent = entry.percent
-      } else if (typeof entry.percent === "string" && entry.percent.trim() !== "") {
-        const parsed = Number(entry.percent.trim())
-        if (Number.isFinite(parsed)) percent = parsed
-      }
+      const percent = parseNumber(entry.percent)
       if (percent === null) continue
       lines.push(ctx.line.progress({
         label: label,
@@ -825,9 +920,69 @@
     }
   }
 
+  function pushLocalUsageLines(lines, ctx, usage) {
+    const now = new Date()
+    const todayKey = dayKeyFromDate(now)
+    const yesterday = new Date(now.getTime())
+    yesterday.setDate(yesterday.getDate() - 1)
+    const yesterdayKey = dayKeyFromDate(yesterday)
+
+    let todayEntry = null
+    let yesterdayEntry = null
+    for (let i = 0; i < usage.daily.length; i++) {
+      const usageDayKey = dayKeyFromUsageDate(usage.daily[i].date)
+      if (usageDayKey === todayKey) {
+        todayEntry = usage.daily[i]
+        continue
+      }
+      if (usageDayKey === yesterdayKey) {
+        yesterdayEntry = usage.daily[i]
+      }
+    }
+
+    pushDayUsageLine(lines, ctx, "Today", todayEntry)
+    pushDayUsageLine(lines, ctx, "Yesterday", yesterdayEntry)
+
+    let totalTokens = 0
+    let totalCostNanos = 0
+    let hasCost = false
+    for (let i = 0; i < usage.daily.length; i++) {
+      const day = usage.daily[i]
+      const dayTokens = Number(day.totalTokens)
+      if (Number.isFinite(dayTokens)) {
+        totalTokens += dayTokens
+      }
+      const dayCost = usageCostUsd(day)
+      if (dayCost != null) {
+        totalCostNanos += Math.round(dayCost * 1e9)
+        hasCost = true
+      }
+    }
+    if (totalTokens > 0) {
+      lines.push(ctx.line.text({
+        label: "Last 30 Days",
+        value: costAndTokensLabel({ tokens: totalTokens, costUSD: hasCost ? totalCostNanos / 1e9 : null })
+      }))
+    }
+
+    pushUsageChartLine(lines, ctx, usage.daily)
+    pushModelUsageLines(lines, ctx, usage.daily)
+  }
+
   function probe(ctx) {
     const creds = loadCredentials(ctx)
     if (!creds || !creds.oauth || !creds.oauth.accessToken || !creds.oauth.accessToken.trim()) {
+      // Local spend comes from ccusage and needs no OAuth login (e.g. Claude Code on an API-key
+      // gateway), so show it under a "Not logged in" badge instead of an error card
+      // (upstream #1138). No recorded spend at all stays the plain auth error.
+      const usageResult = queryTokenUsage(ctx, getClaudeHomeOverride(ctx))
+      const hasSpend = (day) => Number(day && day.totalTokens) > 0 || (usageCostUsd(day) || 0) > 0
+      if (usageResult.status === "ok" && usageResult.data.daily.some(hasSpend)) {
+        ctx.host.log.info("not logged in; showing local spend only")
+        const lines = [ctx.line.badge({ label: "Status", text: "Not logged in", color: "#f59e0b" })]
+        pushLocalUsageLines(lines, ctx, usageResult.data)
+        return { plan: null, lines: lines }
+      }
       ctx.host.log.error("probe failed: not logged in")
       throw "Not logged in. Run `claude` to authenticate."
     }
@@ -853,6 +1008,7 @@
     let lines = []
     let rateLimited = false
     let retryAfterSeconds = null
+    let usageFetched = false
     if (canFetchLiveUsage) {
       if (nowMs < rateLimitedUntilMs) {
         // Still within a rate-limit window from a previous probe call — skip the
@@ -944,6 +1100,7 @@
           }
           cachedUsageData = data
           rateLimitedUntilMs = 0
+          usageFetched = true
         }
         } // end fetch else-branch
       }
@@ -956,19 +1113,12 @@
     // cache and rate-limit backoff we just established).
     lastCredentialFingerprint = credentialFingerprint(ctx, creds)
 
-    let plan = null
-    if (creds.oauth.subscriptionType) {
-      const basePlan = ctx.fmt.planLabel(creds.oauth.subscriptionType)
-      if (basePlan) {
-        let tierSuffix = ""
-        const rlt = String(creds.oauth.rateLimitTier || "")
-        const tierMatch = rlt.match(/(\d+)x/)
-        if (tierMatch) {
-          tierSuffix = " " + tierMatch[1] + "x"
-        }
-        plan = basePlan + tierSuffix
-      }
-    }
+    if (!livePlan) livePlan = loadLivePlan(ctx)
+    if (usageFetched) resolveLivePlan(ctx, creds, lastCredentialFingerprint)
+    const knownLivePlan =
+      livePlan && livePlan.fingerprint === lastCredentialFingerprint ? livePlan.plan : null
+    const plan =
+      knownLivePlan || formatPlan(ctx, creds.oauth.subscriptionType, creds.oauth.rateLimitTier)
 
     if (data) {
       if (data.five_hour && typeof data.five_hour.utilization === "number") {
@@ -991,6 +1141,8 @@
           periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
         }))
       }
+      // Fable sits directly below Weekly (upstream #1141).
+      pushScopedWeeklyLimitLine(lines, ctx, data.limits, "Fable", "Fable")
       if (data.seven_day_sonnet && typeof data.seven_day_sonnet.utilization === "number") {
         lines.push(ctx.line.progress({
           label: "Sonnet",
@@ -1011,7 +1163,6 @@
           periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
         }))
       }
-      pushScopedWeeklyLimitLine(lines, ctx, data.limits, "Fable", "Fable")
 
       if (data.extra_usage && data.extra_usage.is_enabled) {
         const used = data.extra_usage.used_credits
@@ -1027,57 +1178,12 @@
           lines.push(ctx.line.text({ label: "Extra usage spent", value: "$" + String(ctx.fmt.dollars(used)) }))
         }
       }
+      pushResetGrantsLine(lines, ctx, data.cedar_ember)
     }
 
     const usageResult = queryTokenUsage(ctx, homePath)
     if (usageResult.status === "ok") {
-      const usage = usageResult.data
-      const now = new Date()
-      const todayKey = dayKeyFromDate(now)
-      const yesterday = new Date(now.getTime())
-      yesterday.setDate(yesterday.getDate() - 1)
-      const yesterdayKey = dayKeyFromDate(yesterday)
-
-      let todayEntry = null
-      let yesterdayEntry = null
-      for (let i = 0; i < usage.daily.length; i++) {
-        const usageDayKey = dayKeyFromUsageDate(usage.daily[i].date)
-        if (usageDayKey === todayKey) {
-          todayEntry = usage.daily[i]
-          continue
-        }
-        if (usageDayKey === yesterdayKey) {
-          yesterdayEntry = usage.daily[i]
-        }
-      }
-
-      pushDayUsageLine(lines, ctx, "Today", todayEntry)
-      pushDayUsageLine(lines, ctx, "Yesterday", yesterdayEntry)
-
-      let totalTokens = 0
-      let totalCostNanos = 0
-      let hasCost = false
-      for (let i = 0; i < usage.daily.length; i++) {
-        const day = usage.daily[i]
-        const dayTokens = Number(day.totalTokens)
-        if (Number.isFinite(dayTokens)) {
-          totalTokens += dayTokens
-        }
-        const dayCost = usageCostUsd(day)
-        if (dayCost != null) {
-          totalCostNanos += Math.round(dayCost * 1e9)
-          hasCost = true
-        }
-      }
-      if (totalTokens > 0) {
-        lines.push(ctx.line.text({
-          label: "Last 30 Days",
-          value: costAndTokensLabel({ tokens: totalTokens, costUSD: hasCost ? totalCostNanos / 1e9 : null })
-        }))
-      }
-
-      pushUsageChartLine(lines, ctx, usage.daily)
-      pushModelUsageLines(lines, ctx, usage.daily)
+      pushLocalUsageLines(lines, ctx, usageResult.data)
     }
 
     if (rateLimited) {
@@ -1106,6 +1212,7 @@
     lastUsageFetchMs = 0
     cachedUsageData = null
     lastCredentialFingerprint = null
+    livePlan = null
   }
 
   globalThis.__openusage_plugin = { id: "claude", probe, _resetState }

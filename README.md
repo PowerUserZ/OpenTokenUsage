@@ -36,17 +36,17 @@ OpenTokenUsage lives in your system tray and shows you how much of your AI codin
 
 - [**Amp**](docs/providers/amp.md) / free tier, bonus, credits
 - [**Antigravity**](docs/providers/antigravity.md) / all models
-- [**Claude**](docs/providers/claude.md) / session, weekly, extra usage, local token usage (ccusage)
+- [**Claude**](docs/providers/claude.md) / session, weekly, Fable, extra usage, rate limit resets, local token usage (ccusage)
 - [**Codex**](docs/providers/codex.md) / session, weekly, reviews, credits
 - [**Copilot**](docs/providers/copilot.md) / premium, chat, completions
-- [**Cursor**](docs/providers/cursor.md) / credits, total usage, auto usage, API usage, on-demand, CLI auth
+- [**Cursor**](docs/providers/cursor.md) / credits, total usage, auto usage, API usage, Grok Bot, on-demand, CLI auth
 - [**Factory / Droid**](docs/providers/factory.md) / standard, premium tokens
 - [**Grok**](docs/providers/grok.md) / credits used, plan, pay-as-you-go cap
 - [**JetBrains AI Assistant**](docs/providers/jetbrains-ai-assistant.md) / quota, remaining
 - [**Kiro**](docs/providers/kiro.md) / credits, bonus credits, overages
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**MiniMax**](docs/providers/minimax.md) / coding plan session
-- [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly spend limits
+- [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly usage limits
 - [**Devin**](docs/providers/devin.md) / weekly quota, extra usage
 - [**Perplexity**](docs/providers/perplexity.md) / session usage, balance
 - [**Synthetic**](docs/providers/synthetic.md) / requests, rolling rate limits

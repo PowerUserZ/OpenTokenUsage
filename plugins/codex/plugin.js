@@ -349,6 +349,7 @@
     if (!rawPlan) return null
     if (rawPlan.toLowerCase() === "prolite") return "Pro 5x"
     if (rawPlan.toLowerCase() === "pro") return "Pro 20x"
+    if (rawPlan.toLowerCase() === "self_serve_business_prolite") return "Business Premium"
     return ctx.fmt.planLabel(rawPlan) || null
   }
 
@@ -366,6 +367,46 @@
   // Period durations in milliseconds
   var PERIOD_SESSION_MS = 5 * 60 * 60 * 1000    // 5 hours
   var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+  function windowPeriodMs(window) {
+    return window && typeof window.limit_window_seconds === "number"
+      ? window.limit_window_seconds * 1000
+      : null
+  }
+
+  function isKnownPeriod(periodMs) {
+    return periodMs === PERIOD_SESSION_MS || periodMs === PERIOD_WEEKLY_MS
+  }
+
+  // Codex usually sends the 5h window as primary and the weekly one as secondary, but it can move a
+  // sole weekly limit into the primary slot. Route each window by its limit_window_seconds; keep the
+  // slot mapping only for a window with a missing or unfamiliar duration. A header percent fills a
+  // slot whose body window lacks used_percent (headers go stale after a reset, so body wins).
+  function pushWindowLines(ctx, lines, nowSec, rateLimit, labels, headerPercents) {
+    const slots = [
+      { window: rateLimit && rateLimit.primary_window, header: headerPercents[0], slotPeriodMs: PERIOD_SESSION_MS },
+      { window: rateLimit && rateLimit.secondary_window, header: headerPercents[1], slotPeriodMs: PERIOD_WEEKLY_MS },
+    ]
+    const targets = [[labels[0], PERIOD_SESSION_MS], [labels[1], PERIOD_WEEKLY_MS]]
+    for (const [label, periodMs] of targets) {
+      const slot =
+        slots.find((s) => windowPeriodMs(s.window) === periodMs) ||
+        slots.find((s) => !isKnownPeriod(windowPeriodMs(s.window)) && s.slotPeriodMs === periodMs)
+      if (!slot) continue
+      const used = slot.window && typeof slot.window.used_percent === "number"
+        ? slot.window.used_percent
+        : slot.header
+      if (used === null) continue
+      lines.push(ctx.line.progress({
+        label: label,
+        used: used,
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: getResetsAtIso(ctx, nowSec, slot.window),
+        periodDurationMs: windowPeriodMs(slot.window) || periodMs,
+      }))
+    }
+  }
 
   function queryTokenUsage(ctx) {
     if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
@@ -742,49 +783,15 @@
 
       const lines = []
       const nowSec = Math.floor(Date.now() / 1000)
-      const rateLimit = data.rate_limit || null
-      const primaryWindow = rateLimit && rateLimit.primary_window ? rateLimit.primary_window : null
-      const secondaryWindow = rateLimit && rateLimit.secondary_window ? rateLimit.secondary_window : null
       const reviewWindow =
         data.code_review_rate_limit && data.code_review_rate_limit.primary_window
           ? data.code_review_rate_limit.primary_window
           : null
 
-      // The body's rate_limit windows are authoritative: the x-codex-*-used-percent headers go
-      // stale right after a window reset. Headers only fill a window missing from the body.
-      const bodyPrimary = primaryWindow && typeof primaryWindow.used_percent === "number"
-        ? primaryWindow.used_percent
-        : null
-      const bodySecondary = secondaryWindow && typeof secondaryWindow.used_percent === "number"
-        ? secondaryWindow.used_percent
-        : null
-      const sessionUsed = bodyPrimary !== null
-        ? bodyPrimary
-        : readPercent(resp.headers["x-codex-primary-used-percent"])
-      const weeklyUsed = bodySecondary !== null
-        ? bodySecondary
-        : readPercent(resp.headers["x-codex-secondary-used-percent"])
-
-      if (sessionUsed !== null) {
-        lines.push(ctx.line.progress({
-          label: "Session",
-          used: sessionUsed,
-          limit: 100,
-          format: { kind: "percent" },
-          resetsAt: getResetsAtIso(ctx, nowSec, primaryWindow),
-          periodDurationMs: PERIOD_SESSION_MS
-        }))
-      }
-      if (weeklyUsed !== null) {
-        lines.push(ctx.line.progress({
-          label: "Weekly",
-          used: weeklyUsed,
-          limit: 100,
-          format: { kind: "percent" },
-          resetsAt: getResetsAtIso(ctx, nowSec, secondaryWindow),
-          periodDurationMs: PERIOD_WEEKLY_MS
-        }))
-      }
+      pushWindowLines(ctx, lines, nowSec, data.rate_limit, ["Session", "Weekly"], [
+        readPercent(resp.headers["x-codex-primary-used-percent"]),
+        readPercent(resp.headers["x-codex-secondary-used-percent"]),
+      ])
 
       if (Array.isArray(data.additional_rate_limits)) {
         for (const entry of data.additional_rate_limits) {
@@ -792,31 +799,7 @@
           const name = typeof entry.limit_name === "string" ? entry.limit_name : ""
           let shortName = name.replace(/^GPT-[\d.]+-Codex-/, "")
           if (!shortName) shortName = name || "Model"
-          const rl = entry.rate_limit
-          if (rl.primary_window && typeof rl.primary_window.used_percent === "number") {
-            lines.push(ctx.line.progress({
-              label: shortName,
-              used: rl.primary_window.used_percent,
-              limit: 100,
-              format: { kind: "percent" },
-              resetsAt: getResetsAtIso(ctx, nowSec, rl.primary_window),
-              periodDurationMs: typeof rl.primary_window.limit_window_seconds === "number"
-                ? rl.primary_window.limit_window_seconds * 1000
-                : PERIOD_SESSION_MS
-            }))
-          }
-          if (rl.secondary_window && typeof rl.secondary_window.used_percent === "number") {
-            lines.push(ctx.line.progress({
-              label: shortName + " Weekly",
-              used: rl.secondary_window.used_percent,
-              limit: 100,
-              format: { kind: "percent" },
-              resetsAt: getResetsAtIso(ctx, nowSec, rl.secondary_window),
-              periodDurationMs: typeof rl.secondary_window.limit_window_seconds === "number"
-                ? rl.secondary_window.limit_window_seconds * 1000
-                : PERIOD_WEEKLY_MS
-            }))
-          }
+          pushWindowLines(ctx, lines, nowSec, entry.rate_limit, [shortName, shortName + " Weekly"], [null, null])
         }
       }
 

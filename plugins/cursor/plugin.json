@@ -16,6 +16,7 @@
     { "type": "progress", "label": "Requests", "scope": "overview", "primaryOrder": 2 },
     { "type": "progress", "label": "Auto usage", "scope": "detail" },
     { "type": "progress", "label": "API usage", "scope": "detail" },
+    { "type": "progress", "label": "Grok Bot usage", "scope": "overview" },
     { "type": "progress", "label": "On-demand", "scope": "detail" },
     { "type": "text", "label": "On-demand", "scope": "detail" },
     { "type": "text", "label": "Bonus spend", "scope": "detail" }

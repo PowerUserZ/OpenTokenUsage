@@ -491,6 +491,46 @@ describe("copilot plugin", () => {
     expect(result.lines[0].text).toBe("No usage data");
   });
 
+  it("shows personal credits_used as Credits on an org-managed placeholder seat", async () => {
+    // Org-managed Business seat: zero entitlement, but the premium bucket carries the
+    // user's own consumption. Must show it instead of an empty "No usage data" card.
+    const ctx = makePluginTestContext();
+    setKeychainToken(ctx, "tok");
+    const bucket = (creditsUsed) => ({
+      unlimited: true, token_based_billing: true, credits_used: creditsUsed,
+      entitlement: 0, percent_remaining: 100.0,
+    });
+    mockUsageOk(ctx, {
+      copilot_plan: "business",
+      token_based_billing: true,
+      quota_snapshots: {
+        chat: bucket(0),
+        completions: bucket(0),
+        premium_interactions: { ...bucket(2111), overage_permitted: true },
+      },
+    });
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    expect(result.plan).toBe("Business");
+    expect(result.lines).toEqual([{ type: "text", label: "Credits", value: "2111 used" }]);
+  });
+
+  it("keeps 'No usage data' on an unused org-managed seat", async () => {
+    const ctx = makePluginTestContext();
+    setKeychainToken(ctx, "tok");
+    mockUsageOk(ctx, {
+      copilot_plan: "business",
+      token_based_billing: true,
+      quota_snapshots: {
+        premium_interactions: { entitlement: 0, remaining: 0, credits_used: 0, percent_remaining: 100 },
+      },
+    });
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    expect(result.lines).toHaveLength(1);
+    expect(result.lines[0].text).toBe("No usage data");
+  });
+
   it("declares the Status badge as an overview line in the manifest", () => {
     // Unlimited/org-managed accounts can suppress every quota meter, leaving only the
     // Status badge — the overview filter drops undeclared labels, so without this

@@ -1,62 +1,29 @@
 # OpenCode Go
 
-> Uses local OpenCode history from SQLite to track observed OpenCode Go spend on this machine.
+> Reads account-wide OpenCode Go usage from OpenCode's official usage API.
 
 ## Overview
 
-- **Source of truth:** `~/.local/share/opencode/opencode.db`
-- **Auth discovery:** `~/.local/share/opencode/auth.json`
+- **Auth:** `~/.local/share/opencode/auth.json`, `opencode-go` entry `key`
+- **Endpoint:** `GET https://opencode.ai/zen/go/v1/usage` with `Authorization: Bearer <key>`
 - **Provider ID:** `opencode-go`
-- **Usage scope:** local observed assistant spend only
+- **Usage scope:** account-wide (same numbers as the OpenCode dashboard, all devices)
 
-## Detection
+## Meters
 
-The plugin enables when either condition is true:
+| Line | Response field | Period |
+|---|---|---|
+| Session | `usage.rolling.percent` / `resetsAt` | 5h |
+| Weekly | `usage.weekly.percent` / `resetsAt` | 7d |
+| Monthly | `usage.monthly.percent` / `resetsAt` | 30d |
 
-- `~/.local/share/opencode/auth.json` contains an `opencode-go` entry with a non-empty `key`
-- local OpenCode history already contains `opencode-go` assistant messages with numeric `cost`
+Percents are clamped to 0–100.
 
-If neither signal exists, the plugin stays hidden.
+## Errors
 
-## Data Source
-
-OpenUsage reads the local OpenCode SQLite database directly:
-
-```sql
-SELECT
-  CAST(COALESCE(json_extract(data, '$.time.created'), time_created) AS INTEGER) AS createdMs,
-  CAST(json_extract(data, '$.cost') AS REAL) AS cost
-FROM message
-WHERE json_valid(data)
-  AND json_extract(data, '$.providerID') = 'opencode-go'
-  AND json_extract(data, '$.role') = 'assistant'
-  AND json_type(data, '$.cost') IN ('integer', 'real')
-```
-
-Only assistant messages with numeric `cost` count. Missing remote or other-device usage is not estimated.
-
-## Limits
-
-OpenUsage uses the current published OpenCode Go plan limits from the official docs:
-
-- `5h`: `$12`
-- `Weekly`: `$30`
-- `Monthly`: `$60`
-
-Bars show observed local spend as a percentage of those fixed limits and clamp at `100%`.
-
-## Window Rules
-
-- `5h`: rolling last 5 hours from now
-- `Weekly`: UTC Monday `00:00` through the next UTC Monday `00:00`
-- `Monthly`: inferred subscription-style monthly window using the earliest local OpenCode Go usage timestamp as the anchor
-
-Monthly usage is inferred from local history, not read from OpenCode’s account API. OpenUsage reuses the earliest observed local OpenCode Go usage timestamp as the monthly anchor. If no local history exists yet, it falls back to UTC calendar month boundaries until the first Go usage is recorded.
-
-## Failure Behavior
-
-If auth or prior history already indicates OpenCode Go is in use, but SQLite becomes unreadable or malformed, the provider stays visible and shows a grey `Status: No usage data` badge instead of failing hard.
-
-## Future Compatibility
-
-The public provider identity stays `opencode-go`. If OpenCode later exposes account-truth usage by API key, OpenUsage can swap the backend without changing the provider ID or UI contract.
+- No `opencode-go` key in `auth.json` → "OpenCode Go not detected" (a key set only via env/config is not read; the old local `opencode.db` spend estimate was removed)
+- `auth.json` present but unreadable/invalid → error (not skipped)
+- `401` → key rejected, log in again
+- `403` with `error.type: "EntitlementError"` → no OpenCode Go subscription on this key
+- Other non-2xx → HTTP error
+- Missing `usage` or a missing `percent` → "Could not parse usage data"

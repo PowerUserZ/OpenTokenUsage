@@ -23,6 +23,13 @@ beforeEach(() => {
 
 const loadPlugin = async () => plugin
 
+// Counts /api/oauth/usage requests only: a successful fetch is followed by one
+// /api/oauth/profile lookup per token (live plan badge), which throttle tests don't care about.
+const usageRequestCount = (ctx) =>
+  ctx.host.http.request.mock.calls.filter((call) => String(call[0]?.url).includes("/api/oauth/usage")).length
+
+const okUsageResponse = (body) => ({ status: 200, bodyText: JSON.stringify(body), headers: {} })
+
 describe("claude plugin", () => {
   it("throws when no credentials", async () => {
     const ctx = makeCtx()
@@ -155,7 +162,7 @@ describe("claude plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
-    expect(ctx.host.fs.readText).not.toHaveBeenCalled()
+    expect(ctx.host.fs.readText).not.toHaveBeenCalledWith(expect.stringContaining(".credentials.json"))
     expect(ctx.host.http.request).toHaveBeenCalledWith(
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer keychain-token" }),
@@ -1263,7 +1270,7 @@ describe("claude plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(usageCalls).toBe(2)
-    expect(firstUsageHeaders["User-Agent"]).toBe("claude-code/2.1.69")
+    expect(firstUsageHeaders["User-Agent"]).toBe("claude-cli/2.1.280 (external, cli)")
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
   })
 
@@ -2110,12 +2117,12 @@ describe("claude plugin", () => {
 
         // First probe — gets 429, stores rateLimitedUntilMs
         plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+        expect(usageRequestCount(ctx)).toBe(1)
 
         // Second probe 60 s later — still within window, must NOT call API
         vi.setSystemTime(new Date("2026-04-14T10:01:00.000Z"))
         const result2 = plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(1) // no new request
+        expect(usageRequestCount(ctx)).toBe(1) // no new request
         const statusLine = result2.lines.find((l) => l.label === "Status")
         expect(statusLine).toBeTruthy()
         expect(statusLine.text).toMatch(/4m/) // ~4 minutes remaining
@@ -2139,12 +2146,12 @@ describe("claude plugin", () => {
 
         // First probe → 429
         plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+        expect(usageRequestCount(ctx)).toBe(1)
 
         // 90 s later — window expired, should attempt API again
         vi.setSystemTime(new Date("2026-04-14T10:01:30.000Z"))
         const result2 = plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+        expect(usageRequestCount(ctx)).toBe(2)
         // No rate-limited badge after success (amber color = rate-limited)
         expect(result2.lines.find((l) => l.label === "Status" && l.color === "#f59e0b")).toBeUndefined()
       } finally {
@@ -2164,17 +2171,17 @@ describe("claude plugin", () => {
 
         // First probe — succeeds
         plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+        expect(usageRequestCount(ctx)).toBe(1)
 
         // 30 s later — within MIN_USAGE_FETCH_INTERVAL_MS (5 min), no new request
         vi.setSystemTime(new Date("2026-04-14T10:00:30.000Z"))
         plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+        expect(usageRequestCount(ctx)).toBe(1)
 
         // 5+ minutes later — interval elapsed, should fetch again
         vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
         plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+        expect(usageRequestCount(ctx)).toBe(2)
       } finally {
         vi.useRealTimers()
       }
@@ -2222,17 +2229,17 @@ describe("claude plugin", () => {
         const plugin = await loadPlugin()
 
         plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+        expect(usageRequestCount(ctx)).toBe(1)
 
         // 4 min 59 s later — default 5 min backoff still active
         vi.setSystemTime(new Date("2026-04-14T10:04:59.000Z"))
         plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+        expect(usageRequestCount(ctx)).toBe(1)
 
         // 5 min 1 s later — backoff expired
         vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
         plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+        expect(usageRequestCount(ctx)).toBe(2)
       } finally {
         vi.useRealTimers()
       }
@@ -2275,14 +2282,14 @@ describe("claude plugin", () => {
 
         const result1 = plugin.probe(ctx)
         expect(result1.lines.find((l) => l.label === "Session")?.used).toBe(42)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+        expect(usageRequestCount(ctx)).toBe(1)
 
         // Switch account 60 s later — well within the 5-minute min-fetch interval, which must
         // not serve the previous login's cached usage.
         creds = credsJson("b")
         vi.setSystemTime(new Date("2026-04-14T10:01:00.000Z"))
         const result2 = plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+        expect(usageRequestCount(ctx)).toBe(2)
         expect(result2.lines.find((l) => l.label === "Session")?.used).toBe(7)
       } finally {
         vi.useRealTimers()
@@ -2309,13 +2316,13 @@ describe("claude plugin", () => {
         // First probe — account A is rate limited for 5 minutes.
         const result1 = plugin.probe(ctx)
         expect(result1.lines.find((l) => l.label === "Status")).toBeTruthy()
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+        expect(usageRequestCount(ctx)).toBe(1)
 
         // Switch account 60 s later — the new login must not sit out A's cooldown.
         creds = credsJson("b")
         vi.setSystemTime(new Date("2026-04-14T10:01:00.000Z"))
         const result2 = plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+        expect(usageRequestCount(ctx)).toBe(2)
         expect(result2.lines.find((l) => l.label === "Session")?.used).toBe(5)
         expect(result2.lines.find((l) => l.label === "Status" && l.color === "#f59e0b")).toBeUndefined()
       } finally {
@@ -2341,7 +2348,9 @@ describe("claude plugin", () => {
           },
         }))
         ctx.host.fs.readText = () => files.get("cred")
-        ctx.host.fs.writeText = vi.fn((path, text) => files.set("cred", text))
+        ctx.host.fs.writeText = vi.fn((path, text) => {
+          if (String(path).endsWith(".credentials.json")) files.set("cred", text)
+        })
         ctx.host.http.request.mockImplementation((opts) => {
           if (String(opts.url).includes("/v1/oauth/token")) {
             return {
@@ -2406,12 +2415,186 @@ describe("claude plugin", () => {
     )
   })
 
-  it("declares Status badge (overview) and Fable progress (detail) lines in the manifest", () => {
+  it("declares Status badge, Fable (overview, below Weekly) and Rate Limit Resets in the manifest", () => {
     // The overview page filters runtime lines to manifest overview-scope labels, so the
-    // rate-limited Status badge must be declared with scope "overview" or a rate-limited
-    // fetch with no cached data renders a silent blank card (regression for upstream #849).
+    // rate-limited / not-logged-in Status badge must be declared with scope "overview" or those
+    // cards render a silent blank (regression for upstream #849). Fable is always visible directly
+    // below Weekly (upstream #1141).
     const manifest = JSON.parse(readFileSync("plugins/claude/plugin.json", "utf8"))
     expect(manifest.lines).toContainEqual({ type: "badge", label: "Status", scope: "overview" })
-    expect(manifest.lines).toContainEqual({ type: "progress", label: "Fable", scope: "detail" })
+    expect(manifest.lines).toContainEqual({ type: "progress", label: "Fable", scope: "overview" })
+    expect(manifest.lines).toContainEqual({ type: "text", label: "Rate Limit Resets", scope: "detail" })
+    const labels = manifest.lines.map((line) => line.label)
+    expect(labels.indexOf("Fable")).toBe(labels.indexOf("Weekly") + 1)
+  })
+
+  describe("live plan from /api/oauth/profile (regression for upstream #1258)", () => {
+    const STORED = JSON.stringify({
+      claudeAiOauth: { accessToken: "token", subscriptionType: "max", rateLimitTier: "default_claude_max_5x" },
+    })
+    const profileResponse = (organization) =>
+      okUsageResponse({ account: { uuid: "acc" }, organization: organization })
+    const routeRequests = (ctx, profile) =>
+      ctx.host.http.request.mockImplementation((opts) =>
+        String(opts.url).includes("/api/oauth/profile")
+          ? profile()
+          : okUsageResponse({ five_hour: { utilization: 10, resets_at: null } })
+      )
+    const profileCalls = (ctx) =>
+      ctx.host.http.request.mock.calls.filter((call) => String(call[0]?.url).includes("/api/oauth/profile"))
+
+    it("shows the upgraded plan instead of the stale stored one", async () => {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => STORED
+      routeRequests(ctx, () =>
+        profileResponse({ uuid: "org", organization_type: "claude_max", rate_limit_tier: "default_claude_max_20x" })
+      )
+      const result = (await loadPlugin()).probe(ctx)
+      expect(result.plan).toBe("Max 20x")
+      expect(profileCalls(ctx)[0][0].headers.Authorization).toBe("Bearer token")
+    })
+
+    it("falls back to stored fields the profile omits", async () => {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => STORED
+      routeRequests(ctx, () => profileResponse({ uuid: "org", rate_limit_tier: "default_claude_max_20x" }))
+      expect((await loadPlugin()).probe(ctx).plan).toBe("Max 20x")
+    })
+
+    it("keeps the stored plan and the usage lines when the profile lookup fails", async () => {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => STORED
+      routeRequests(ctx, () => {
+        throw new Error("network down")
+      })
+      const result = (await loadPlugin()).probe(ctx)
+      expect(result.plan).toBe("Max 5x")
+      expect(result.lines.find((l) => l.label === "Session")?.used).toBe(10)
+      expect(ctx.host.log.warn).toHaveBeenCalledWith(expect.stringContaining("live plan lookup failed"))
+    })
+
+    it("looks the profile up at most once per token, even after a failure", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        ctx.host.fs.writeText("~/.claude/.credentials.json", STORED)
+        routeRequests(ctx, () => ({ status: 500, bodyText: "" }))
+        const plugin = await loadPlugin()
+        plugin.probe(ctx)
+        // The host runs each probe in a fresh runtime: module state is gone, pluginDataDir is not.
+        plugin._resetState()
+        vi.setSystemTime(new Date("2026-04-14T10:06:00.000Z")) // past the min fetch interval
+        const result = plugin.probe(ctx)
+        expect(ctx.host.fs.readText("/tmp/openusage-test/plugin/live-plan.json")).toContain('"plan":null')
+        expect(usageRequestCount(ctx)).toBe(2)
+        expect(profileCalls(ctx)).toHaveLength(1)
+        expect(result.plan).toBe("Max 5x")
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("skips the profile lookup when the usage fetch is rate limited", async () => {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => STORED
+      ctx.host.http.request.mockReturnValue({ status: 429, bodyText: "", headers: {} })
+      const result = (await loadPlugin()).probe(ctx)
+      expect(profileCalls(ctx)).toHaveLength(0)
+      expect(result.plan).toBe("Max 5x")
+    })
+  })
+
+  describe("Rate Limit Resets from cedar_ember (upstream #1290)", () => {
+    const probeWith = async (body) => {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+      ctx.host.http.request.mockReturnValue(okUsageResponse(body))
+      const result = (await loadPlugin()).probe(ctx)
+      return { ctx, line: result.lines.find((l) => l.label === "Rate Limit Resets") }
+    }
+
+    it("opts in to reset grants on the usage request", async () => {
+      const { ctx } = await probeWith({})
+      const usageCall = ctx.host.http.request.mock.calls.find((c) => String(c[0].url).includes("/api/oauth/usage"))
+      expect(usageCall[0].url).toBe("https://api.anthropic.com/api/oauth/usage?cedar_ember=1")
+    })
+
+    it("counts each remaining reset, skipping spent and lapsed grants", async () => {
+      const { line } = await probeWith({
+        cedar_ember: {
+          eligible: true,
+          grants: [
+            { id: "launch", resets_left: 1, ends_at: "2099-10-22T16:00:00+00:00" },
+            { id: "other", resets_left: "2", ends_at: "2099-10-01T00:00:00+00:00" },
+            { id: "no-deadline", resets_left: 1, ends_at: null },
+            { id: "spent", resets_left: 0, ends_at: "2099-10-05T00:00:00+00:00" },
+            { id: "lapsed", resets_left: 1, ends_at: "2020-09-01T00:00:00+00:00" },
+          ],
+        },
+      })
+      expect(line).toEqual({ type: "text", label: "Rate Limit Resets", value: "4 available" })
+    })
+
+    it("reads 0 available for an ineligible account", async () => {
+      const { line } = await probeWith({
+        cedar_ember: { eligible: false, ineligible_reason: "tier", grants: [{ resets_left: 1 }] },
+      })
+      expect(line?.value).toBe("0 available")
+    })
+
+    it("emits no row when the block is missing or null", async () => {
+      expect((await probeWith({ cedar_ember: null })).line).toBeUndefined()
+      expect((await probeWith({ five_hour: { utilization: 3 } })).line).toBeUndefined()
+    })
+  })
+
+  it("renders Fable directly below Weekly (upstream #1141)", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+    ctx.host.http.request.mockReturnValue(okUsageResponse({
+      five_hour: { utilization: 1, resets_at: null },
+      seven_day: { utilization: 2, resets_at: null },
+      seven_day_sonnet: { utilization: 3, resets_at: null },
+      limits: [{ kind: "weekly_scoped", percent: 4, scope: { model: { display_name: "Fable" } } }],
+    }))
+    const labels = (await loadPlugin()).probe(ctx).lines.map((l) => l.label)
+    expect(labels.slice(0, 4)).toEqual(["Session", "Weekly", "Fable", "Sonnet"])
+  })
+
+  describe("local spend without OAuth credentials (upstream #1138)", () => {
+    const todayKey = () => {
+      const d = new Date()
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0")
+    }
+
+    it("shows ccusage spend under a Not logged in badge instead of an error", async () => {
+      const ctx = makeCtx()
+      ctx.host.ccusage.query = vi.fn(() => ({
+        status: "ok",
+        data: { daily: [{ date: todayKey(), totalTokens: 1500, totalCost: 0.5 }] },
+      }))
+      const result = (await loadPlugin()).probe(ctx)
+      expect(result.plan).toBeNull()
+      expect(result.lines[0]).toEqual({ type: "badge", label: "Status", text: "Not logged in", color: "#f59e0b" })
+      expect(result.lines.find((l) => l.label === "Today")?.value).toBe("$0.50 · 1.5K tokens")
+      expect(ctx.host.http.request).not.toHaveBeenCalled()
+    })
+
+    it("still throws Not logged in when ccusage has no recorded spend", async () => {
+      const ctx = makeCtx()
+      ctx.host.ccusage.query = vi.fn(() => ({
+        status: "ok",
+        data: { daily: [{ date: todayKey(), totalTokens: 0, totalCost: 0 }] },
+      }))
+      const plugin = await loadPlugin()
+      expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+    })
   })
 })
