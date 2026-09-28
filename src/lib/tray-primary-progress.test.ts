@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { getTrayPrimaryBars } from "@/lib/tray-primary-progress"
+import { findTightestLimit, getTrayPrimaryBars } from "@/lib/tray-primary-progress"
 
 describe("getTrayPrimaryBars", () => {
   it("returns empty when settings missing", () => {
@@ -584,5 +584,37 @@ describe("getTrayPrimaryBars", () => {
       })
       expect(bars).toEqual([{ id: "a", fraction: 0.6, label: "Weekly", weekly: true }])
     })
+  })
+})
+
+describe("findTightestLimit", () => {
+  const meta = (id: string) => ({ id, name: id, iconUrl: "", lines: [], primaryCandidates: ["Session"] })
+  const progress = (label: string, used: number) =>
+    ({ type: "progress", label, used, limit: 100, format: { kind: "percent" } }) as const
+  const state = (lines: ReturnType<typeof progress>[]) => ({
+    data: { providerId: "x", displayName: "x", iconUrl: "", lines: [...lines] },
+    loading: false,
+    error: null,
+  })
+  const args = {
+    pluginsMeta: [meta("claude"), meta("codex"), meta("cursor")],
+    pluginSettings: { order: ["claude", "codex", "cursor"], disabled: ["cursor"] },
+    pluginStates: {
+      claude: state([progress("Session", 20), progress("Weekly", 70)]),
+      codex: state([progress("Session", 55), progress("Weekly", 30)]),
+      cursor: state([progress("Session", 99)]), // disabled: ignored
+    },
+  }
+
+  it("picks the fullest line across enabled providers", () => {
+    expect(findTightestLimit(args)).toEqual({ pluginId: "claude", label: "Weekly" })
+  })
+
+  it("respects a fixed metric", () => {
+    expect(findTightestLimit({ ...args, metric: "Session" })).toEqual({ pluginId: "codex", label: "Session" })
+  })
+
+  it("returns null without data", () => {
+    expect(findTightestLimit({ ...args, pluginStates: {} })).toBeNull()
   })
 })

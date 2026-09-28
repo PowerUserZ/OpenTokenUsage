@@ -24,6 +24,7 @@ import {
   loadTrayMetric,
   loadLanguage,
   loadTrayHiddenPlugins,
+  loadUsageAlerts,
   loadTrayPercentColor,
   loadTrayProvider,
   migrateLegacyTraySettings,
@@ -64,6 +65,7 @@ type UseSettingsBootstrapArgs = {
   setTrayMetric: (value: TrayMetric) => void
   setTrayPercentColor: (value: TrayPercentColor) => void
   setTrayHiddenPlugins: (value: string[]) => void
+  setUsageAlerts: (value: boolean) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -84,6 +86,7 @@ export function useSettingsBootstrap({
   setTrayMetric,
   setTrayPercentColor,
   setTrayHiddenPlugins,
+  setUsageAlerts,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -112,6 +115,12 @@ export function useSettingsBootstrap({
         if (isMounted) setTrayHiddenPlugins(hidden)
       } catch (error) {
         console.error("Failed to load tray-hidden providers:", error)
+      }
+      try {
+        const alerts = await loadUsageAlerts()
+        if (isMounted) setUsageAlerts(alerts)
+      } catch (error) {
+        console.error("Failed to load usage alerts setting:", error)
       }
       try {
         const storedLanguage = await loadLanguage()
@@ -257,6 +266,7 @@ export function useSettingsBootstrap({
     setTrayMetric,
     setTrayPercentColor,
     setTrayHiddenPlugins,
+    setUsageAlerts,
     migrateWindsurfToDevin,
     migrateLegacyTraySettings,
     setPluginSettings,

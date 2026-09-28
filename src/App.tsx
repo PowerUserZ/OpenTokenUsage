@@ -18,6 +18,7 @@ import { useAppUiStore } from "@/stores/app-ui-store"
 import { t, useLocaleStore } from "@/lib/i18n"
 import { invoke } from "@tauri-apps/api/core"
 import { useAppUpdate } from "@/hooks/use-app-update"
+import { useUsageAlerts } from "@/hooks/app/use-usage-alerts"
 
 const TRAY_PROBE_DEBOUNCE_MS = 500
 const TRAY_SETTINGS_DEBOUNCE_MS = 2000
@@ -63,6 +64,8 @@ function App() {
     trayPercentColor,
     setTrayPercentColor,
     setTrayHiddenPlugins,
+    usageAlerts,
+    setUsageAlerts,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setTimeFormatMode,
@@ -85,6 +88,8 @@ function App() {
       trayPercentColor: state.trayPercentColor,
       setTrayPercentColor: state.setTrayPercentColor,
       setTrayHiddenPlugins: state.setTrayHiddenPlugins,
+      usageAlerts: state.usageAlerts,
+      setUsageAlerts: state.setUsageAlerts,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setTimeFormatMode: state.setTimeFormatMode,
@@ -123,6 +128,8 @@ function App() {
     [pluginSettings, trayHiddenPlugins]
   )
 
+  useUsageAlerts({ pluginStates, pluginsMeta, enabled: usageAlerts })
+
   const { scheduleTrayIconUpdate, traySettingsPreview } = useTrayIcon({
     pluginsMeta,
     pluginSettings: trayPluginSettings,
@@ -153,6 +160,7 @@ function App() {
     setTrayMetric,
     setTrayPercentColor,
     setTrayHiddenPlugins,
+    setUsageAlerts,
     setResetTimerDisplayMode,
     setTimeFormatMode,
     setGlobalShortcut,

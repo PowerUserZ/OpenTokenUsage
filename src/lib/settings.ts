@@ -47,6 +47,10 @@ const TRAY_PROVIDER_KEY = "trayProvider";
 const TRAY_METRIC_KEY = "trayMetric";
 const TRAY_PERCENT_COLOR_KEY = "trayPercentColor";
 const TRAY_HIDDEN_PLUGINS_KEY = "trayHiddenPlugins";
+const USAGE_ALERTS_KEY = "usageAlerts";
+const SENT_USAGE_ALERTS_KEY = "sentUsageAlerts";
+/** Enough for every provider x line x level for a few windows; oldest keys drop off first. */
+const MAX_SENT_USAGE_ALERTS = 300;
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
 const LANGUAGE_KEY = "language";
@@ -347,6 +351,26 @@ export async function loadTrayMetric(): Promise<TrayMetric> {
 
 export async function saveTrayMetric(value: TrayMetric): Promise<void> {
   await store.set(TRAY_METRIC_KEY, value);
+  await store.save();
+}
+
+export async function loadUsageAlerts(): Promise<boolean> {
+  const stored = await store.get<unknown>(USAGE_ALERTS_KEY);
+  return typeof stored === "boolean" ? stored : true;
+}
+
+export async function saveUsageAlerts(value: boolean): Promise<void> {
+  await store.set(USAGE_ALERTS_KEY, value);
+  await store.save();
+}
+
+export async function loadSentUsageAlerts(): Promise<string[]> {
+  const stored = await store.get<unknown>(SENT_USAGE_ALERTS_KEY);
+  return Array.isArray(stored) ? stored.filter((key): key is string => typeof key === "string") : [];
+}
+
+export async function saveSentUsageAlerts(keys: string[]): Promise<void> {
+  await store.set(SENT_USAGE_ALERTS_KEY, keys.slice(-MAX_SENT_USAGE_ALERTS));
   await store.save();
 }
 

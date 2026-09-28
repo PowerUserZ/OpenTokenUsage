@@ -119,3 +119,32 @@ export function getTrayPrimaryBars(args: {
   return out
 }
 
+/**
+ * Tray provider "Most used": the enabled provider and progress line with the highest used share,
+ * so one glance shows the limit you'll hit first. `metric` restricts it to one line label.
+ */
+export function findTightestLimit(args: {
+  pluginsMeta: PluginMeta[]
+  pluginSettings: PluginSettings
+  pluginStates: Record<string, PluginState | undefined>
+  metric?: string
+}): { pluginId: string; label: string } | null {
+  const { pluginsMeta, pluginSettings, pluginStates, metric } = args
+  const known = new Set(pluginsMeta.map((plugin) => plugin.id))
+  const disabled = new Set(pluginSettings.disabled)
+  let best: { pluginId: string; label: string } | null = null
+  let bestFraction = -1
+  for (const id of pluginSettings.order) {
+    if (disabled.has(id) || !known.has(id)) continue
+    for (const line of pluginStates[id]?.data?.lines ?? []) {
+      if (!isProgressLine(line) || line.limit <= 0) continue
+      if (metric && line.label !== metric) continue
+      const fraction = line.used / line.limit
+      if (fraction > bestFraction) {
+        bestFraction = fraction
+        best = { pluginId: id, label: line.label }
+      }
+    }
+  }
+  return best
+}

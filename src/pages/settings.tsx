@@ -27,6 +27,7 @@ import {
   RESET_TIMER_DISPLAY_OPTIONS,
   saveLanguage,
   saveTrayHiddenPlugins,
+  saveUsageAlerts,
   THEME_OPTIONS,
   TIME_FORMAT_OPTIONS,
   type AutoUpdateIntervalMinutes,
@@ -217,6 +218,29 @@ function LanguageSection() {
   );
 }
 
+function NotificationsSection() {
+  const usageAlerts = useAppPreferencesStore((state) => state.usageAlerts);
+  const setUsageAlerts = useAppPreferencesStore((state) => state.setUsageAlerts);
+  return (
+    <SettingsSection title={t("settings.alerts.title")} description={t("settings.alerts.desc")}>
+      <label className="flex items-center gap-2 text-[13px] select-none text-foreground">
+        <Checkbox
+          key={`usage-alerts-${usageAlerts}`}
+          checked={usageAlerts}
+          onCheckedChange={(checked) => {
+            const next = checked === true;
+            setUsageAlerts(next);
+            void saveUsageAlerts(next).catch((error) => {
+              console.error("Failed to save usage alerts setting:", error);
+            });
+          }}
+        />
+        {t("settings.alerts.label")}
+      </label>
+    </SettingsSection>
+  );
+}
+
 interface SettingsPageProps {
   plugins: PluginConfig[];
   onReorder: (orderedIds: string[]) => void;
@@ -393,6 +417,7 @@ export function SettingsPage({
                 className="fluent-control w-full"
               >
                 <option value="auto">{t("settings.tray.auto")}</option>
+                <option value="tightest">{t("settings.tray.tightest")}</option>
                 {plugins.filter((p) => p.enabled).map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
@@ -439,6 +464,8 @@ export function SettingsPage({
       <LanguageSection />
 
       <GlobalShortcutSection globalShortcut={globalShortcut} onGlobalShortcutChange={onGlobalShortcutChange} />
+
+      <NotificationsSection />
 
       <SettingsSection title={t("settings.startOnLogin.title")} description={t("settings.startOnLogin.desc")}>
         <label className="flex items-center gap-2 text-[13px] select-none text-foreground">

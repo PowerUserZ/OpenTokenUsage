@@ -6,7 +6,7 @@ import type { PluginMeta } from "@/lib/plugin-types"
 import type { DisplayMode, MenubarIconStyle, PluginSettings } from "@/lib/settings"
 import { getEnabledPluginIds } from "@/lib/settings"
 import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
-import { getTrayPrimaryBars, type TrayPrimaryBar } from "@/lib/tray-primary-progress"
+import { findTightestLimit, getTrayPrimaryBars, type TrayPrimaryBar } from "@/lib/tray-primary-progress"
 import { formatTrayPercentText, formatTrayTooltip } from "@/lib/tray-tooltip"
 import type { PluginState } from "@/hooks/app/types"
 
@@ -221,8 +221,24 @@ export function useTrayIcon({
       const trayProviderSetting = trayProviderRef.current
       const trayMetricSetting = trayMetricRef.current
 
+      // One Metric setting drives every style (bars, percent, tooltip). "Weekly" also falls back to a
+      // provider's declared weekly line when it isn't literally labelled "Weekly".
+      const preferredMetric = trayMetricSetting !== "auto" ? trayMetricSetting : undefined
+      const preferWeekly = trayMetricSetting === "Weekly"
+
+      const tightest = trayProviderSetting === "tightest"
+        ? findTightestLimit({
+            pluginsMeta: pluginsMetaRef.current,
+            pluginSettings: currentSettings,
+            pluginStates: pluginStatesRef.current,
+            metric: preferredMetric,
+          })
+        : null
+
       let trayProviderId: string | null = null
-      if (trayProviderSetting !== "auto" && enabledPluginIds.includes(trayProviderSetting)) {
+      if (tightest) {
+        trayProviderId = tightest.pluginId
+      } else if (trayProviderSetting !== "auto" && enabledPluginIds.includes(trayProviderSetting)) {
         trayProviderId = trayProviderSetting
       } else if (activeProviderId && enabledPluginIds.includes(activeProviderId)) {
         trayProviderId = activeProviderId
@@ -234,11 +250,6 @@ export function useTrayIcon({
       } else {
         trayProviderId = enabledPluginIds[0] ?? null
       }
-
-      // One Metric setting drives every style (bars, percent, tooltip). "Weekly" also falls back to a
-      // provider's declared weekly line when it isn't literally labelled "Weekly".
-      const preferredMetric = trayMetricSetting !== "auto" ? trayMetricSetting : undefined
-      const preferWeekly = trayMetricSetting === "Weekly"
 
       const barsForPreview = getTrayPrimaryBars({
         pluginsMeta: pluginsMetaRef.current,
@@ -258,7 +269,7 @@ export function useTrayIcon({
             maxBars: 1,
             displayMode: displayModeRef.current,
             pluginId: trayProviderId,
-            preferredMetric,
+            preferredMetric: tightest?.label ?? preferredMetric,
             preferWeekly,
           })
         : []

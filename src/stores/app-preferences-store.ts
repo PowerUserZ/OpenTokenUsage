@@ -36,6 +36,7 @@ type AppPreferencesStore = {
   trayMetric: TrayMetric
   trayPercentColor: TrayPercentColor
   trayHiddenPlugins: string[]
+  usageAlerts: boolean
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
@@ -48,6 +49,7 @@ type AppPreferencesStore = {
   setTrayMetric: (value: TrayMetric) => void
   setTrayPercentColor: (value: TrayPercentColor) => void
   setTrayHiddenPlugins: (value: string[]) => void
+  setUsageAlerts: (value: boolean) => void
   resetState: () => void
 }
 
@@ -64,6 +66,7 @@ const initialState = {
   trayMetric: DEFAULT_TRAY_METRIC,
   trayPercentColor: DEFAULT_TRAY_PERCENT_COLOR,
   trayHiddenPlugins: [] as string[],
+  usageAlerts: true,
 }
 
 export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
@@ -80,5 +83,6 @@ export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
   setTrayMetric: (value) => set({ trayMetric: value }),
   setTrayPercentColor: (value) => set({ trayPercentColor: value }),
   setTrayHiddenPlugins: (value) => set({ trayHiddenPlugins: value }),
+  setUsageAlerts: (value) => set({ usageAlerts: value }),
   resetState: () => set(initialState),
 }))
