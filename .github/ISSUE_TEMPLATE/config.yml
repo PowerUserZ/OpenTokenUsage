@@ -1,1 +1,8 @@
 blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/PowerUserZ/OpenTokenUsage/security/advisories/new
+    about: Please report security problems privately, not as a public issue.
+  - name: Website
+    url: https://opentokenusage.app
+    about: Features, FAQ and the install command.

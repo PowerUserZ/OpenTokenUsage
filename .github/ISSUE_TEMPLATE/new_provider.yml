@@ -5,13 +5,13 @@ body:
   - type: markdown
     attributes:
       value: |
-        Want to add a new AI provider to OpenUsage? Fill in the details below.
+        Want to add a new AI provider to OpenTokenUsage? Fill in the details below.
         You can submit just a request, or build the plugin yourself and open a PR.
   - type: input
     id: provider_name
     attributes:
       label: Provider Name
-      placeholder: "e.g. Gemini, Windsurf, Devin"
+      placeholder: "e.g. Gemini CLI, Warp, Qwen Code"
     validations:
       required: true
   - type: input

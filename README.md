@@ -1,12 +1,10 @@
 # OpenTokenUsage
 
-Every AI coding limit, next to your clock. Made for **Windows 11**. Website: [opentokenusage.app](https://opentokenusage.app)
+Every AI coding limit, next to your clock. Made for **Windows 11** by [PowerUserZ](https://github.com/PowerUserZ). Website: [opentokenusage.app](https://opentokenusage.app)
 
 ![The OpenTokenUsage panel above the Windows taskbar, with Claude, Codex and Cursor usage shown next to the clock](docs/images/hero.webp)
 
 OpenTokenUsage lives in the notification area and shows how much of your AI coding subscriptions you've used: session and weekly limits, credits, when they reset, and whether you're on pace. No digging through dashboards, no mental math.
-
-> Built on [OpenUsage](https://github.com/robinebers/openusage) by Robin Ebers, rebuilt for Windows.
 
 ## Download
 
@@ -71,12 +69,6 @@ Settings → **Tray icon** picks what sits next to the clock. Settings → **Tas
 - **Fix a bug.** PRs welcome. Provide before/after screenshots.
 - **Request a feature.** [Open an issue](https://github.com/PowerUserZ/OpenTokenUsage/issues/new) and make your case.
 
-## Credits
-
-- Original project: [OpenUsage](https://github.com/robinebers/openusage) by [Robin Ebers](https://itsbyrob.in/x)
-- Windows port: [PowerUserZ](https://github.com/PowerUserZ)
-- Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [@steipete](https://github.com/steipete)
-
 ## License
 
 [MIT](LICENSE)
@@ -104,3 +96,7 @@ bun tauri build
 The built app will be in `src-tauri/target/release/bundle/`.
 
 </details>
+
+## Acknowledgments
+
+OpenTokenUsage started as a fork of [OpenUsage](https://github.com/robinebers/openusage) by [Robin Ebers](https://itsbyrob.in/x) (MIT) and was rebuilt for Windows. It is not the official OpenUsage and is not affiliated with it. Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [@steipete](https://github.com/steipete).
