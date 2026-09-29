@@ -1,6 +1,6 @@
 # OpenTokenUsage
 
-Every AI coding limit, next to your clock. Made for **Windows 11**. Website: [opentokenusage.github.io](https://opentokenusage.github.io)
+Every AI coding limit, next to your clock. Made for **Windows 11**. Website: [opentokenusage.app](https://opentokenusage.app)
 
 ![The OpenTokenUsage panel above the Windows taskbar, with Claude, Codex and Cursor usage shown next to the clock](docs/images/hero.webp)
 
