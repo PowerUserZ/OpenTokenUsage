@@ -31,7 +31,7 @@ The app checks for new releases in-app and updates itself.
 - **Service status.** A badge on the card when the provider's status page reports an incident.
 - **Windows 11 native.** Mica, your accent color, a pure black dark theme and a light one.
 - **11 languages.** English, Deutsch, Español (España and Latinoamérica), Français, Italiano, 日本語, 한국어, Português (Brasil), Türkçe and 简体中文.
-- **Plugin-based.** New providers get added without updating the whole app.
+- **Plugin-based.** Each provider is a small plugin, so adding one is easy. New providers arrive with app updates.
 - **[Local HTTP API](docs/local-http-api.md).** Other apps on your PC can read your usage from `127.0.0.1:6736` (loopback only).
 - **[Proxy support](docs/proxy.md).** Route provider requests through a SOCKS5 or HTTP proxy.
 
@@ -48,21 +48,21 @@ Settings → **Tray icon** picks what sits next to the clock. Settings → **Tas
 ## Supported Providers
 
 - [**Amp**](docs/providers/amp.md) / free tier, bonus, credits
-- [**Antigravity**](docs/providers/antigravity.md) / all models
+- [**Antigravity**](docs/providers/antigravity.md) / Gemini and Claude models, session and weekly
 - [**Claude**](docs/providers/claude.md) / session, weekly, Fable, extra usage, rate limit resets, local token usage (ccusage)
 - [**Codex**](docs/providers/codex.md) / session, weekly, reviews, credits
-- [**Copilot**](docs/providers/copilot.md) / premium, chat, completions
-- [**Cursor**](docs/providers/cursor.md) / credits, total usage, auto usage, API usage, Grok Bot, on-demand, CLI auth
+- [**Copilot**](docs/providers/copilot.md) / credits, extra usage, chat, completions
+- [**Cursor**](docs/providers/cursor.md) / credits, total usage, requests, auto usage, API usage, Grok Bot, on-demand, bonus spend, CLI auth
 - [**Factory / Droid**](docs/providers/factory.md) / standard, premium tokens
-- [**Grok**](docs/providers/grok.md) / credits used, plan, pay-as-you-go cap
+- [**Grok**](docs/providers/grok.md) / weekly limit, credits used, pay-as-you-go cap
 - [**JetBrains AI Assistant**](docs/providers/jetbrains-ai-assistant.md) / quota, remaining
 - [**Kiro**](docs/providers/kiro.md) / credits, bonus credits, overages
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**MiniMax**](docs/providers/minimax.md) / coding plan session
 - [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly usage limits
-- [**Devin**](docs/providers/devin.md) / weekly quota, extra usage
-- [**Perplexity**](docs/providers/perplexity.md) / session usage, balance
-- [**Synthetic**](docs/providers/synthetic.md) / requests, rolling rate limits
+- [**Devin**](docs/providers/devin.md) / weekly and daily quota, extra usage
+- [**Perplexity**](docs/providers/perplexity.md) / reads the Perplexity macOS app's session, so it doesn't work on Windows yet
+- [**Synthetic**](docs/providers/synthetic.md) / 5-hour rate limit, subscription, tool calls, search
 - [**Z.ai**](docs/providers/zai.md) / session, weekly, web searches
 
 ## Contributing

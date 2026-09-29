@@ -9,7 +9,7 @@ type ProbeContext = {
   nowIso: string              // Current UTC time (ISO 8601)
   app: {
     version: string           // App version
-    platform: string          // OS platform (e.g., "macos")
+    platform: string          // OS platform ("windows")
     appDataDir: string        // App data directory
     pluginDataDir: string     // Plugin-specific data dir (auto-created)
   }
@@ -28,7 +28,7 @@ Application metadata:
 | Property        | Description                                             |
 | --------------- | ------------------------------------------------------- |
 | `version`       | App version string                                      |
-| `platform`      | OS platform (e.g., `"macos"`, `"windows"`, `"linux"`)   |
+| `platform`      | OS platform (`"windows"`)                               |
 | `appDataDir`    | App's data directory path                               |
 | `pluginDataDir` | Plugin-specific data directory (auto-created on demand) |
 
@@ -154,8 +154,8 @@ Reads an environment variable by name.
 - Returns variable value as string when set
 - Returns `null` when missing
 - Variable must be whitelisted first in `src-tauri/src/plugin_engine/host_api.rs`
-- Resolution order: current process env first, then a login+interactive shell lookup (macOS)
-- Values may be cached for the app session; restart OpenUsage after changing shell config
+- Resolution order: current process env first, then the Windows registry (`HKCU\Environment`, then the system `Environment` key)
+- A variable added while OpenTokenUsage is running is picked up on the next refresh; no restart needed
 
 ### Example
 
@@ -228,19 +228,17 @@ const resp = ctx.host.http.request({
 })
 ```
 
-## Keychain (macOS only)
+## Keychain (not available on Windows)
 
 ```typescript
 host.keychain.readGenericPassword(service: string, account?: string): string
 ```
 
-Reads a generic password from the macOS Keychain. Pass `account` when the service stores multiple accounts and the plugin must avoid a service-wide match.
+Kept for plugins shared with the macOS app. Windows has no macOS Keychain, so in OpenTokenUsage every call throws; read credentials from a file or an environment variable instead.
 
 ### Behavior
 
-- **macOS only**: Throws on other platforms
-- **Throws if not found**: Returns the password string if found, throws otherwise
-- **Optional account scope**: When `account` is set, lookup uses both service and account
+- **Always throws on Windows**: plugins must catch it and fall back, as in the example below
 
 ### Example
 
