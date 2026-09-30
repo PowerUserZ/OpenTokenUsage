@@ -696,7 +696,7 @@ describe("App", () => {
     render(<App />)
 
     // Open about via version button in footer
-    await userEvent.click(await screen.findByRole("button", { name: /OpenTokenUsage/i }))
+    await userEvent.click(await screen.findByRole("button", { name: /^OpenTokenUsage \d/ }))
     await screen.findByText(/Source code/)
 
     // Close about via ESC key

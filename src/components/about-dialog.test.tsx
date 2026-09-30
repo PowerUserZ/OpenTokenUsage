@@ -49,6 +49,7 @@ describe("AboutDialog", () => {
     render(<AboutDialog version="1.2.3" onClose={() => {}} />)
     await userEvent.click(screen.getByRole("button", { name: "Buy me a coffee" }))
     expect(openerState.openUrlMock).toHaveBeenCalledWith(SUPPORT_URL)
+    expect(screen.getByText("buymeacoffee.com/poweruserz")).toBeInTheDocument()
     expect(readFileSync("src-tauri/src/tray.rs", "utf8")).toContain(`const SUPPORT_URL: &str = "${SUPPORT_URL}";`)
   })
 

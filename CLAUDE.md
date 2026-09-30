@@ -72,6 +72,10 @@ This file holds the project facts that are easy to get wrong.
   and is saved as `panelPosition` (outer top-left, physical px) in settings.json, then used by
   `anchor_panel`/`toggle_panel_at`, clamped into the work area. Move the panel only through `place()`,
   or your move is remembered as a drag.
+- Support: the side-nav coffee cup (`BmcCup`, from Buy Me a Coffee's brand kit: outline `currentColor`, coffee
+  `--support` yellow) opens `SupportDialog`; the About window and the tray menu open `SUPPORT_URL` (TS ↔ tray.rs,
+  test-synced). A dialog taller than a short panel sets `data-panel-dialog`: app-shell's `has-[…]:min-h` grows the
+  panel while it's open (the window follows the content height).
 - Ring logos are sized by `measureLogoExtent` (how far the logo's pixels reach) so square logos stay
   inside the ring and round ones grow.
 - Themes: `dark` (default, pure black: classes `.dark.oled`) | `light`. `useSettingsTheme` also sets the

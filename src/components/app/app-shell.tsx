@@ -137,8 +137,9 @@ export function AppShell({
 
   return (
     <div ref={containerRef} tabIndex={-1} className="flex flex-col bg-background outline-none">
+      {/* A tall dialog (data-panel-dialog) makes a short panel grow while it's open; the window follows the content height. */}
       <div
-        className="relative overflow-hidden select-none w-full flex flex-col"
+        className="relative overflow-hidden select-none w-full flex flex-col has-[[data-panel-dialog]]:min-h-[470px]"
         style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx}px` } : undefined}
       >
         <TitleBar />

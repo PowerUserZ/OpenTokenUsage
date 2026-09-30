@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Coffee } from "lucide-react";
 import { ChangelogDialog } from "./changelog-dialog";
 import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
-import { SUPPORT_URL } from "@/lib/support";
+import { BuyMeACoffeeButton } from "@/components/support-dialog";
 
 interface AboutDialogProps {
   version: string;
@@ -125,14 +124,7 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => openUrl(SUPPORT_URL).catch(console.error)}
-          className="mt-4 inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-support text-support-foreground text-sm font-semibold hover:brightness-95 active:brightness-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        >
-          <Coffee className="size-4" strokeWidth={2} aria-hidden="true" />
-          {t("support.buyMeACoffee")}
-        </button>
+        <BuyMeACoffeeButton />
       </div>
     </div>
   );

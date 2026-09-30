@@ -13,6 +13,9 @@ const UPDATE_ERROR_TITLES: Record<string, MessageKey> = {
   "Install failed": "footer.updateInstallFailed",
 };
 
+/** Update states that put text or a button on the left side of the footer. */
+const UPDATE_SHOWN = new Set<UpdateStatus["status"]>(["downloading", "ready", "installing", "error"]);
+
 interface PanelFooterProps {
   version: string;
   autoUpdateNextAt: number | null;
@@ -109,26 +112,36 @@ export function PanelFooter({
     resetKey: autoUpdateNextAt,
   });
 
-  const countdownLabel = useMemo(() => {
-    if (!autoUpdateNextAt) return t("footer.paused");
+  // While the left side shows an update ("Restart to update", "Downloading 42%"…), the countdown shrinks to
+  // just the time so the two never collide in longer languages; the full text stays in the tooltip.
+  const updateShown = UPDATE_SHOWN.has(updateStatus.status);
+  const { countdownLabel, countdownFull } = useMemo(() => {
+    if (!autoUpdateNextAt) {
+      const paused = t("footer.paused");
+      return { countdownLabel: paused, countdownFull: paused };
+    }
     const remainingMs = Math.max(0, autoUpdateNextAt - now);
     const totalSeconds = Math.ceil(remainingMs / 1000);
     const time = totalSeconds >= 60
       ? t("duration.m", { m: Math.ceil(totalSeconds / 60) })
       : t("duration.s", { s: totalSeconds });
-    return t("footer.nextUpdate", { time });
-  }, [autoUpdateNextAt, now]);
+    const full = t("footer.nextUpdate", { time });
+    return { countdownLabel: updateShown ? time : full, countdownFull: full };
+  }, [autoUpdateNextAt, now, updateShown]);
 
   return (
     <>
-      <div className="flex justify-between items-center h-8 pt-1.5 border-t">
-        <VersionDisplay
-          version={version}
-          updateStatus={updateStatus}
-          onUpdateInstall={onUpdateInstall}
-          onUpdateCheck={onUpdateCheck}
-          onVersionClick={onShowAbout}
-        />
+      {/* The update state on the left never shrinks; the countdown takes what's left and ends in "…" if it must. */}
+      <div className="flex items-center gap-3 h-8 pt-1.5 border-t">
+        <div className="shrink-0">
+          <VersionDisplay
+            version={version}
+            updateStatus={updateStatus}
+            onUpdateInstall={onUpdateInstall}
+            onUpdateCheck={onUpdateCheck}
+            onVersionClick={onShowAbout}
+          />
+        </div>
         {autoUpdateNextAt !== null && onRefreshAll ? (
           <button
             type="button"
@@ -136,13 +149,13 @@ export function PanelFooter({
               event.currentTarget.blur()
               onRefreshAll()
             }}
-            className="text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors cursor-pointer"
-            title={t("footer.refreshNow")}
+            className="ml-auto min-w-0 truncate text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors cursor-pointer"
+            title={updateShown ? `${countdownFull} · ${t("footer.refreshNow")}` : t("footer.refreshNow")}
           >
             {countdownLabel}
           </button>
         ) : (
-          <span className="text-xs text-muted-foreground tabular-nums">
+          <span className="ml-auto min-w-0 truncate text-xs text-muted-foreground tabular-nums" title={countdownFull}>
             {countdownLabel}
           </span>
         )}

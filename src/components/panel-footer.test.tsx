@@ -14,6 +14,23 @@ const noop = () => {}
 const footerProps = { showAbout: false, onShowAbout: noop, onCloseAbout: noop, onUpdateCheck: noop }
 
 describe("PanelFooter", () => {
+  it("shortens the countdown to just the time while an update is shown, keeping the full text in the tooltip", () => {
+    render(
+      <PanelFooter
+        version="0.0.0"
+        autoUpdateNextAt={Date.now() + 5 * 60 * 1000}
+        updateStatus={{ status: "ready" }}
+        onUpdateInstall={noop}
+        onRefreshAll={noop}
+        {...footerProps}
+      />
+    )
+    expect(screen.getByText("Restart to update")).toBeTruthy()
+    const countdown = screen.getByRole("button", { name: "5m" })
+    expect(countdown.getAttribute("title")).toContain("Next update in 5m")
+    expect(countdown.className).toContain("truncate")
+  })
+
   it("shows countdown in minutes when >= 60 seconds", () => {
     const futureTime = Date.now() + 5 * 60 * 1000 // 5 minutes from now
     render(

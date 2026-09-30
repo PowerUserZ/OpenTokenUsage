@@ -3,7 +3,8 @@
 ## Unreleased
 
 ### Changes
-- A "Buy me a coffee" button in the About window and the tray menu, if you'd like to support development
+- A Buy Me a Coffee cup in the side bar opens a short note on how a coffee keeps the app free; the About window and the tray menu have the button too, with the address it opens
+- The footer's refresh countdown shortens to just the time while an update is shown, so the two never overlap in longer languages
 - Claude: the Sonnet weekly limit is also read from Anthropic's newer per-model limits list (with versioned names like "Sonnet 5.5"), so the row stays if Anthropic moves it there as it did with Fable
 
 ## v0.7.1

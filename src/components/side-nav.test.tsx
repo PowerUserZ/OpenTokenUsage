@@ -5,6 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener"
 import { invoke } from "@tauri-apps/api/core"
 
 import { SideNav } from "@/components/side-nav"
+import { SUPPORT_URL } from "@/lib/support"
 
 const darkModeState = vi.hoisted(() => ({
   useDarkModeMock: vi.fn(() => false),
@@ -89,5 +90,31 @@ describe("SideNav", () => {
 
     expect(openUrl).toHaveBeenCalledWith("https://github.com/PowerUserZ/OpenTokenUsage/issues")
     expect(invoke).toHaveBeenCalledWith("hide_panel")
+  })
+
+  it("opens the support dialog from the coffee cup instead of the site", async () => {
+    vi.mocked(openUrl).mockClear()
+    render(<SideNav activeView="home" onViewChange={vi.fn()} plugins={[]} />)
+
+    await userEvent.click(screen.getByRole("button", { name: "Support OpenTokenUsage" }))
+    expect(screen.getByRole("dialog", { name: "Keep OpenTokenUsage free" })).toBeInTheDocument()
+    expect(screen.getByText("buymeacoffee.com/poweruserz")).toBeInTheDocument()
+    expect(openUrl).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole("button", { name: "Maybe later" }))
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(openUrl).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole("button", { name: "Support OpenTokenUsage" }))
+    await userEvent.click(screen.getByRole("button", { name: "Buy me a coffee" }))
+    expect(openUrl).toHaveBeenCalledWith(SUPPORT_URL)
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("closes the support dialog on Escape", async () => {
+    render(<SideNav activeView="home" onViewChange={vi.fn()} plugins={[]} />)
+    await userEvent.click(screen.getByRole("button", { name: "Support OpenTokenUsage" }))
+    await userEvent.keyboard("{Escape}")
+    expect(screen.queryByRole("dialog")).toBeNull()
   })
 })
