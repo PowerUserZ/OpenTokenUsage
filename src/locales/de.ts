@@ -197,6 +197,7 @@ export const de: Messages = {
   "about.windowsPort": "Windows-Portierung",
   "about.original": "Original",
   "about.source": "Quellcode",
+  "support.buyMeACoffee": "Spendier mir einen Kaffee",
   "changelog.title": "Versionshinweise",
   "changelog.back": "Zurück",
   "changelog.loading": "Versionsinformationen werden abgerufen…",

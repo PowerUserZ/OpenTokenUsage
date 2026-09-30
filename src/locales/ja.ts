@@ -197,6 +197,7 @@ export const ja: Messages = {
   "about.windowsPort": "Windows 移植版",
   "about.original": "オリジナル",
   "about.source": "ソース コード",
+  "support.buyMeACoffee": "コーヒーをおごる",
   "changelog.title": "リリース ノート",
   "changelog.back": "戻る",
   "changelog.loading": "リリース情報を取得しています…",

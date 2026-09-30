@@ -197,6 +197,7 @@ export const it: Messages = {
   "about.windowsPort": "Porting per Windows",
   "about.original": "Originale",
   "about.source": "Codice sorgente",
+  "support.buyMeACoffee": "Offrimi un caffè",
   "changelog.title": "Note sulla versione",
   "changelog.back": "Indietro",
   "changelog.loading": "Recupero informazioni sulla versione…",

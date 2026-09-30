@@ -197,6 +197,7 @@ export const ptBR: Messages = {
   "about.windowsPort": "Versão para Windows",
   "about.original": "Original",
   "about.source": "Código-fonte",
+  "support.buyMeACoffee": "Me pague um café",
   "changelog.title": "Notas de versão",
   "changelog.back": "Voltar",
   "changelog.loading": "Obtendo informações da versão…",

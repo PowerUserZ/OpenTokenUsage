@@ -197,6 +197,7 @@ export const tr: Messages = {
   "about.windowsPort": "Windows uyarlaması",
   "about.original": "Orijinal",
   "about.source": "Kaynak kod",
+  "support.buyMeACoffee": "Bana bir kahve ısmarla",
   "changelog.title": "Sürüm notları",
   "changelog.back": "Geri",
   "changelog.loading": "Sürüm bilgileri alınıyor…",

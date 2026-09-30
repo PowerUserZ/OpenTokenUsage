@@ -31,6 +31,8 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-support: var(--support);
+  --color-support-foreground: var(--support-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -53,6 +55,9 @@
   color-scheme: light;
   --accent-base: #0078d4;
   --radius: 0.25rem;
+  /* Buy Me a Coffee yellow, the same in every theme */
+  --support: #ffdd00;
+  --support-foreground: #000000;
 
   --background: #f3f3f3;
   --foreground: #1a1a1a;

@@ -197,6 +197,7 @@ export const ko: Messages = {
   "about.windowsPort": "Windows 포팅",
   "about.original": "원본",
   "about.source": "소스 코드",
+  "support.buyMeACoffee": "커피 한 잔 사주기",
   "changelog.title": "릴리스 정보",
   "changelog.back": "뒤로",
   "changelog.loading": "릴리스 정보를 가져오는 중…",

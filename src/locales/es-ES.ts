@@ -197,6 +197,7 @@ export const esES: Messages = {
   "about.windowsPort": "Versión para Windows",
   "about.original": "Original",
   "about.source": "Código fuente",
+  "support.buyMeACoffee": "Invítame a un café",
   "changelog.title": "Notas de la versión",
   "changelog.back": "Atrás",
   "changelog.loading": "Obteniendo información de la versión…",

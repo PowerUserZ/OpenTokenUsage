@@ -197,6 +197,7 @@ export const en = {
   "about.windowsPort": "Windows port",
   "about.original": "Original",
   "about.source": "Source code",
+  "support.buyMeACoffee": "Buy me a coffee",
   "changelog.title": "Release notes",
   "changelog.back": "Back",
   "changelog.loading": "Fetching release info…",

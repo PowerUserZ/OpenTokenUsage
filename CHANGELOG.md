@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changes
+- A "Buy me a coffee" button in the About window and the tray menu, if you'd like to support development
 - Claude: the Sonnet weekly limit is also read from Anthropic's newer per-model limits list (with versioned names like "Sonnet 5.5"), so the row stays if Anthropic moves it there as it did with Fable
 
 ## v0.7.1

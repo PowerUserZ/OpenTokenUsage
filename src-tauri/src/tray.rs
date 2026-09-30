@@ -6,12 +6,16 @@ use tauri::path::BaseDirectory;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_store::StoreExt;
 
 use crate::log_path;
 use crate::panel::show_panel;
 
 const LOG_LEVEL_STORE_KEY: &str = "logLevel";
+/// The maintainer's Buy Me a Coffee page, opened by the tray menu. Fixed here (not sent by the webview);
+/// test-synced with `SUPPORT_URL` in src/lib/support.ts.
+const SUPPORT_URL: &str = "https://buymeacoffee.com/poweruserz";
 
 /// Handles to the translatable tray menu entries (log level names stay English).
 struct TrayMenuItems {
@@ -20,6 +24,7 @@ struct TrayMenuItems {
     debug_level: Submenu<tauri::Wry>,
     copy_log_path: MenuItem<tauri::Wry>,
     about: MenuItem<tauri::Wry>,
+    support: MenuItem<tauri::Wry>,
     quit: MenuItem<tauri::Wry>,
 }
 
@@ -31,6 +36,7 @@ pub struct TrayMenuLabels {
     debug_level: String,
     copy_log_path: String,
     about: String,
+    support: String,
     quit: String,
 }
 
@@ -47,6 +53,7 @@ pub fn set_tray_menu_labels(app_handle: AppHandle, labels: TrayMenuLabels) -> Re
         .and_then(|_| items.debug_level.set_text(labels.debug_level))
         .and_then(|_| items.copy_log_path.set_text(labels.copy_log_path))
         .and_then(|_| items.about.set_text(labels.about))
+        .and_then(|_| items.support.set_text(labels.support))
         .and_then(|_| items.quit.set_text(labels.quit));
     result.map_err(|e| e.to_string())
 }
@@ -180,6 +187,13 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
+    let support = MenuItem::with_id(
+        app_handle,
+        "support",
+        "Buy me a coffee",
+        true,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app_handle, "quit", "Quit", true, None::<&str>)?;
 
     app_handle.manage(TrayMenuItems {
@@ -188,6 +202,7 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
         debug_level: log_level_submenu.clone(),
         copy_log_path: copy_log_path.clone(),
         about: about.clone(),
+        support: support.clone(),
         quit: quit.clone(),
     });
 
@@ -199,6 +214,7 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
             &log_level_submenu,
             &separator,
             &about,
+            &support,
             &quit,
         ],
     )?;
@@ -222,6 +238,11 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
                 "about" => {
                     show_panel(app_handle);
                     let _ = app_handle.emit("tray:show-about", ());
+                }
+                "support" => {
+                    if let Err(error) = app_handle.opener().open_url(SUPPORT_URL, None::<&str>) {
+                        log::error!("failed to open the support page: {}", error);
+                    }
                 }
                 "quit" => {
                     log::info!("quit requested via tray");

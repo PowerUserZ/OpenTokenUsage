@@ -197,6 +197,7 @@ export const zhCN: Messages = {
   "about.windowsPort": "Windows 移植版",
   "about.original": "原版",
   "about.source": "源代码",
+  "support.buyMeACoffee": "请我喝杯咖啡",
   "changelog.title": "发行说明",
   "changelog.back": "返回",
   "changelog.loading": "正在获取版本信息…",
