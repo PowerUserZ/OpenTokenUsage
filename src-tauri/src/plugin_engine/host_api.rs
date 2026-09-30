@@ -1810,28 +1810,32 @@ enum CcusageProvider {
     Codex,
 }
 
-static CCUSAGE_ACTIVE_PROVIDERS: OnceLock<Mutex<HashSet<CcusageProvider>>> = OnceLock::new();
+/// One query at a time per provider and home folder: an extra account (its own home) must not
+/// block the usual login's query that runs in the same batch.
+type CcusageQueryKey = (CcusageProvider, Option<String>);
+static CCUSAGE_ACTIVE_QUERIES: OnceLock<Mutex<HashSet<CcusageQueryKey>>> = OnceLock::new();
 
 struct CcusageQueryGuard {
-    provider: CcusageProvider,
+    key: CcusageQueryKey,
 }
 
 impl CcusageQueryGuard {
-    fn acquire(provider: CcusageProvider) -> Option<Self> {
-        let active = CCUSAGE_ACTIVE_PROVIDERS.get_or_init(|| Mutex::new(HashSet::new()));
+    fn acquire(provider: CcusageProvider, home: Option<&str>) -> Option<Self> {
+        let key = (provider, home.map(str::to_owned));
+        let active = CCUSAGE_ACTIVE_QUERIES.get_or_init(|| Mutex::new(HashSet::new()));
         let mut active = active.lock().unwrap_or_else(|err| err.into_inner());
-        if !active.insert(provider) {
+        if !active.insert(key.clone()) {
             return None;
         }
-        Some(Self { provider })
+        Some(Self { key })
     }
 }
 
 impl Drop for CcusageQueryGuard {
     fn drop(&mut self) {
-        let active = CCUSAGE_ACTIVE_PROVIDERS.get_or_init(|| Mutex::new(HashSet::new()));
+        let active = CCUSAGE_ACTIVE_QUERIES.get_or_init(|| Mutex::new(HashSet::new()));
         let mut active = active.lock().unwrap_or_else(|err| err.into_inner());
-        active.remove(&self.provider);
+        active.remove(&self.key);
     }
 }
 
@@ -2666,7 +2670,9 @@ fn inject_ccusage<'js>(
                     }
                 };
                 let provider = resolve_ccusage_provider(&opts, &pid);
-                let Some(_active_query) = CcusageQueryGuard::acquire(provider) else {
+                let Some(_active_query) =
+                    CcusageQueryGuard::acquire(provider, ccusage_home_override(&opts, provider))
+                else {
                     log::warn!("[plugin:{}] ccusage query already running", pid);
                     return Ok(serde_json::json!({ "status": "runner_failed" }).to_string());
                 };
@@ -4691,19 +4697,23 @@ Saved lockfile
 
     #[test]
     fn ccusage_query_guard_blocks_overlapping_provider_query() {
-        let first = CcusageQueryGuard::acquire(CcusageProvider::Codex)
+        let first = CcusageQueryGuard::acquire(CcusageProvider::Codex, None)
             .expect("first query should acquire guard");
         assert!(
-            CcusageQueryGuard::acquire(CcusageProvider::Codex).is_none(),
+            CcusageQueryGuard::acquire(CcusageProvider::Codex, None).is_none(),
             "second query for same provider should be blocked"
         );
         assert!(
-            CcusageQueryGuard::acquire(CcusageProvider::Claude).is_some(),
+            CcusageQueryGuard::acquire(CcusageProvider::Claude, None).is_some(),
             "different provider should have its own guard"
+        );
+        assert!(
+            CcusageQueryGuard::acquire(CcusageProvider::Codex, Some("C:/accounts/codex-00000001")).is_some(),
+            "an extra account's home has its own guard"
         );
         drop(first);
         assert!(
-            CcusageQueryGuard::acquire(CcusageProvider::Codex).is_some(),
+            CcusageQueryGuard::acquire(CcusageProvider::Codex, None).is_some(),
             "guard should release on drop"
         );
     }

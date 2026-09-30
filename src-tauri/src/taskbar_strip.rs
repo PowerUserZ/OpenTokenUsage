@@ -733,6 +733,11 @@ mod win {
                 bar.right - scaled(SECONDARY_CLOCK_WIDTH, strip.dpi)
             };
             let x = right - bar.left - pixels.width - scaled(GAP, strip.dpi);
+            // Wider than the free space: it would cover Start and the app buttons (and catch their clicks).
+            if x < 0 {
+                ShowWindow(strip.hwnd, SW_HIDE);
+                return;
+            }
             let y = (bar.bottom - bar.top - pixels.height) / 2;
             SetWindowPos(
                 strip.hwnd,

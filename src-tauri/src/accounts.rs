@@ -17,9 +17,15 @@ const SUPPORTED: [(&str, &str, &str); 2] = [
     ("claude", "CLAUDE_CONFIG_DIR", "claude"),
     ("codex", "CODEX_HOME", "codex login"),
 ];
-/// Variables an account must not inherit from the usual login (a token here would win over the
-/// account's own login in the CLI and in the plugin).
-const HIDDEN_ENV: [(&str, &str); 1] = [("claude", "CLAUDE_CODE_OAUTH_TOKEN")];
+/// Variables an account must not inherit from the usual login (a token or API key here would win
+/// over the account's own login in the CLI and in the plugin).
+const HIDDEN_ENV: [(&str, &str); 3] = [
+    ("claude", "CLAUDE_CODE_OAUTH_TOKEN"),
+    ("claude", "ANTHROPIC_API_KEY"),
+    ("codex", "OPENAI_API_KEY"),
+];
+/// The file each CLI keeps its login in, inside the account's folder.
+const LOGIN_FILES: [(&str, &str); 2] = [("claude", ".credentials.json"), ("codex", "auth.json")];
 const MAX_ACCOUNTS: usize = 16;
 const MAX_LABEL_CHARS: usize = 32;
 const LIST_FILE: &str = "accounts.json";
@@ -218,35 +224,42 @@ pub fn add_account(
     Ok(dto(&dir, &account))
 }
 
-/// Forgets the account and deletes its login folder and cached plugin data.
+/// Forgets the account: deletes its login and cached plugin data, then the folder if nothing else
+/// is in it. The rest stays, because users may point the CLI at the folder (Settings says how) and
+/// it then holds their sessions. The login goes first: if it can't be deleted (a terminal still has
+/// it open), the account stays listed and the error says so.
 #[tauri::command]
-pub fn remove_account(state: tauri::State<'_, Mutex<AppState>>, id: String) -> Result<(), String> {
-    if !is_account_id(&id) {
-        return Err("unknown account".into());
-    }
-    let dir = {
-        let mut locked = state.lock().map_err(|e| e.to_string())?;
-        let dir = locked.app_data_dir.clone();
-        let mut accounts = load(&dir);
-        let before = accounts.len();
-        accounts.retain(|account| account.id != id);
-        if accounts.len() == before {
-            return Err("unknown account".into());
-        }
-        save(&dir, &accounts)?;
-        apply(&mut locked, &accounts);
-        dir
-    };
-    // `id` passed `is_account_id`, so both paths stay inside the app data dir.
-    for path in [home(&dir, &id), dir.join("plugins_data").join(&id)] {
-        if path.exists() {
-            if let Err(error) = std::fs::remove_dir_all(&path) {
-                log::warn!("account {id}: couldn't delete a folder: {error}");
-            }
-        }
-    }
+pub async fn remove_account(state: tauri::State<'_, Mutex<AppState>>, id: String) -> Result<(), String> {
+    let mut locked = state.lock().map_err(|e| e.to_string())?;
+    let dir = locked.app_data_dir.clone();
+    let accounts = forget(&dir, &id)?;
+    apply(&mut locked, &accounts);
     log::info!("account {id} removed");
     Ok(())
+}
+
+/// Deletes the account's login, saves the list without it and cleans up; returns the new list.
+fn forget(dir: &Path, id: &str) -> Result<Vec<Account>, String> {
+    let mut accounts = load(dir);
+    let account = accounts.iter().find(|account| account.id == id).cloned().ok_or("unknown account")?;
+    // `account.id` passed `is_account_id` in `load`, so these paths stay inside the app data dir.
+    let home = home(dir, &account.id);
+    if let Some((_, file)) = LOGIN_FILES.iter().find(|(plugin, _)| *plugin == account.plugin) {
+        let login = home.join(file);
+        if login.exists() {
+            std::fs::remove_file(&login).map_err(|e| format!("couldn't delete the account's login: {e}"))?;
+        }
+    }
+    accounts.retain(|other| other.id != account.id);
+    save(dir, &accounts)?;
+    let _ = std::fs::remove_dir(&home); // only succeeds when the folder is empty
+    let data = dir.join("plugins_data").join(&account.id);
+    if data.exists() {
+        if let Err(error) = std::fs::remove_dir_all(&data) {
+            log::warn!("account {}: couldn't delete its plugin data: {error}", account.id);
+        }
+    }
+    Ok(accounts)
 }
 
 /// Opens a terminal that signs the CLI in to this account's folder (`claude`, `codex login`).
@@ -365,6 +378,7 @@ mod tests {
                     Some(home(&dir, "claude-00000002").to_string_lossy().into_owned())
                 ),
                 ("CLAUDE_CODE_OAUTH_TOKEN".to_string(), None),
+                ("ANTHROPIC_API_KEY".to_string(), None),
             ]
         );
         assert_eq!(plugins[3].account.as_ref().unwrap().env[0].0, "CODEX_HOME");
@@ -373,6 +387,39 @@ mod tests {
         let again = with_accounts(plugins, &accounts[..1], &dir);
         let ids: Vec<&str> = again.iter().map(|p| p.manifest.id.as_str()).collect();
         assert_eq!(ids, ["claude", "codex", "codex-00000001", "cursor"]);
+    }
+
+    fn temp_dir() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("otu-accounts-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn removing_deletes_the_login_but_keeps_what_the_cli_put_in_the_folder() {
+        let dir = temp_dir();
+        let used = account("claude-00000001", "Work");
+        let fresh = account("codex-00000002", "Team");
+        save(&dir, &[used.clone(), fresh.clone()]).unwrap();
+        // The user pointed Claude Code at this folder: it holds their sessions next to the login.
+        let used_home = home(&dir, &used.id);
+        std::fs::create_dir_all(used_home.join("projects")).unwrap();
+        std::fs::write(used_home.join(".credentials.json"), "{}").unwrap();
+        std::fs::write(used_home.join("projects").join("session.jsonl"), "{}").unwrap();
+        std::fs::create_dir_all(dir.join("plugins_data").join(&used.id)).unwrap();
+        // Only signed in, nothing else.
+        std::fs::create_dir_all(home(&dir, &fresh.id)).unwrap();
+        std::fs::write(home(&dir, &fresh.id).join("auth.json"), "{}").unwrap();
+
+        assert_eq!(forget(&dir, &used.id).unwrap(), vec![fresh.clone()]);
+        assert!(!used_home.join(".credentials.json").exists());
+        assert!(used_home.join("projects").join("session.jsonl").exists());
+        assert!(!dir.join("plugins_data").join(&used.id).exists());
+
+        assert!(forget(&dir, &fresh.id).unwrap().is_empty());
+        assert!(!home(&dir, &fresh.id).exists(), "an emptied folder goes too");
+        assert!(forget(&dir, &fresh.id).is_err(), "already removed");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

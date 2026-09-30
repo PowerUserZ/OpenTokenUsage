@@ -310,6 +310,25 @@ async fn start_probe_batch(
                 let output = catch_probe_panic(&plugin, || {
                     plugin_engine::runtime::run_probe(&plugin, &data_dir, &version)
                 });
+                // The account may have been removed while this probe was queued: drop its result
+                // rather than put the removed account back into the local API cache.
+                let still_listed = tauri::Manager::state::<Mutex<AppState>>(&handle)
+                    .lock()
+                    .map(|state| state.plugins.iter().any(|p| p.manifest.id == plugin_id))
+                    .unwrap_or(true);
+                if !still_listed {
+                    log::info!("probe {} finished after its account was removed", plugin_id);
+                    drop(in_flight);
+                    if counter.fetch_sub(1, Ordering::SeqCst) == 1 {
+                        let _ = completion_handle.emit(
+                            "probe:batch-complete",
+                            ProbeBatchComplete {
+                                batch_id: completion_bid.clone(),
+                            },
+                        );
+                    }
+                    continue;
+                }
                 let has_error = output.lines.iter().any(|line| {
                     matches!(line, plugin_engine::runtime::MetricLine::Badge { label, .. } if label == "Error")
                 });
