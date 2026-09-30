@@ -23,7 +23,7 @@ export function AccountsSection({ onAccountsChanged }: { onAccountsChanged: (cha
   const [failed, setFailed] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
 
-  const nameOf = (id: string) => pluginsMeta.find((meta) => meta.id === id)?.name ?? id
+  const nameOf = (id: string) => pluginsMeta.find((meta) => meta.id === id)?.name ?? id.charAt(0).toUpperCase() + id.slice(1)
   const reload = () =>
     invoke<ProviderAccount[]>("list_accounts")
       .then((list) => setAccounts(Array.isArray(list) ? list : []))
@@ -101,12 +101,12 @@ export function AccountsSection({ onAccountsChanged }: { onAccountsChanged: (cha
         </div>
       )}
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <select
           value={plugin}
           aria-label={t("settings.accounts.provider")}
           onChange={(e) => setPlugin(e.target.value as AccountPlugin)}
-          className="fluent-control h-7 w-28 py-0 text-xs"
+          className="fluent-control h-7 w-24 py-0 text-xs"
         >
           {ACCOUNT_PLUGINS.map((id) => (
             <option key={id} value={id}>
@@ -123,9 +123,9 @@ export function AccountsSection({ onAccountsChanged }: { onAccountsChanged: (cha
           onKeyDown={(e) => {
             if (e.key === "Enter" && label.trim() && !busy) void add()
           }}
-          className="fluent-control h-7 min-w-0 flex-1 px-2 text-xs"
+          className="fluent-control h-7 min-w-36 flex-1 px-2 text-xs"
         />
-        <Button size="xs" className="h-7" disabled={busy || !label.trim()} onClick={() => void add()}>
+        <Button size="xs" className="ml-auto h-7" disabled={busy || !label.trim()} onClick={() => void add()}>
           {t("settings.accounts.add")}
         </Button>
       </div>
