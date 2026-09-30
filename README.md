@@ -1,5 +1,9 @@
 # OpenTokenUsage
 
+[![Downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/PowerUserZ/PowerUserZ/output/otu-downloads.json&style=flat-square)](https://github.com/PowerUserZ/OpenTokenUsage/releases)
+[![Latest release](https://img.shields.io/github/v/release/PowerUserZ/OpenTokenUsage?style=flat-square&label=release&color=3ba1ff&labelColor=1d1d22)](https://github.com/PowerUserZ/OpenTokenUsage/releases/latest)
+[![Website](https://img.shields.io/badge/website-opentokenusage.app-3ba1ff?style=flat-square&labelColor=1d1d22)](https://opentokenusage.app)
+
 Every AI coding limit, next to your clock. Made for **Windows 11** by [PowerUserZ](https://github.com/PowerUserZ). Website: [opentokenusage.app](https://opentokenusage.app)
 
 ![The OpenTokenUsage panel above the Windows taskbar, with Claude, Codex and Cursor usage shown next to the clock](docs/images/hero.webp)
