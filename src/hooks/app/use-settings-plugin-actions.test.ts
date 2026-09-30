@@ -5,9 +5,13 @@ const { savePluginSettingsMock } = vi.hoisted(() => ({
   savePluginSettingsMock: vi.fn(),
 }))
 
-vi.mock("@/lib/settings", () => ({
+vi.mock("@/lib/settings", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/settings")>()),
   savePluginSettings: savePluginSettingsMock,
 }))
+
+const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }))
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }))
 
 import { useSettingsPluginActions } from "@/hooks/app/use-settings-plugin-actions"
 
@@ -248,5 +252,57 @@ describe("useSettingsPluginActions", () => {
     })
 
     errorSpy.mockRestore()
+  })
+
+  it("puts a new account after its provider, enabled, and probes it; drops a removed one", async () => {
+    const metas = ["claude", "claude-1a2b3c4d", "codex"].map((id) => ({ id, name: id }))
+    invokeMock.mockResolvedValue(metas)
+    const setPluginSettings = vi.fn()
+    const setPluginsMeta = vi.fn()
+    const startBatch = vi.fn(() => Promise.resolve(["claude-1a2b3c4d"]))
+    const setLoadingForPlugins = vi.fn()
+    const { result } = renderHook(() =>
+      useSettingsPluginActions({
+        pluginSettings: { order: ["claude", "codex"], disabled: ["codex"] },
+        setPluginSettings,
+        setPluginsMeta,
+        setLoadingForPlugins,
+        setErrorForPlugins: vi.fn(),
+        startBatch,
+        scheduleTrayIconUpdate: vi.fn(),
+      })
+    )
+
+    await act(() => result.current.handleAccountsChanged({ added: { id: "claude-1a2b3c4d", plugin: "claude" } }))
+
+    expect(invokeMock).toHaveBeenCalledWith("list_plugins")
+    expect(setPluginsMeta).toHaveBeenCalledWith(metas)
+    const saved = { order: ["claude", "claude-1a2b3c4d", "codex"], disabled: ["codex"] }
+    expect(setPluginSettings).toHaveBeenCalledWith(saved)
+    expect(savePluginSettingsMock).toHaveBeenCalledWith(saved)
+    expect(setLoadingForPlugins).toHaveBeenCalledWith(["claude-1a2b3c4d"])
+    expect(startBatch).toHaveBeenCalledWith(["claude-1a2b3c4d"])
+  })
+
+  it("drops a removed account from the order", async () => {
+    invokeMock.mockResolvedValue(["claude", "codex"].map((id) => ({ id, name: id })))
+    const setPluginSettings = vi.fn()
+    const startBatch = vi.fn()
+    const { result } = renderHook(() =>
+      useSettingsPluginActions({
+        pluginSettings: { order: ["claude", "claude-1a2b3c4d", "codex"], disabled: ["claude-1a2b3c4d"] },
+        setPluginSettings,
+        setPluginsMeta: vi.fn(),
+        setLoadingForPlugins: vi.fn(),
+        setErrorForPlugins: vi.fn(),
+        startBatch,
+        scheduleTrayIconUpdate: vi.fn(),
+      })
+    )
+
+    await act(() => result.current.handleAccountsChanged({ removedId: "claude-1a2b3c4d" }))
+
+    expect(setPluginSettings).toHaveBeenCalledWith({ order: ["claude", "codex"], disabled: [] })
+    expect(startBatch).not.toHaveBeenCalled()
   })
 })

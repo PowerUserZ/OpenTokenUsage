@@ -115,6 +115,7 @@ fn run_probe_with_timeout(
             &app_data,
             app_version,
             deadline,
+            plugin.account.as_ref(),
         )
         .is_err()
         {
@@ -741,6 +742,7 @@ mod tests {
             plugin_dir: PathBuf::from("."),
             entry_script: entry_script.to_string(),
             icon_data_url: "data:image/svg+xml;base64,".to_string(),
+            account: None,
         }
     }
 

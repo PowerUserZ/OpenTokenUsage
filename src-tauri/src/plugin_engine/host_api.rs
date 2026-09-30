@@ -592,6 +592,7 @@ pub(crate) fn inject_host_api<'js>(
         app_data_dir,
         app_version,
         ProbeDeadline::none(),
+        None,
     )
 }
 
@@ -601,6 +602,7 @@ pub(crate) fn inject_host_api_with_deadline<'js>(
     app_data_dir: &PathBuf,
     app_version: &str,
     deadline: ProbeDeadline,
+    account: Option<&crate::plugin_engine::manifest::AccountBinding>,
 ) -> rquickjs::Result<()> {
     let globals = ctx.globals();
     let probe_ctx = Object::new(ctx.clone())?;
@@ -629,12 +631,20 @@ pub(crate) fn inject_host_api_with_deadline<'js>(
     inject_log(ctx, &host, plugin_id)?;
     inject_fs(ctx, &host)?;
     inject_crypto(ctx, &host)?;
-    inject_env(ctx, &host, plugin_id)?;
+    inject_env(
+        ctx,
+        &host,
+        account
+            .map(|account| account.env.clone())
+            .unwrap_or_default(),
+    )?;
     inject_http(ctx, &host, plugin_id, deadline)?;
     inject_keychain(ctx, &host, plugin_id)?;
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
-    inject_ccusage(ctx, &host, plugin_id, deadline)?;
+    // An account copy reads the same kind of local logs as its base plugin (from its own home).
+    let ccusage_id = account.map_or(plugin_id, |account| account.base_id.as_str());
+    inject_ccusage(ctx, &host, ccusage_id, deadline)?;
 
     probe_ctx.set("host", host)?;
     globals.set("__openusage_ctx", probe_ctx)?;
@@ -835,13 +845,21 @@ fn inject_crypto<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
     Ok(())
 }
 
-fn inject_env<'js>(ctx: &Ctx<'js>, host: &Object<'js>, _plugin_id: &str) -> rquickjs::Result<()> {
+/// `overrides` (an account copy's home folder) win over the real environment; `None` hides a variable.
+fn inject_env<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    overrides: Vec<(String, Option<String>)>,
+) -> rquickjs::Result<()> {
     let env_obj = Object::new(ctx.clone())?;
     env_obj.set(
         "get",
         Function::new(ctx.clone(), move |name: String| -> Option<String> {
             if !WHITELISTED_ENV_VARS.contains(&name.as_str()) {
                 return None;
+            }
+            if let Some((_, value)) = overrides.iter().find(|(key, _)| *key == name) {
+                return value.clone();
             }
 
             resolve_env_value(&name)
@@ -3314,6 +3332,49 @@ mod tests {
             assert!(
                 js_blocked.is_none(),
                 "non-whitelisted vars must not be exposed from JS"
+            );
+        });
+    }
+
+    #[test]
+    fn account_copies_see_their_own_home_and_not_hidden_variables() {
+        let account = crate::plugin_engine::manifest::AccountBinding {
+            base_id: "codex".to_string(),
+            env: vec![
+                (
+                    "CODEX_HOME".to_string(),
+                    Some(r"C:\data\accounts\codex-00000001".to_string()),
+                ),
+                ("CLAUDE_CODE_OAUTH_TOKEN".to_string(), None),
+            ],
+        };
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api_with_deadline(
+                &ctx,
+                "codex-00000001",
+                &app_data,
+                "0.0.0",
+                ProbeDeadline::none(),
+                Some(&account),
+            )
+            .expect("inject host api");
+            let home: Option<String> = ctx
+                .eval(r#"__openusage_ctx.host.env.get("CODEX_HOME")"#)
+                .expect("get");
+            assert_eq!(home.as_deref(), Some(r"C:\data\accounts\codex-00000001"));
+            let hidden: Option<String> = ctx
+                .eval(r#"__openusage_ctx.host.env.get("CLAUDE_CODE_OAUTH_TOKEN")"#)
+                .expect("get");
+            assert_eq!(hidden, None);
+            let data_dir: String = ctx
+                .eval(r#"__openusage_ctx.app.pluginDataDir"#)
+                .expect("dir");
+            assert!(
+                data_dir.ends_with("codex-00000001"),
+                "each account keeps its own plugin data"
             );
         });
     }

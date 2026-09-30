@@ -1,5 +1,8 @@
 import { useCallback } from "react"
-import { savePluginSettings, type PluginSettings } from "@/lib/settings"
+import { invoke } from "@tauri-apps/api/core"
+import { insertAccount, type AccountsChange } from "@/lib/accounts"
+import type { PluginMeta } from "@/lib/plugin-types"
+import { normalizePluginSettings, savePluginSettings, type PluginSettings } from "@/lib/settings"
 
 const TRAY_SETTINGS_DEBOUNCE_MS = 2000
 
@@ -8,6 +11,7 @@ type ScheduleTrayIconUpdate = (reason: "probe" | "settings" | "init", delayMs?: 
 type UseSettingsPluginActionsArgs = {
   pluginSettings: PluginSettings | null
   setPluginSettings: (value: PluginSettings | null) => void
+  setPluginsMeta: (value: PluginMeta[]) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -17,6 +21,7 @@ type UseSettingsPluginActionsArgs = {
 export function useSettingsPluginActions({
   pluginSettings,
   setPluginSettings,
+  setPluginsMeta,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -88,8 +93,44 @@ export function useSettingsPluginActions({
     startBatch,
   ])
 
+  /**
+   * After an account was added or removed (`accounts.rs` rebuilt its plugin list): reload the list,
+   * put a new account right after its provider, turned on, and probe it; drop a removed one.
+   */
+  const handleAccountsChanged = useCallback(
+    async (change: AccountsChange) => {
+      if (!pluginSettings) return
+      try {
+        const metas = await invoke<PluginMeta[]>("list_plugins")
+        setPluginsMeta(metas)
+        let order = pluginSettings.order.filter((id) => id !== change.removedId)
+        let disabled = pluginSettings.disabled.filter((id) => id !== change.removedId)
+        if (change.added) {
+          order = insertAccount(order, change.added.id, change.added.plugin)
+          disabled = disabled.filter((id) => id !== change.added?.id)
+        }
+        const nextSettings = normalizePluginSettings({ order, disabled }, metas)
+        setPluginSettings(nextSettings)
+        scheduleTrayIconUpdate("settings", TRAY_SETTINGS_DEBOUNCE_MS)
+        await savePluginSettings(nextSettings)
+        if (change.added) {
+          const id = change.added.id
+          setLoadingForPlugins([id])
+          startBatch([id]).catch((error) => {
+            console.error("Failed to start probe for a new account:", error)
+            setErrorForPlugins([id], "Failed to start probe")
+          })
+        }
+      } catch (error) {
+        console.error("Failed to update the plugin list after an account change:", error)
+      }
+    },
+    [pluginSettings, scheduleTrayIconUpdate, setErrorForPlugins, setLoadingForPlugins, setPluginSettings, setPluginsMeta, startBatch]
+  )
+
   return {
     handleReorder,
     handleToggle,
+    handleAccountsChanged,
   }
 }

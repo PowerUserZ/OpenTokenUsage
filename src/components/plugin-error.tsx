@@ -3,6 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener"
 import { AlertCircle, ExternalLink, SlidersHorizontal, SquareTerminal } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { isAccountId } from "@/lib/accounts"
 import { t, tLabel } from "@/lib/i18n"
 import { getPluginErrorAction, translatePluginError } from "@/lib/plugin-errors"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
@@ -42,8 +43,12 @@ function ErrorAction({ message, pluginId }: PluginErrorProps) {
   }
 
   if (action.kind === "run") {
+    // An extra account signs in to its own folder (`accounts.rs`), never the usual login.
+    const onClick = isAccountId(pluginId)
+      ? run("start_account_login", { id: pluginId })
+      : run("run_in_terminal", { command: action.command })
     return (
-      <Button variant="outline" size="xs" className="mt-2 text-[11px]" onClick={run("run_in_terminal", { command: action.command })}>
+      <Button variant="outline" size="xs" className="mt-2 text-[11px]" onClick={onClick}>
         <SquareTerminal className="size-3" />
         {t("error.runInTerminal", { cmd: action.command })}
       </Button>

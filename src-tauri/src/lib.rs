@@ -1,3 +1,4 @@
+mod accounts;
 mod alert_sound;
 mod config;
 mod local_http_api;
@@ -540,6 +541,10 @@ pub fn run() {
             setup_actions::open_taskbar_settings,
             taskbar_strip::set_taskbar_strip,
             taskbar_strip::list_taskbar_monitors,
+            accounts::list_accounts,
+            accounts::add_account,
+            accounts::remove_account,
+            accounts::start_account_login,
             alert_sound::play_alert_sound,
             alert_sound::save_custom_alert_sound
         ])
@@ -580,6 +585,7 @@ pub fn run() {
             );
 
             let (_, plugins) = plugin_engine::initialize_plugins(&app_data_dir, &resource_dir);
+            let plugins = accounts::with_accounts(plugins, &accounts::load(&app_data_dir), &app_data_dir);
             let known_plugin_ids: Vec<String> =
                 plugins.iter().map(|p| p.manifest.id.clone()).collect();
             app.manage(Mutex::new(AppState {
@@ -669,6 +675,7 @@ mod tests {
             plugin_dir: std::path::PathBuf::from("."),
             entry_script: String::new(),
             icon_data_url: String::new(),
+            account: None,
         };
 
         let output = catch_probe_panic(&plugin, || panic!("host bug"));

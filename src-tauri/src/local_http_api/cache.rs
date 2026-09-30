@@ -239,6 +239,13 @@ pub fn init(app_data_dir: &Path, known_plugin_ids: Vec<String>) {
     state.flush_scheduled = false;
 }
 
+/// Providers the API answers for changed (an account was added or removed).
+pub fn set_known_plugin_ids(known_plugin_ids: Vec<String>) {
+    if let Ok(mut state) = cache_state().lock() {
+        state.known_plugin_ids = known_plugin_ids;
+    }
+}
+
 pub fn cache_successful_output(output: &PluginOutput) {
     let fetched_at = time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)

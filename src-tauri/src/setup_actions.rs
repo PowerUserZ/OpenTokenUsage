@@ -1,5 +1,6 @@
 //! One-click fixes offered under provider errors (see `getPluginErrorAction` in the frontend).
 
+use std::path::Path;
 use std::process::Command;
 
 /// Login commands the bundled plugins tell the user to run. Error text can carry server strings,
@@ -21,15 +22,27 @@ fn is_allowed(command: &str) -> bool {
 }
 
 /// Opens a terminal window in the user's home folder and runs a login command there.
-/// `cmd /k` instead of PowerShell: npm installs `.ps1` shims that PowerShell's default
-/// execution policy refuses to run, while `cmd` picks the `.cmd` shim.
 #[tauri::command]
 pub fn run_in_terminal(command: String) -> Result<(), String> {
     if !is_allowed(&command) {
         return Err(format!("command not allowed: {command}"));
     }
+    open_terminal(&command, None, &[])
+}
+
+/// Runs a fixed login command (never text from the webview) in a new terminal in the user's home
+/// folder, optionally with one variable set (an account's login folder) and some removed.
+/// `cmd /k` instead of PowerShell: npm installs `.ps1` shims that PowerShell's default
+/// execution policy refuses to run, while `cmd` picks the `.cmd` shim.
+pub(crate) fn open_terminal(command: &str, set: Option<(&str, &Path)>, remove: &[&str]) -> Result<(), String> {
     let mut cmd = Command::new("cmd.exe");
-    cmd.args(["/k", &command]);
+    cmd.args(["/k", command]);
+    if let Some((name, value)) = set {
+        cmd.env(name, value);
+    }
+    for name in remove {
+        cmd.env_remove(name);
+    }
     if let Some(home) = std::env::var_os("USERPROFILE") {
         cmd.current_dir(home);
     }

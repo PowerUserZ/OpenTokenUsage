@@ -24,6 +24,13 @@ describe("PluginError", () => {
     expect(screen.getByText("config.json")).toBeInTheDocument()
   })
 
+  it("signs an extra account in to its own folder instead of the usual login", async () => {
+    render(<PluginError message="Start Antigravity or run `agy` and try again." pluginId="claude-1a2b3c4d" />)
+    await userEvent.click(screen.getByRole("button", { name: "Run agy in terminal" }))
+    expect(invoke).toHaveBeenCalledWith("start_account_login", { id: "claude-1a2b3c4d" })
+    expect(invoke).not.toHaveBeenCalledWith("run_in_terminal", expect.anything())
+  })
+
   it("runs the login command in a terminal", async () => {
     render(<PluginError message="Start Antigravity or run `agy` and try again." />)
     await userEvent.click(screen.getByRole("button", { name: "Run agy in terminal" }))

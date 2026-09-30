@@ -47,6 +47,17 @@ pub struct LoadedPlugin {
     pub plugin_dir: PathBuf,
     pub entry_script: String,
     pub icon_data_url: String,
+    /// Set on the copy of a plugin that probes an extra account (`accounts.rs`).
+    pub account: Option<AccountBinding>,
+}
+
+/// What makes a plugin copy probe one extra account: its base plugin, and environment variables
+/// that win over the real ones (`None` hides a variable), pointing the CLI's own home variable at
+/// the account's login folder.
+#[derive(Debug, Clone)]
+pub struct AccountBinding {
+    pub base_id: String,
+    pub env: Vec<(String, Option<String>)>,
 }
 
 pub fn load_plugins_from_dir(plugins_dir: &std::path::Path) -> Vec<LoadedPlugin> {
@@ -138,6 +149,7 @@ fn load_single_plugin(
         plugin_dir: plugin_dir.to_path_buf(),
         entry_script,
         icon_data_url,
+        account: None,
     })
 }
 

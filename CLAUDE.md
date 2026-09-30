@@ -28,6 +28,13 @@ This file holds the project facts that are easy to get wrong.
   `[a-z0-9-]`; `entry` and `icon` must stay inside the plugin folder.
 - Host HTTP caps response bodies at 8 MB and honors `dangerouslyIgnoreTls` for loopback URLs only.
 
+- Extra accounts (`accounts.rs`, Claude and Codex): each lives in its own login folder
+  (`<app data>/accounts/<id>`) and runs as a copy of the plugin under its own id (`claude-1a2b3c4d`),
+  so everything keyed by plugin id works per account. The copy's `AccountBinding` overrides the CLI's
+  home variable (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`) in `ctx.host.env` and hides `CLAUDE_CODE_OAUTH_TOKEN`;
+  ccusage uses the base id. Never copy the usual login's tokens into an account (a rotated refresh
+  token logs the CLI out); sign-in goes through `start_account_login` (fixed commands, env set in Rust).
+
 ## UI
 - Windows 11 Fluent look: colors are tokens in `src/index.css` (`--accent-base` = Windows accent
   from the registry, `.backdrop` = Mica active → translucent layers). Use tokens, not hex colors.

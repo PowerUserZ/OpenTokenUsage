@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changes
+- Extra accounts: track a second Claude or Codex login (say, work and personal), each on its own card, in the tray, the taskbar strip and notifications. Settings → Extra accounts → name it, and a terminal opens to sign in once; the login stays in the account's own folder, so your usual login is never touched
 - The taskbar strip can show on other monitors' taskbars too: Settings → Taskbar strip → Show on: the main taskbar, all of them, or the monitors you pick (a picked monitor is remembered while it's unplugged)
 - The taskbar strip is drawn for the scale of the monitor its taskbar is on, so it stays sharp when monitors use different scaling
 - A Buy Me a Coffee cup in the side bar opens a short note on how a coffee keeps the app free; the About window and the tray menu have the button too, with the address it opens

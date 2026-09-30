@@ -57,6 +57,8 @@ import { getTimeFormatter } from "@/lib/reset-tooltip";
 import { LANGUAGES, resolveLanguage, t, useLocaleStore, type LanguagePreference } from "@/lib/i18n";
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon";
 import { cn } from "@/lib/utils";
+import type { AccountsChange } from "@/lib/accounts";
+import { AccountsSection } from "@/components/accounts-section";
 import { useAppPreferencesStore } from "@/stores/app-preferences-store";
 
 interface PluginConfig {
@@ -467,6 +469,7 @@ interface SettingsPageProps {
   plugins: PluginConfig[];
   onReorder: (orderedIds: string[]) => void;
   onToggle: (id: string) => void;
+  onAccountsChanged: (change: AccountsChange) => void;
   autoUpdateInterval: AutoUpdateIntervalMinutes;
   onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void;
   themeMode: ThemeMode;
@@ -508,6 +511,7 @@ export function SettingsPage({
   plugins,
   onReorder,
   onToggle,
+  onAccountsChanged,
   autoUpdateInterval,
   onAutoUpdateIntervalChange,
   themeMode,
@@ -731,6 +735,8 @@ export function SettingsPage({
           </DndContext>
         </div>
       </SettingsSection>
+
+      <AccountsSection onAccountsChanged={onAccountsChanged} />
 
       <LanguageSection />
 

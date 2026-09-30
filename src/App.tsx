@@ -263,9 +263,11 @@ function App() {
   const {
     handleReorder,
     handleToggle,
+    handleAccountsChanged,
   } = useSettingsPluginActions({
     pluginSettings,
     setPluginSettings,
+    setPluginsMeta,
     setLoadingForPlugins,
     setErrorForPlugins,
     startBatch,
@@ -366,6 +368,7 @@ function App() {
         onRetryPlugin: handleRetryPlugin,
         onReorder: handleReorder,
         onToggle: handleToggle,
+        onAccountsChanged: handleAccountsChanged,
         onAutoUpdateIntervalChange: handleAutoUpdateIntervalChange,
         onThemeModeChange: handleThemeModeChange,
         onDisplayModeChange: handleDisplayModeChange,
