@@ -57,9 +57,15 @@ This file holds the project facts that are easy to get wrong.
   too) are promoted via `HKCU\Control Panel\NotifyIconSettings\*\IsPromoted` only when the user hasn't
   chosen yet, matched by exe file name (Program Files paths are stored as `{GUID}\OpenTokenUsage\...`),
   retried for 30 s because Explorer writes the entry late. Explorer applies the value live.
-- Taskbar strip (experimental, `taskbar_strip.rs`): a layered child window of `Shell_TrayWnd`
-  left of `TrayNotifyWnd`, on its own thread (it shares Explorer's input queue: never block, never
-  hold a lock across Win32 calls). Layered child windows need the Win8+ `<compatibility>` in
+- Taskbar strip (experimental, `taskbar_strip.rs`): layered child windows of `Shell_TrayWnd` (left of
+  `TrayNotifyWnd`) and, per `taskbarStripStyle.monitors` ("primary" | "all" | picked `{id,name}`), of
+  `Shell_SecondaryTrayWnd` (no tray window there: left of a fixed 88 px clock width). One thread owns
+  them all (it shares Explorer's input queue: never block, never hold a lock across Win32 calls) and
+  reconciles every 2 s, which also covers Explorer restarts and monitors coming and going. Monitor
+  ids are model + connector UID from the display config (`monitor_id`; the middle of the device path
+  changes between boots); a picked monitor that isn't connected falls back by model, then to the main
+  taskbar. The frontend draws one image per taskbar DPI; the host asks for missing ones with the
+  `taskbar-strip:dpis` event and meanwhile uses the nearest. Layered child windows need the Win8+ `<compatibility>` in
   `src-tauri/app.manifest` (wired in `build.rs`) — don't drop it. The frontend draws the image
   (`src/lib/taskbar-strip.ts`); its 1/255-alpha background keeps the whole strip clickable.
   Its look lives in `taskbarStripStyle` (fonts, colors, usage thresholds, and its own provider list

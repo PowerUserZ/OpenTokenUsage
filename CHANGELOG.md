@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Changes
+- The taskbar strip can show on other monitors' taskbars too: Settings → Taskbar strip → Show on: the main taskbar, all of them, or the monitors you pick (a picked monitor is remembered while it's unplugged)
+- The taskbar strip is drawn for the scale of the monitor its taskbar is on, so it stays sharp when monitors use different scaling
 - A Buy Me a Coffee cup in the side bar opens a short note on how a coffee keeps the app free; the About window and the tray menu have the button too, with the address it opens
 - The footer's refresh countdown shortens to just the time while an update is shown, so the two never overlap in longer languages
 - Claude: the Sonnet weekly limit is also read from Anthropic's newer per-model limits list (with versioned names like "Sonnet 5.5"), so the row stays if Anthropic moves it there as it did with Fable

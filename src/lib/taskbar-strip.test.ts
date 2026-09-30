@@ -3,6 +3,7 @@ import type { PluginMeta } from "@/lib/plugin-types"
 import {
   DEFAULT_TASKBAR_STRIP_STYLE,
   normalizeTaskbarStripStyle,
+  stripMonitorsArg,
   TASKBAR_STRIP_COLOR_SCALES,
   type TaskbarStripStyle,
 } from "@/lib/settings"
@@ -14,6 +15,7 @@ import {
   stripPluginSettings,
 } from "@/lib/taskbar-strip"
 import { readableBrandColor } from "@/lib/tray-provider-icons"
+import { normalizeStripDpis } from "@/hooks/app/use-taskbar-strip"
 
 const meta = (id: string, brandColor?: string) =>
   ({ id, name: id, iconUrl: `data:image/svg+xml;base64,${id}`, brandColor }) as unknown as PluginMeta
@@ -163,5 +165,31 @@ describe("normalizeTaskbarStripStyle", () => {
     })
     expect(normalizeTaskbarStripStyle({ usageColors: false }).colorMode).toBe("off")
     expect(normalizeTaskbarStripStyle(undefined)).toEqual(DEFAULT_TASKBAR_STRIP_STYLE)
+  })
+})
+
+describe("taskbar strip monitors", () => {
+  it("keeps the mode or valid picked monitors, and falls back to the main taskbar", () => {
+    expect(normalizeTaskbarStripStyle({ monitors: "all" }).monitors).toBe("all")
+    expect(normalizeTaskbarStripStyle({ monitors: "left" }).monitors).toBe("primary")
+    expect(normalizeTaskbarStripStyle({ monitors: [] }).monitors).toBe("primary")
+    expect(
+      normalizeTaskbarStripStyle({
+        monitors: [{ id: "AUSAA1D#UID1", name: "XG27" }, { id: "", name: "x" }, { id: 5, name: "y" }, "GSM5B55#UID2"],
+      }).monitors
+    ).toEqual([{ id: "AUSAA1D#UID1", name: "XG27" }])
+    const many = Array.from({ length: 20 }, (_, i) => ({ id: `M#UID${i}`, name: `M${i}` }))
+    expect((normalizeTaskbarStripStyle({ monitors: many }).monitors as unknown[]).length).toBe(16)
+  })
+
+  it("sends the mode or just the ids to the host", () => {
+    expect(stripMonitorsArg("primary")).toBe("primary")
+    expect(stripMonitorsArg([{ id: "A#UID1", name: "A" }, { id: "B#UID2", name: "B" }])).toEqual(["A#UID1", "B#UID2"])
+  })
+
+  it("accepts only sane, distinct DPIs from the host", () => {
+    expect(normalizeStripDpis([144, 96, 144, 1000, 12, 120.5])).toEqual([96, 144])
+    expect(normalizeStripDpis([])).toBeNull()
+    expect(normalizeStripDpis("96")).toBeNull()
   })
 })

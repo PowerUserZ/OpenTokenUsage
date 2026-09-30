@@ -539,6 +539,7 @@ pub fn run() {
             setup_actions::open_env_editor,
             setup_actions::open_taskbar_settings,
             taskbar_strip::set_taskbar_strip,
+            taskbar_strip::list_taskbar_monitors,
             alert_sound::play_alert_sound,
             alert_sound::save_custom_alert_sound
         ])

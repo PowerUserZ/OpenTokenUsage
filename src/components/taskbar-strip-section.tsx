@@ -2,9 +2,10 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical } from "lucide-react"
-import type { ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
+import { invoke } from "@tauri-apps/api/core"
 import { Checkbox } from "@/components/ui/checkbox"
-import { SettingsSection } from "@/components/settings-section"
+import { SegmentedControl, SettingsSection } from "@/components/settings-section"
 import { useTaskbarStripPreview } from "@/hooks/app/use-taskbar-strip"
 import { t } from "@/lib/i18n"
 import {
@@ -19,7 +20,9 @@ import {
   type MenubarIconStyle,
   type TaskbarStripColorMode,
   type TaskbarStripFont,
+  type SettingOption,
   type TaskbarStripLineMode,
+  type TaskbarStripMonitors,
   type TaskbarStripStyle,
 } from "@/lib/settings"
 import { colorOnScale, stripPluginSettings } from "@/lib/taskbar-strip"
@@ -147,6 +150,75 @@ function StripProviderRow({
   )
 }
 
+/** A monitor as `list_taskbar_monitors` reports it. */
+type TaskbarMonitor = { id: string; name: string; primary: boolean; hasTaskbar: boolean }
+
+type MonitorsMode = "primary" | "all" | "pick"
+const MONITOR_MODES: SettingOption<MonitorsMode>[] = [
+  { value: "primary", labelKey: "settings.strip.monitorsPrimary" },
+  { value: "all", labelKey: "settings.strip.monitorsAll" },
+  { value: "pick", labelKey: "settings.strip.monitorsPick" },
+]
+
+/** Which taskbars show the strip: the main one, all, or ticked monitors (unplugged ones stay listed). */
+function StripMonitors({ value, onChange }: { value: TaskbarStripMonitors; onChange: (next: TaskbarStripMonitors) => void }) {
+  const [connected, setConnected] = useState<TaskbarMonitor[]>([])
+  const mode: MonitorsMode = typeof value === "string" ? value : "pick"
+  const picked = Array.isArray(value) ? value : []
+
+  useEffect(() => {
+    invoke<TaskbarMonitor[]>("list_taskbar_monitors")
+      .then((monitors) => setConnected(Array.isArray(monitors) ? monitors : []))
+      .catch((error) => console.error("Failed to list monitors:", error))
+  }, [mode])
+
+  const rows = [
+    ...connected.map((monitor) => ({ ...monitor, connected: true })),
+    ...picked
+      .filter((monitor) => !connected.some((other) => other.id === monitor.id))
+      .map((monitor) => ({ ...monitor, primary: false, hasTaskbar: false, connected: false })),
+  ]
+  const labelOf = (row: (typeof rows)[number]) =>
+    !row.connected
+      ? t("settings.strip.monitorDisconnected", { name: row.name })
+      : !row.hasTaskbar
+        ? t("settings.strip.monitorNoTaskbar", { name: row.name })
+        : row.primary
+          ? t("settings.strip.monitorMain", { name: row.name })
+          : row.name
+
+  const setMode = (next: MonitorsMode) => {
+    if (next !== "pick") return onChange(next)
+    // Start the list with the main monitor ticked, so picking never means "nowhere".
+    const main = connected.find((monitor) => monitor.primary) ?? connected[0]
+    if (picked.length > 0) onChange(picked)
+    else if (main) onChange([{ id: main.id, name: main.name }])
+  }
+  const toggle = (row: (typeof rows)[number]) => {
+    const next = picked.some((monitor) => monitor.id === row.id)
+      ? picked.filter((monitor) => monitor.id !== row.id)
+      : [...picked, { id: row.id, name: row.name }]
+    onChange(next.length > 0 ? next : "primary")
+  }
+
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground mb-1">{t("settings.strip.monitors")}</div>
+      <SegmentedControl options={MONITOR_MODES} value={mode} onChange={setMode} ariaLabel={t("settings.strip.monitors")} />
+      {mode === "pick" && (
+        <div className="mt-2 space-y-1.5">
+          {rows.map((row) => (
+            <CheckRow key={row.id} checked={picked.some((monitor) => monitor.id === row.id)} onChange={() => toggle(row)}>
+              <span className={cn(!row.connected && "text-muted-foreground")}>{labelOf(row)}</span>
+            </CheckRow>
+          ))}
+        </div>
+      )}
+      <p className="mt-1 text-xs text-muted-foreground">{t("settings.strip.monitorsHint")}</p>
+    </div>
+  )
+}
+
 /** Experimental taskbar strip: on/off, live preview and its own look (fonts, colors, providers). */
 export function TaskbarStripSection({ onMenubarIconStyleChange }: { onMenubarIconStyleChange: (style: MenubarIconStyle) => void }) {
   const enabled = useAppPreferencesStore((state) => state.taskbarStrip)
@@ -221,6 +293,8 @@ export function TaskbarStripSection({ onMenubarIconStyleChange }: { onMenubarIco
               />
             </div>
           )}
+
+          <StripMonitors value={style.monitors} onChange={(monitors) => update({ monitors })} />
 
           <div>
             <div className="text-xs text-muted-foreground mb-1">

@@ -501,6 +501,13 @@ export const TASKBAR_STRIP_COLOR_SCALES = {
 export type TaskbarStripColorMode = "off" | "thresholds" | keyof typeof TASKBAR_STRIP_COLOR_SCALES;
 export const TASKBAR_STRIP_COLOR_MODES: TaskbarStripColorMode[] = ["heat", "traffic", "cool", "mono", "thresholds", "off"];
 
+/**
+ * Which taskbars show the strip: the main one, every one, or picked monitors. A picked monitor keeps
+ * its name so Settings can still list it while it's unplugged; the id is `taskbar_strip.rs` `monitor_id`.
+ */
+export type TaskbarStripMonitors = "primary" | "all" | { id: string; name: string }[];
+const MAX_STRIP_MONITORS = 16;
+
 /** Look of the taskbar strip; everything the user can restyle. */
 export type TaskbarStripStyle = {
   /** Providers shown, in strip order (own order, independent of the nav); null = first enabled ones. */
@@ -519,6 +526,7 @@ export type TaskbarStripStyle = {
   /** Per provider id; missing = "both" (session on top, weekly below). */
   lineModes: Record<string, TaskbarStripLineMode>;
   showPercentSign: boolean;
+  monitors: TaskbarStripMonitors;
 };
 
 export const DEFAULT_TASKBAR_STRIP_STYLE: TaskbarStripStyle = {
@@ -534,7 +542,30 @@ export const DEFAULT_TASKBAR_STRIP_STYLE: TaskbarStripStyle = {
   criticalColor: "#F04438",
   lineModes: {},
   showPercentSign: true,
+  monitors: "primary",
 };
+
+function normalizeStripMonitors(value: unknown): TaskbarStripMonitors {
+  if (value === "primary" || value === "all") return value;
+  if (!Array.isArray(value)) return "primary";
+  const picked = value
+    .filter(
+      (monitor): monitor is { id: string; name: string } =>
+        !!monitor &&
+        typeof monitor === "object" &&
+        typeof monitor.id === "string" &&
+        monitor.id.length > 0 &&
+        monitor.id.length <= 128 &&
+        typeof monitor.name === "string"
+    )
+    .slice(0, MAX_STRIP_MONITORS)
+    .map(({ id, name }) => ({ id, name: name.slice(0, 64) }));
+  return picked.length > 0 ? picked : "primary";
+}
+
+/** What `set_taskbar_strip` takes: "primary", "all" or the picked monitor ids. */
+export const stripMonitorsArg = (monitors: TaskbarStripMonitors) =>
+  typeof monitors === "string" ? monitors : monitors.map((monitor) => monitor.id);
 
 const isHexColor = (value: unknown): value is string => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
 const isPercent = (value: unknown): value is number =>
@@ -568,6 +599,7 @@ export function normalizeTaskbarStripStyle(value: unknown): TaskbarStripStyle {
       )
     ),
     showPercentSign: typeof raw.showPercentSign === "boolean" ? raw.showPercentSign : d.showPercentSign,
+    monitors: normalizeStripMonitors(raw.monitors),
   };
 }
 
