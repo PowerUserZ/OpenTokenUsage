@@ -37,8 +37,9 @@ function setKeychainToken(ctx, token) {
 }
 
 function setGhCliKeychain(ctx, value) {
-  ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
-    if (service === "gh:github.com") return value;
+  // gh's Credential Manager item for the active account: `gh:github.com:` (empty user).
+  ctx.host.keychain.readGenericPassword.mockImplementation((service, account) => {
+    if (service === "gh:github.com" && account === "") return value;
     return null;
   });
 }

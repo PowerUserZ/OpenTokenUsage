@@ -61,7 +61,9 @@
 
   function loadTokenFromGhCli(ctx) {
     try {
-      const raw = ctx.host.keychain.readGenericPassword(GH_KEYCHAIN_SERVICE);
+      // gh (go-keyring) keeps the active account's token in Credential Manager as `gh:github.com:`
+      // (empty user name); the host only reads Credential Manager when the account is given.
+      const raw = ctx.host.keychain.readGenericPassword(GH_KEYCHAIN_SERVICE, "");
       if (raw) {
         let token = raw;
         if (
