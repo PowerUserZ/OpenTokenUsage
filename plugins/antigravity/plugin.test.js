@@ -699,7 +699,7 @@ describe("antigravity plugin", () => {
 
     expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("gemini", "antigravity")
     expect(called.every((call) => call.auth === "Bearer agy-keychain-token")).toBe(true)
-    expect(called.every((call) => call.userAgent === "agy")).toBe(true)
+    expect(called.every((call) => call.userAgent === "antigravity")).toBe(true)
     expect(called.map((call) => call.url)).toEqual([
       "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
       "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
@@ -745,6 +745,49 @@ describe("antigravity plugin", () => {
 
     expect(result.plan).toBe("Google AI Pro")
     expect(agyCalls).toBe(2)
+  })
+
+  it("refreshes an expired agy keychain token, then reuses the refreshed token", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    // The real agy item (Windows Credential Manager holds plain JSON, no go-keyring prefix).
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      token: {
+        access_token: "ya29.expired",
+        token_type: "Bearer",
+        refresh_token: "1//agy-refresh",
+        expiry: new Date(Date.now() - 3600000).toISOString().replace("Z", "4567+00:00"), // Go format
+      },
+      auth_method: "consumer",
+    }))
+
+    const auths = []
+    let refreshes = 0
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("oauth2.googleapis.com")) {
+        refreshes += 1
+        expect(opts.bodyText).toContain("refresh_token=" + encodeURIComponent("1//agy-refresh"))
+        return { status: 200, bodyText: JSON.stringify({ access_token: "ya29.agy-refreshed", expires_in: 3600 }) }
+      }
+      auths.push(opts.headers.Authorization)
+      if (url.includes("retrieveUserQuotaSummary")) return { status: 404, bodyText: "" }
+      if (url.includes("loadCodeAssist")) return { status: 200, bodyText: JSON.stringify(makeAgyLoadResponse()) }
+      if (url.includes("retrieveUserQuota")) return { status: 200, bodyText: JSON.stringify(makeAgyQuotaResponse()) }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const first = plugin.probe(ctx)
+    const second = plugin.probe(ctx)
+
+    expect(first.plan).toBe("Google AI Pro")
+    expect(second.lines.map((l) => l.label)).toEqual(["Session", "Claude"])
+    expect(refreshes).toBe(1)
+    expect(auths.every((a) => a === "Bearer ya29.agy-refreshed")).toBe(true)
+    const cached = JSON.parse(ctx.host.fs.readText(ctx.app.pluginDataDir + "/agy-auth.json"))
+    expect(cached.credentialFingerprint).toBe(fingerprintOf(ctx, "1//agy-refresh"))
   })
 
   it("Cloud Code sends correct Authorization header with DB token", async () => {

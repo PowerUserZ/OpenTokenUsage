@@ -953,5 +953,17 @@
     throw ERR_NOT_LOGGED_IN
   }
 
-  globalThis.__openusage_plugin = { id: "codex", probe }
+  // Who is signed in, for the WSL same-account check (wsl.rs): the ChatGPT account id, or the API
+  // key of an API-key login. Local only.
+  function accountKey(ctx) {
+    const found = loadFileAuthCandidates(ctx).candidates[0]
+    const auth = found && found.auth
+    if (!auth) return null
+    const accountId = auth.tokens && auth.tokens.account_id
+    if (typeof accountId === "string" && accountId.trim()) return accountId.trim()
+    const apiKey = auth.OPENAI_API_KEY
+    return typeof apiKey === "string" && apiKey.trim() ? apiKey.trim() : null
+  }
+
+  globalThis.__openusage_plugin = { id: "codex", probe, accountKey }
 })()

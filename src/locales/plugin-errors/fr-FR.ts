@@ -5,16 +5,12 @@ const frFR: PluginErrorMessages = {
   requestFailedHttp: "Échec de la requête (HTTP {status}). Réessayez plus tard.",
   requestFailedHttpShort: "Échec de la requête (HTTP {status})",
   parseFailed: "Impossible d'analyser les données d'utilisation.",
-  unableToConnect: "Connexion impossible. Réessayez plus tard.",
 
   usageRequestFailed: "Échec de la requête d'utilisation. Vérifiez votre connexion.",
   usageRequestFailedHttp: "Échec de la requête d'utilisation (HTTP {status}). Réessayez plus tard.",
   usageFailedAfterRefresh: "Échec de la requête d'utilisation après l'actualisation. Réessayez.",
   usageResponseInvalid: "Réponse d'utilisation non valide. Réessayez plus tard.",
   usageResponseMissingData: "Données manquantes dans la réponse d'utilisation. Réessayez plus tard.",
-  usageDataUnavailable: "Données d'utilisation indisponibles. Réessayez plus tard.",
-  rateLimitsUnavailable: "Limites de débit indisponibles. Réessayez plus tard.",
-  balanceUnavailable: "Solde indisponible. Réessayez plus tard.",
   usageNotForApiKey: "Utilisation non disponible pour une clé API.",
   totalLimitMissing: "Limite d'utilisation totale absente de la réponse de l'API.",
 
@@ -29,7 +25,6 @@ const frFR: PluginErrorMessages = {
   tokenInvalidRun: "Jeton non valide. Exécutez `{cmd}` pour vous authentifier à nouveau.",
   invalidAuthFileRun: "Fichier d'authentification non valide. Exécutez `{cmd}` pour vous authentifier.",
 
-  notLoggedInSignInApp: "Non connecté. Connectez-vous via l'application {app}.",
   notLoggedInSignInOrRun: "Non connecté. Connectez-vous via l'application {app} ou exécutez `{cmd}`.",
   sessionExpiredSignInOrRun: "Session expirée. Connectez-vous via l'application {app} ou exécutez `{cmd}`.",
   tokenExpiredSignInOrRun: "Jeton expiré. Connectez-vous via l'application {app} ou exécutez `{cmd}`.",
@@ -75,6 +70,7 @@ const frFR: PluginErrorMessages = {
   pluginFailed: "Échec du plug-in. Réessayez ou contactez l'auteur du plug-in.",
   probeStartFailed: "Impossible de démarrer la collecte des données",
   updateFailed: "Impossible de mettre à jour les données. Réessayer ?",
+  wslNotRunning: "WSL n'est pas lancé. Démarrez-le pour mettre à jour cette carte.",
 }
 
 export default frFR

@@ -63,7 +63,6 @@ Settings → **Tray icon** picks what sits next to the clock. Settings → **Tas
 - [**MiniMax**](docs/providers/minimax.md) / coding plan session
 - [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly usage limits
 - [**Devin**](docs/providers/devin.md) / weekly and daily quota, extra usage
-- [**Perplexity**](docs/providers/perplexity.md) / reads the Perplexity macOS app's session, so it doesn't work on Windows yet
 - [**Synthetic**](docs/providers/synthetic.md) / 5-hour rate limit, subscription, tool calls, search
 - [**Z.ai**](docs/providers/zai.md) / session, weekly, web searches
 

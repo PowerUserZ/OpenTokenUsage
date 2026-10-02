@@ -336,5 +336,13 @@
     return false
   }
 
-  globalThis.__openusage_plugin = { id: "devin", probe: probe }
+  // Who is signed in, for the WSL same-account check (wsl.rs): the API key probe tries first (the
+  // CLI's credentials, then each app install). Local only.
+  function accountKey(ctx) {
+    var auth = loadCredentialsFile(ctx)
+    for (var i = 0; !auth && i < APP_AUTH_SOURCES.length; i++) auth = readAppAuth(ctx, APP_AUTH_SOURCES[i])
+    return auth && auth.apiKey ? auth.apiKey : null
+  }
+
+  globalThis.__openusage_plugin = { id: "devin", probe: probe, accountKey: accountKey }
 })()

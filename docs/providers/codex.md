@@ -127,3 +127,7 @@ grant_type=refresh_token
 ```
 
 Response returns new `access_token`, and optionally new `refresh_token` and `id_token`.
+
+## WSL
+
+A login inside a running WSL distro shows as its own `Codex · WSL` card when it's a different account than the ones already shown. A stopped distro is never started; its card keeps its last data.

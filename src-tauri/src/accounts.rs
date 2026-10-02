@@ -116,13 +116,18 @@ pub fn with_accounts(
     let mut out = Vec::new();
     for base in plugins
         .into_iter()
-        .filter(|plugin| plugin.account.is_none())
+        .filter(|plugin| !is_account_id(&plugin.manifest.id))
     {
-        let copies: Vec<LoadedPlugin> = accounts
-            .iter()
-            .filter(|account| account.plugin == base.manifest.id)
-            .filter_map(|account| copy_for(&base, account, app_data_dir))
-            .collect();
+        // A WSL copy (`wsl.rs`) passes through as it is; only base plugins get account copies.
+        let copies: Vec<LoadedPlugin> = if base.account.is_none() {
+            accounts
+                .iter()
+                .filter(|account| account.plugin == base.manifest.id)
+                .filter_map(|account| copy_for(&base, account, app_data_dir))
+                .collect()
+        } else {
+            Vec::new()
+        };
         out.push(base);
         out.extend(copies);
     }
@@ -151,6 +156,7 @@ fn copy_for(base: &LoadedPlugin, account: &Account, app_data_dir: &Path) -> Opti
     copy.account = Some(AccountBinding {
         base_id: base.manifest.id.clone(),
         env,
+        ..Default::default()
     });
     Some(copy)
 }
@@ -229,7 +235,10 @@ pub fn add_account(
 /// it then holds their sessions. The login goes first: if it can't be deleted (a terminal still has
 /// it open), the account stays listed and the error says so.
 #[tauri::command]
-pub async fn remove_account(state: tauri::State<'_, Mutex<AppState>>, id: String) -> Result<(), String> {
+pub async fn remove_account(
+    state: tauri::State<'_, Mutex<AppState>>,
+    id: String,
+) -> Result<(), String> {
     let mut locked = state.lock().map_err(|e| e.to_string())?;
     let dir = locked.app_data_dir.clone();
     let accounts = forget(&dir, &id)?;
@@ -241,13 +250,21 @@ pub async fn remove_account(state: tauri::State<'_, Mutex<AppState>>, id: String
 /// Deletes the account's login, saves the list without it and cleans up; returns the new list.
 fn forget(dir: &Path, id: &str) -> Result<Vec<Account>, String> {
     let mut accounts = load(dir);
-    let account = accounts.iter().find(|account| account.id == id).cloned().ok_or("unknown account")?;
+    let account = accounts
+        .iter()
+        .find(|account| account.id == id)
+        .cloned()
+        .ok_or("unknown account")?;
     // `account.id` passed `is_account_id` in `load`, so these paths stay inside the app data dir.
     let home = home(dir, &account.id);
-    if let Some((_, file)) = LOGIN_FILES.iter().find(|(plugin, _)| *plugin == account.plugin) {
+    if let Some((_, file)) = LOGIN_FILES
+        .iter()
+        .find(|(plugin, _)| *plugin == account.plugin)
+    {
         let login = home.join(file);
         if login.exists() {
-            std::fs::remove_file(&login).map_err(|e| format!("couldn't delete the account's login: {e}"))?;
+            std::fs::remove_file(&login)
+                .map_err(|e| format!("couldn't delete the account's login: {e}"))?;
         }
     }
     accounts.retain(|other| other.id != account.id);
@@ -256,7 +273,10 @@ fn forget(dir: &Path, id: &str) -> Result<Vec<Account>, String> {
     let data = dir.join("plugins_data").join(&account.id);
     if data.exists() {
         if let Err(error) = std::fs::remove_dir_all(&data) {
-            log::warn!("account {}: couldn't delete its plugin data: {error}", account.id);
+            log::warn!(
+                "account {}: couldn't delete its plugin data: {error}",
+                account.id
+            );
         }
     }
     Ok(accounts)
@@ -306,6 +326,7 @@ mod tests {
                 lines: vec![],
                 links: vec![],
                 status_page_url: None,
+                wsl: None,
             },
             plugin_dir: PathBuf::new(),
             entry_script: String::new(),
@@ -390,7 +411,8 @@ mod tests {
     }
 
     fn temp_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("otu-accounts-{}", uuid::Uuid::new_v4().simple()));
+        let dir =
+            std::env::temp_dir().join(format!("otu-accounts-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -417,7 +439,10 @@ mod tests {
         assert!(!dir.join("plugins_data").join(&used.id).exists());
 
         assert!(forget(&dir, &fresh.id).unwrap().is_empty());
-        assert!(!home(&dir, &fresh.id).exists(), "an emptied folder goes too");
+        assert!(
+            !home(&dir, &fresh.id).exists(),
+            "an emptied folder goes too"
+        );
         assert!(forget(&dir, &fresh.id).is_err(), "already removed");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -439,5 +464,22 @@ mod tests {
         std::fs::write(dir.join(LIST_FILE), "not json").unwrap();
         assert!(load(&dir).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn wsl_copies_survive_an_account_change() {
+        let wsl = crate::wsl::WslAccount::new("claude", "Ubuntu", "alice");
+        let plugins = crate::wsl::with_wsl(
+            vec![plugin("claude")],
+            &[wsl.clone()],
+            std::path::Path::new(crate::wsl::SHARE),
+        );
+        let list = with_accounts(
+            plugins,
+            &[account("claude-1a2b3c4d", "Work")],
+            &std::env::temp_dir(),
+        );
+        let ids: Vec<&str> = list.iter().map(|p| p.manifest.id.as_str()).collect();
+        assert_eq!(ids, vec!["claude", "claude-1a2b3c4d", wsl.id.as_str()]);
     }
 }

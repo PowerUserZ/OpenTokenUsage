@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { insertAccount, isAccountId } from "@/lib/accounts"
+import { insertAccount, isAccountId, isWslId } from "@/lib/accounts"
 
 describe("accounts", () => {
   it("recognizes only the ids accounts.rs makes", () => {
@@ -28,5 +28,16 @@ describe("accounts", () => {
     expect(insertAccount(["cursor"], "claude-00000001", "claude")).toEqual(["cursor", "claude-00000001"])
     // Adding twice doesn't duplicate.
     expect(insertAccount(["claude", "claude-00000001"], "claude-00000001", "claude")).toEqual(["claude", "claude-00000001"])
+  })
+
+  it("puts a WSL card after its provider and that provider's other cards", () => {
+    expect(insertAccount(["claude", "claude-1a2b3c4d", "codex"], "claude-wsl-0a1b2c3d", "claude")).toEqual([
+      "claude",
+      "claude-1a2b3c4d",
+      "claude-wsl-0a1b2c3d",
+      "codex",
+    ])
+    expect(isWslId("opencode-go-wsl-0a1b2c3d")).toBe(true)
+    expect(isWslId("claude-1a2b3c4d")).toBe(false)
   })
 })

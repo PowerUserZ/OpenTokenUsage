@@ -67,6 +67,10 @@ pub struct PluginOutput {
     pub plan: Option<String>,
     pub lines: Vec<MetricLine>,
     pub icon_url: String,
+    /// Cached data shown again (a WSL card whose distro is stopped): when it was fetched, in epoch
+    /// ms, so the UI shows that time instead of "just now".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stale_since: Option<i64>,
 }
 
 pub fn run_probe(plugin: &LoadedPlugin, app_data_dir: &PathBuf, app_version: &str) -> PluginOutput {
@@ -76,6 +80,57 @@ pub fn run_probe(plugin: &LoadedPlugin, app_data_dir: &PathBuf, app_version: &st
         app_version,
         Duration::from_secs(PROBE_TIMEOUT_SECS),
     )
+}
+
+/// How long `accountKey` may take: it only reads local files.
+const ACCOUNT_KEY_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Who the plugin is signed in as, for the WSL same-account check (`wsl.rs`), hashed right away as
+/// `sha256("<base plugin id>:<value>")`; the raw value (it can be an API key) never leaves this
+/// function. `None` when the plugin has no `accountKey`, returns nothing, throws or runs too long.
+pub fn run_account_key(
+    plugin: &LoadedPlugin,
+    app_data_dir: &PathBuf,
+    app_version: &str,
+) -> Option<String> {
+    let deadline_at = Instant::now() + ACCOUNT_KEY_TIMEOUT;
+    let rt = Runtime::new().ok()?;
+    rt.set_interrupt_handler(Some(Box::new(move || Instant::now() >= deadline_at)));
+    let ctx = Context::full(&rt).ok()?;
+    let base_id = plugin
+        .account
+        .as_ref()
+        .map_or(plugin.manifest.id.as_str(), |account| {
+            account.base_id.as_str()
+        })
+        .to_string();
+    ctx.with(|ctx| {
+        host_api::inject_host_api_with_deadline(
+            &ctx,
+            &plugin.manifest.id,
+            app_data_dir,
+            app_version,
+            host_api::ProbeDeadline::at(deadline_at),
+            plugin.account.as_ref(),
+        )
+        .ok()?;
+        host_api::inject_utils(&ctx).ok()?;
+        ctx.eval::<(), _>(plugin.entry_script.as_bytes()).ok()?;
+        let plugin_obj: Object = ctx.globals().get("__openusage_plugin").ok()?;
+        let key_fn: rquickjs::Function = plugin_obj.get("accountKey").ok()?;
+        let probe_ctx: Value = ctx.globals().get("__openusage_ctx").ok()?;
+        let raw: Option<String> = key_fn.call((probe_ctx,)).ok()?;
+        let raw = raw?.trim().to_string();
+        (!raw.is_empty()).then(|| hash_account_key(&base_id, &raw))
+    })
+}
+
+fn hash_account_key(base_id: &str, raw: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(format!("{base_id}:{raw}").as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn run_probe_with_timeout(
@@ -229,6 +284,7 @@ fn run_probe_with_timeout(
             plan,
             lines,
             icon_url,
+            stale_since: None,
         }
     })
 }
@@ -638,7 +694,10 @@ fn parse_bar_chart_line<'js>(
     }
 
     if points.is_empty() {
-        errors.push(format!("barChart line at index {} has no valid points", idx));
+        errors.push(format!(
+            "barChart line at index {} has no valid points",
+            idx
+        ));
         return (None, errors);
     }
 
@@ -680,6 +739,7 @@ pub(crate) fn error_output(plugin: &LoadedPlugin, message: String) -> PluginOutp
         plan: None,
         lines: vec![error_line(message)],
         icon_url: plugin.icon_data_url.clone(),
+        stale_since: None,
     }
 }
 
@@ -738,6 +798,7 @@ mod tests {
                 lines: vec![],
                 links: vec![],
                 status_page_url: None,
+                wsl: None,
             },
             plugin_dir: PathBuf::from("."),
             entry_script: entry_script.to_string(),
@@ -887,5 +948,58 @@ mod tests {
             json["points"].as_array().expect("points array").len(),
             MAX_BAR_CHART_POINTS
         );
+    }
+
+    #[test]
+    fn account_key_is_hashed_with_the_base_plugin_id() {
+        let plugin = test_plugin(
+            r#"globalThis.__openusage_plugin = { id: "test", probe: function () { return { lines: [] } }, accountKey: function () { return " acct-1 " } }"#,
+        );
+        let dir = temp_app_dir("account-key");
+        let key = run_account_key(&plugin, &dir, "0.0.0").expect("key");
+        assert_eq!(key, hash_account_key("test", "acct-1"));
+        assert_eq!(key.len(), 64);
+
+        let mut copy = plugin.clone();
+        copy.manifest.id = "test-wsl-00000000".to_string();
+        copy.account = Some(crate::plugin_engine::manifest::AccountBinding {
+            base_id: "test".to_string(),
+            ..Default::default()
+        });
+        assert_eq!(
+            run_account_key(&copy, &dir, "0.0.0"),
+            Some(key),
+            "a copy hashes with its base id"
+        );
+    }
+
+    #[test]
+    fn account_key_is_unknown_without_a_usable_answer() {
+        let dir = temp_app_dir("account-key-none");
+        for script in [
+            r#"globalThis.__openusage_plugin = { id: "test", probe: function () { return { lines: [] } } }"#,
+            r#"globalThis.__openusage_plugin = { id: "test", probe: function () {}, accountKey: function () { return null } }"#,
+            r#"globalThis.__openusage_plugin = { id: "test", probe: function () {}, accountKey: function () { throw "no" } }"#,
+            r#"globalThis.__openusage_plugin = { id: "test", probe: function () {}, accountKey: function () { return "   " } }"#,
+            r#"globalThis.__openusage_plugin = { id: "test", probe: function () {}, accountKey: function () { while (true) {} } }"#,
+        ] {
+            assert_eq!(
+                run_account_key(&test_plugin(script), &dir, "0.0.0"),
+                None,
+                "{script}"
+            );
+        }
+    }
+
+    #[test]
+    fn stale_since_is_left_out_unless_set() {
+        let mut output = error_output(&test_plugin(""), "x".to_string());
+        assert!(!serde_json::to_string(&output)
+            .unwrap()
+            .contains("staleSince"));
+        output.stale_since = Some(1_700_000_000_000);
+        assert!(serde_json::to_string(&output)
+            .unwrap()
+            .contains(r#""staleSince":1700000000000"#));
     }
 }

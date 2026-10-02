@@ -5,16 +5,12 @@ const ptBR: PluginErrorMessages = {
   requestFailedHttp: "Falha na solicitação (HTTP {status}). Tente novamente mais tarde.",
   requestFailedHttpShort: "Falha na solicitação (HTTP {status})",
   parseFailed: "Não foi possível analisar os dados de uso.",
-  unableToConnect: "Não foi possível conectar. Tente novamente mais tarde.",
 
   usageRequestFailed: "Falha na solicitação de uso. Verifique sua conexão.",
   usageRequestFailedHttp: "Falha na solicitação de uso (HTTP {status}). Tente novamente mais tarde.",
   usageFailedAfterRefresh: "Falha na solicitação de uso após a atualização. Tente novamente.",
   usageResponseInvalid: "Resposta de uso inválida. Tente novamente mais tarde.",
   usageResponseMissingData: "Faltam dados na resposta de uso. Tente novamente mais tarde.",
-  usageDataUnavailable: "Dados de uso indisponíveis. Tente novamente mais tarde.",
-  rateLimitsUnavailable: "Limites de taxa indisponíveis. Tente novamente mais tarde.",
-  balanceUnavailable: "Saldo indisponível. Tente novamente mais tarde.",
   usageNotForApiKey: "Uso não disponível para chave de API.",
   totalLimitMissing: "Limite de uso total ausente na resposta da API.",
 
@@ -29,7 +25,6 @@ const ptBR: PluginErrorMessages = {
   tokenInvalidRun: "Token inválido. Execute `{cmd}` para se autenticar novamente.",
   invalidAuthFileRun: "Arquivo de autenticação inválido. Execute `{cmd}` para se autenticar.",
 
-  notLoggedInSignInApp: "Você não entrou. Entre pelo aplicativo {app}.",
   notLoggedInSignInOrRun: "Você não entrou. Entre pelo aplicativo {app} ou execute `{cmd}`.",
   sessionExpiredSignInOrRun: "Sessão expirada. Entre pelo aplicativo {app} ou execute `{cmd}`.",
   tokenExpiredSignInOrRun: "Token expirado. Entre pelo aplicativo {app} ou execute `{cmd}`.",
@@ -75,6 +70,7 @@ const ptBR: PluginErrorMessages = {
   pluginFailed: "Falha no plug-in. Tente novamente ou contate o autor do plug-in.",
   probeStartFailed: "Falha ao iniciar a coleta de dados",
   updateFailed: "Não foi possível atualizar os dados. Tentar novamente?",
+  wslNotRunning: "O WSL não está em execução. Inicie-o para atualizar este cartão.",
 }
 
 export default ptBR

@@ -10,6 +10,7 @@ mod setup_actions;
 mod taskbar_strip;
 mod tray;
 mod window_style;
+mod wsl;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -53,6 +54,7 @@ pub struct AppState {
     pub plugins: Vec<plugin_engine::manifest::LoadedPlugin>,
     pub app_data_dir: PathBuf,
     pub app_version: String,
+    pub wsl: wsl::WslState,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -198,6 +200,16 @@ async fn start_probe_batch(
         })
         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
+    // WSL logins come and go with their distros. The scan can wait on `wsl.exe` for seconds, so it
+    // runs in the background and a change reaches the UI as `plugins:changed`. Which distros run is
+    // checked now, so a distro stopped since the last scan isn't woken by a probe reading its files.
+    wsl::refresh_in_background(app_handle.clone());
+    let running_handle = app_handle.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        wsl::update_running(&tauri::Manager::state::<Mutex<AppState>>(&running_handle))
+    })
+    .await;
+
     let (plugins, app_data_dir, app_version) = {
         let locked = state.lock().map_err(|e| e.to_string())?;
         (
@@ -307,9 +319,15 @@ async fn start_probe_batch(
                 };
 
                 let plugin_id = plugin.manifest.id.clone();
-                let output = catch_probe_panic(&plugin, || {
-                    plugin_engine::runtime::run_probe(&plugin, &data_dir, &version)
-                });
+                let app_state = tauri::Manager::state::<Mutex<AppState>>(&handle);
+                // A WSL card whose distro is stopped shows its last data: probing would start the distro.
+                let output = if wsl::is_stopped(&app_state, &plugin_id) {
+                    wsl::stale_output(&plugin, local_http_api::cached_snapshot(&plugin_id))
+                } else {
+                    catch_probe_panic(&plugin, || {
+                        plugin_engine::runtime::run_probe(&plugin, &data_dir, &version)
+                    })
+                };
                 // The account may have been removed while this probe was queued: drop its result
                 // rather than put the removed account back into the local API cache.
                 let still_listed = tauri::Manager::state::<Mutex<AppState>>(&handle)
@@ -334,6 +352,11 @@ async fn start_probe_batch(
                 });
                 if has_error {
                     log::warn!("probe {} completed with error", plugin_id);
+                } else if output.stale_since.is_some() {
+                    log::info!(
+                        "probe {} skipped: its WSL distro is stopped (cached data shown)",
+                        plugin_id
+                    );
                 } else {
                     log::info!(
                         "probe {} completed ok ({} lines)",
@@ -341,6 +364,7 @@ async fn start_probe_batch(
                         output.lines.len()
                     );
                     local_http_api::cache_successful_output(&output);
+                    wsl::confirm(&app_state, &plugin_id);
                 }
                 // Release before emitting, so a refresh the UI starts on this result isn't skipped.
                 drop(in_flight);
@@ -604,13 +628,22 @@ pub fn run() {
             );
 
             let (_, plugins) = plugin_engine::initialize_plugins(&app_data_dir, &resource_dir);
-            let plugins = accounts::with_accounts(plugins, &accounts::load(&app_data_dir), &app_data_dir);
+            let plugins =
+                accounts::with_accounts(plugins, &accounts::load(&app_data_dir), &app_data_dir);
+            // Saved WSL cards are listed from the start: their distro may be stopped, and then they
+            // show their last data.
+            let wsl_accounts = wsl::load(&app_data_dir);
+            let plugins = wsl::with_wsl(plugins, &wsl_accounts, std::path::Path::new(wsl::SHARE));
             let known_plugin_ids: Vec<String> =
                 plugins.iter().map(|p| p.manifest.id.clone()).collect();
             app.manage(Mutex::new(AppState {
                 plugins,
                 app_data_dir: app_data_dir.clone(),
                 app_version: app.package_info().version.to_string(),
+                wsl: wsl::WslState {
+                    accounts: wsl_accounts,
+                    ..Default::default()
+                },
             }));
 
             local_http_api::init(&app_data_dir, known_plugin_ids);
@@ -690,6 +723,7 @@ mod tests {
                 lines: vec![],
                 links: vec![],
                 status_page_url: None,
+                wsl: None,
             },
             plugin_dir: std::path::PathBuf::from("."),
             entry_script: String::new(),

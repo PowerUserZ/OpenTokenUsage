@@ -20,6 +20,9 @@
   var GOOGLE_CLIENT_SECRET = "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"
   var OAUTH_TOKEN_KEY = "antigravityUnifiedStateSync.oauthToken"
   var OAUTH_TOKEN_SENTINEL = "oauthTokenInfoSentinelKey"
+  // Each refreshed-token cache is bound to its own source, so neither purges the other.
+  var DB_TOKEN_CACHE = "auth.json"
+  var AGY_TOKEN_CACHE = "agy-auth.json"
   var CC_MODEL_BLACKLIST = {
     "MODEL_CHAT_20706": true,
     "MODEL_CHAT_23310": true,
@@ -138,7 +141,7 @@
 
   // --- Google OAuth token refresh ---
 
-  function refreshAccessToken(ctx, refreshTokenValue) {
+  function refreshAccessToken(ctx, refreshTokenValue, cacheFile) {
     if (!refreshTokenValue) {
       ctx.host.log.warn("refresh skipped: no refresh token")
       return null
@@ -166,7 +169,7 @@
         return null
       }
       var expiresIn = (typeof body.expires_in === "number") ? body.expires_in : 3600
-      cacheToken(ctx, body.access_token, expiresIn, refreshTokenValue)
+      cacheToken(ctx, body.access_token, expiresIn, refreshTokenValue, cacheFile)
       return body.access_token
     } catch (e) {
       ctx.host.log.warn("Google OAuth refresh failed: " + String(e))
@@ -188,8 +191,8 @@
   }
 
   // The host fs API has no remove; overwriting with an empty object is the purge.
-  function discardCachedToken(ctx) {
-    var path = ctx.app.pluginDataDir + "/auth.json"
+  function discardCachedToken(ctx, cacheFile) {
+    var path = ctx.app.pluginDataDir + "/" + cacheFile
     try {
       if (!ctx.host.fs.exists(path)) return
       ctx.host.fs.writeText(path, "{}")
@@ -202,17 +205,17 @@
   // Returns the cached access token only when it was minted by one of the refresh tokens
   // still present locally. No local refresh credentials, a legacy unbound cache, or a
   // fingerprint mismatch all purge the cache — it is never an independent credential.
-  function loadCachedToken(ctx, localRefreshTokens) {
+  function loadCachedToken(ctx, localRefreshTokens, cacheFile) {
     var expected = []
     for (var i = 0; i < (localRefreshTokens || []).length; i++) {
       var fp = credentialFingerprint(ctx, localRefreshTokens[i])
       if (fp && expected.indexOf(fp) === -1) expected.push(fp)
     }
     if (expected.length === 0) {
-      discardCachedToken(ctx)
+      discardCachedToken(ctx, cacheFile)
       return null
     }
-    var path = ctx.app.pluginDataDir + "/auth.json"
+    var path = ctx.app.pluginDataDir + "/" + cacheFile
     try {
       if (!ctx.host.fs.exists(path)) return null
       var data = ctx.util.tryParseJson(ctx.host.fs.readText(path))
@@ -220,7 +223,7 @@
       if (!data.credentialFingerprint || expected.indexOf(data.credentialFingerprint) === -1) {
         // Includes legacy caches with no fingerprint. Never log the fingerprints themselves.
         ctx.host.log.info("cached token was not minted by a current local credential; discarding it")
-        discardCachedToken(ctx)
+        discardCachedToken(ctx, cacheFile)
         return null
       }
       if (data.expiresAtMs <= Date.now()) return null
@@ -231,13 +234,13 @@
     }
   }
 
-  function cacheToken(ctx, accessToken, expiresInSeconds, sourceRefreshToken) {
+  function cacheToken(ctx, accessToken, expiresInSeconds, sourceRefreshToken, cacheFile) {
     var fingerprint = credentialFingerprint(ctx, sourceRefreshToken)
     if (!fingerprint) {
       ctx.host.log.warn("cannot fingerprint the minting credential; not caching the refreshed token")
       return
     }
-    var path = ctx.app.pluginDataDir + "/auth.json"
+    var path = ctx.app.pluginDataDir + "/" + cacheFile
     try {
       ctx.host.fs.writeText(path, JSON.stringify({
         accessToken: accessToken,
@@ -272,19 +275,20 @@
     return text || null
   }
 
-  function extractTokenFromObject(obj) {
+  var ACCESS_TOKEN_KEYS = [
+    "access_token",
+    "accessToken",
+    "token",
+    "id_token",
+    "idToken",
+    "bearerToken",
+    "auth_token",
+    "authToken",
+  ]
+
+  function extractTokenFromObject(obj, directKeys) {
     if (!obj || typeof obj !== "object") return null
 
-    var directKeys = [
-      "access_token",
-      "accessToken",
-      "token",
-      "id_token",
-      "idToken",
-      "bearerToken",
-      "auth_token",
-      "authToken",
-    ]
     for (var i = 0; i < directKeys.length; i++) {
       var value = obj[directKeys[i]]
       if (typeof value === "string" && value.trim()) return value.trim()
@@ -292,23 +296,38 @@
 
     var nestedKeys = ["token", "tokens", "oauth", "oauth2", "credentials", "auth"]
     for (var j = 0; j < nestedKeys.length; j++) {
-      var nested = extractTokenFromObject(obj[nestedKeys[j]])
+      var nested = extractTokenFromObject(obj[nestedKeys[j]], directKeys)
       if (nested) return nested
     }
 
     return null
   }
 
-  function extractAgyAccessToken(ctx, raw) {
+  // agy (go-keyring) stores a Go oauth2.Token: { token: { access_token, refresh_token, expiry }, … }.
+  // The access token lives ~1 h; agy refreshes it only while it runs, so we refresh it ourselves.
+  function extractAgyTokens(ctx, raw) {
     var text = unwrapAgyKeychainText(ctx, raw)
     if (!text) return null
 
     var parsed = ctx.util.tryParseJson(text)
-    if (typeof parsed === "string" && parsed.trim()) return parsed.trim()
-    if (parsed) return extractTokenFromObject(parsed)
+    if (typeof parsed === "string" && parsed.trim()) return { accessToken: parsed.trim() }
+    if (parsed && typeof parsed === "object") {
+      var expiryText = extractTokenFromObject(parsed, ["expiry", "expires_at", "expiresAt"])
+      // Go writes 7–9 fractional digits, which QuickJS's Date.parse rejects; keep milliseconds.
+      var expiryMs = expiryText ? Date.parse(expiryText.replace(/(\.\d{3})\d+/, "$1")) : NaN
+      var tokens = {
+        accessToken: extractTokenFromObject(parsed, ACCESS_TOKEN_KEYS),
+        refreshToken: extractTokenFromObject(parsed, ["refresh_token", "refreshToken"]),
+        expirySeconds: Number.isFinite(expiryMs) ? Math.floor(expiryMs / 1000) : null,
+      }
+      return tokens.accessToken || tokens.refreshToken ? tokens : null
+    }
 
-    if (text.indexOf("Bearer ") === 0) return text.slice("Bearer ".length).trim() || null
-    return text
+    if (text.indexOf("Bearer ") === 0) {
+      var bearer = text.slice("Bearer ".length).trim()
+      return bearer ? { accessToken: bearer } : null
+    }
+    return { accessToken: text }
   }
 
   function loadAgyKeychainToken(ctx) {
@@ -317,7 +336,7 @@
     }
     try {
       var raw = ctx.host.keychain.readGenericPassword(AGY_KEYCHAIN_SERVICE, AGY_KEYCHAIN_ACCOUNT)
-      return extractAgyAccessToken(ctx, raw)
+      return extractAgyTokens(ctx, raw)
     } catch (e) {
       ctx.host.log.info("agy keychain read failed: " + String(e))
       return null
@@ -360,7 +379,7 @@
             extensionVersion: "unknown",
             ide: "antigravity",
             ideVersion: "unknown",
-            os: "macos",
+            os: "windows",
           },
         },
       }),
@@ -667,19 +686,20 @@
 
   function probeAgyCloudCode(ctx, token) {
     // Authoritative first: the quota summary. The plan lookup never gates it — a failed
-    // loadCodeAssist just leaves the plan blank.
-    var summary = requestCloudCodeJson(ctx, QUOTA_SUMMARY_PATH, token, "agy", {})
+    // loadCodeAssist just leaves the plan blank. User-Agent "agy" gets 403 SUBSCRIPTION_REQUIRED
+    // on every quota endpoint (and no paidTier) even for paid accounts; "antigravity" works.
+    var summary = requestCloudCodeJson(ctx, QUOTA_SUMMARY_PATH, token, "antigravity", {})
     if (summary && summary._authFailed) return summary
     if (summary) {
       var summaryLines = parseQuotaSummary(ctx, summary)
       if (summaryLines) {
-        var planData = requestCloudCodeJson(ctx, LOAD_CODE_ASSIST_PATH, token, "agy", {})
+        var planData = requestCloudCodeJson(ctx, LOAD_CODE_ASSIST_PATH, token, "antigravity", {})
         var plan = (planData && !planData._authFailed) ? readAgyPlan(planData) : null
         return { plan: plan, lines: summaryLines }
       }
     }
 
-    var loadData = requestCloudCodeJson(ctx, LOAD_CODE_ASSIST_PATH, token, "agy", {})
+    var loadData = requestCloudCodeJson(ctx, LOAD_CODE_ASSIST_PATH, token, "antigravity", {})
     if (!loadData || loadData._authFailed) return loadData
 
     var project =
@@ -688,10 +708,10 @@
         : null
     var quotaData = null
     if (project) {
-      quotaData = requestCloudCodeJson(ctx, RETRIEVE_QUOTA_PATH, token, "agy", { project: project })
+      quotaData = requestCloudCodeJson(ctx, RETRIEVE_QUOTA_PATH, token, "antigravity", { project: project })
     }
     if (!quotaData || quotaData._authFailed) {
-      quotaData = requestCloudCodeJson(ctx, RETRIEVE_QUOTA_PATH, token, "agy", {})
+      quotaData = requestCloudCodeJson(ctx, RETRIEVE_QUOTA_PATH, token, "antigravity", {})
     }
     if (!quotaData || quotaData._authFailed) return quotaData
 
@@ -803,6 +823,29 @@
     return probeDiscovery(ctx, discoverAgyLs(ctx))
   }
 
+  // Same order as the SQLite path: the stored token while it has a minute left, then our
+  // cached refresh of it, then a Google refresh — only on an auth failure or with nothing to try.
+  function probeAgyKeychain(ctx, agy, nowSec) {
+    var tokens = []
+    if (agy.accessToken && (!agy.expirySeconds || agy.expirySeconds > nowSec + 60)) {
+      tokens.push(agy.accessToken)
+    }
+    var cached = loadCachedToken(ctx, agy.refreshToken ? [agy.refreshToken] : [], AGY_TOKEN_CACHE)
+    if (cached && tokens.indexOf(cached) === -1) tokens.push(cached)
+
+    var sawAuthFailure = false
+    for (var i = 0; i < tokens.length; i++) {
+      var result = probeAgyCloudCode(ctx, tokens[i])
+      if (result && !result._authFailed) return result
+      if (result && result._authFailed) sawAuthFailure = true
+    }
+    if ((sawAuthFailure || tokens.length === 0) && agy.refreshToken) {
+      var refreshed = refreshAccessToken(ctx, agy.refreshToken, AGY_TOKEN_CACHE)
+      if (refreshed) return probeAgyCloudCode(ctx, refreshed)
+    }
+    return sawAuthFailure ? { _authFailed: true } : null
+  }
+
   // --- Probe ---
 
   function probe(ctx) {
@@ -828,7 +871,7 @@
     }
 
     // The cache only yields a token minted by a refresh token that is still present locally.
-    var cached = loadCachedToken(ctx, refreshTokens)
+    var cached = loadCachedToken(ctx, refreshTokens, DB_TOKEN_CACHE)
     if (cached && tokens.indexOf(cached) === -1) tokens.push(cached)
 
     var ccResult = null
@@ -848,7 +891,7 @@
     // instead of ~once per token lifetime — risking refresh-token throttling or rotation.
     if (!ccResult && (sawAuthFailure || tokens.length === 0)) {
       for (var k = 0; k < refreshTokens.length; k++) {
-        var refreshed = refreshAccessToken(ctx, refreshTokens[k])
+        var refreshed = refreshAccessToken(ctx, refreshTokens[k], DB_TOKEN_CACHE)
         if (!refreshed) continue
         var refreshedResult = probeCloudCodeToken(ctx, refreshed)
         if (refreshedResult && !refreshedResult._authFailed) {
@@ -860,9 +903,9 @@
     }
 
     if (!ccResult || ccResult._authFailed) {
-      var agyToken = loadAgyKeychainToken(ctx)
-      if (agyToken) {
-        var agyResult = probeAgyCloudCode(ctx, agyToken)
+      var agy = loadAgyKeychainToken(ctx)
+      if (agy) {
+        var agyResult = probeAgyKeychain(ctx, agy, nowSec)
         if (agyResult && !agyResult._authFailed) return agyResult
         if (agyResult && agyResult._authFailed) ccResult = agyResult
       }

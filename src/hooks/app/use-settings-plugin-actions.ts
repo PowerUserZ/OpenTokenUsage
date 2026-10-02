@@ -1,6 +1,6 @@
-import { useCallback } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { invoke } from "@tauri-apps/api/core"
-import { insertAccount, type AccountsChange } from "@/lib/accounts"
+import { insertAccount, type AccountsChange, type PluginsChange } from "@/lib/accounts"
 import type { PluginMeta } from "@/lib/plugin-types"
 import { normalizePluginSettings, savePluginSettings, type PluginSettings } from "@/lib/settings"
 
@@ -94,43 +94,75 @@ export function useSettingsPluginActions({
   ])
 
   /**
-   * After an account was added or removed (`accounts.rs` rebuilt its plugin list): reload the list,
-   * put a new account right after its provider, turned on, and probe it; drop a removed one.
+   * After the plugin list changed in the host (an account added or removed in `accounts.rs`, WSL
+   * cards found or gone in `wsl.rs`): reload the list, put each new card right after its provider,
+   * turned on, and probe it; drop the removed ones.
    */
-  const handleAccountsChanged = useCallback(
-    async (change: AccountsChange) => {
-      if (!pluginSettings) return
+  // A change that arrives before the settings load (the host can rescan during bootstrap) waits here.
+  const pendingChanges = useRef<PluginsChange[]>([])
+
+  const handlePluginsChanged = useCallback(
+    async (change: PluginsChange) => {
+      if (!pluginSettings) {
+        pendingChanges.current.push(change)
+        return
+      }
       try {
         const metas = await invoke<PluginMeta[]>("list_plugins")
         setPluginsMeta(metas)
-        let order = pluginSettings.order.filter((id) => id !== change.removedId)
-        let disabled = pluginSettings.disabled.filter((id) => id !== change.removedId)
-        if (change.added) {
-          order = insertAccount(order, change.added.id, change.added.plugin)
-          disabled = disabled.filter((id) => id !== change.added?.id)
+        const removed = new Set(change.removed)
+        let order = pluginSettings.order.filter((id) => !removed.has(id))
+        let disabled = pluginSettings.disabled.filter((id) => !removed.has(id))
+        for (const added of change.added) {
+          order = insertAccount(order, added.id, added.plugin)
+          disabled = disabled.filter((id) => id !== added.id)
         }
         const nextSettings = normalizePluginSettings({ order, disabled }, metas)
         setPluginSettings(nextSettings)
         scheduleTrayIconUpdate("settings", TRAY_SETTINGS_DEBOUNCE_MS)
         await savePluginSettings(nextSettings)
-        if (change.added) {
-          const id = change.added.id
-          setLoadingForPlugins([id])
-          startBatch([id]).catch((error) => {
-            console.error("Failed to start probe for a new account:", error)
-            setErrorForPlugins([id], "Failed to start probe")
+        const addedIds = change.added.map((added) => added.id)
+        if (addedIds.length > 0) {
+          setLoadingForPlugins(addedIds)
+          startBatch(addedIds).catch((error) => {
+            console.error("Failed to start a probe for new cards:", error)
+            setErrorForPlugins(addedIds, "Failed to start probe")
           })
         }
       } catch (error) {
-        console.error("Failed to update the plugin list after an account change:", error)
+        console.error("Failed to update the plugin list after it changed:", error)
       }
     },
     [pluginSettings, scheduleTrayIconUpdate, setErrorForPlugins, setLoadingForPlugins, setPluginSettings, setPluginsMeta, startBatch]
+  )
+
+  useEffect(() => {
+    if (!pluginSettings || pendingChanges.current.length === 0) return
+    // Net effect of the waiting changes, in order: a card added and later removed ends up removed.
+    const net = new Map<string, { id: string; plugin: string } | null>()
+    for (const change of pendingChanges.current.splice(0)) {
+      for (const added of change.added) net.set(added.id, added)
+      for (const id of change.removed) net.set(id, null)
+    }
+    void handlePluginsChanged({
+      added: [...net.values()].filter((added): added is { id: string; plugin: string } => added !== null),
+      removed: [...net.entries()].filter(([, added]) => added === null).map(([id]) => id),
+    })
+  }, [pluginSettings, handlePluginsChanged])
+
+  const handleAccountsChanged = useCallback(
+    (change: AccountsChange) =>
+      handlePluginsChanged({
+        added: change.added ? [change.added] : [],
+        removed: change.removedId ? [change.removedId] : [],
+      }),
+    [handlePluginsChanged]
   )
 
   return {
     handleReorder,
     handleToggle,
     handleAccountsChanged,
+    handlePluginsChanged,
   }
 }

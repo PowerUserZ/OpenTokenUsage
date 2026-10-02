@@ -3,7 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener"
 import { AlertCircle, ExternalLink, SlidersHorizontal, SquareTerminal } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { isAccountId } from "@/lib/accounts"
+import { isAccountId, isWslId } from "@/lib/accounts"
 import { t, tLabel } from "@/lib/i18n"
 import { getPluginErrorAction, translatePluginError } from "@/lib/plugin-errors"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
@@ -37,7 +37,8 @@ function ErrorAction({ message, pluginId }: PluginErrorProps) {
     (state) => state.pluginsMeta.find((meta) => meta.id === pluginId)?.links?.find((link) => link.label === API_KEYS_LINK)?.url
   )
   const action = getPluginErrorAction(message)
-  if (!action) return null
+  // A WSL card's login lives in WSL: a Windows terminal or the Windows environment can't fix it.
+  if (!action || isWslId(pluginId)) return null
   const run = (command: string, args?: Record<string, unknown>) => () => {
     invoke(command, args).catch((error) => console.error(`${command} failed:`, error))
   }

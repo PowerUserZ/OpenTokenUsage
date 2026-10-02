@@ -13,12 +13,18 @@ export type AccountsChange = { added?: { id: string; plugin: string }; removedId
 /** Plugin ids of extra accounts, as `accounts.rs` makes them. */
 export const isAccountId = (id: string | undefined): id is string => !!id && /^(claude|codex)-[0-9a-f]{8}$/.test(id)
 
-/** A new account goes right after its provider and that provider's other accounts. */
+/** Plugin ids of WSL logins, as `wsl.rs` makes them (`claude-wsl-1a2b3c4d`). */
+export const isWslId = (id: string | undefined): id is string => !!id && /^[a-z0-9-]+-wsl-[0-9a-f]{8}$/.test(id)
+
+/** What changed in the plugin list (`plugins:changed` from `wsl.rs`, or an account change). */
+export type PluginsChange = { added: { id: string; plugin: string }[]; removed: string[] }
+
+/** A new account or WSL card goes right after its provider and that provider's other cards. */
 export function insertAccount(order: string[], id: string, plugin: string): string[] {
   const rest = order.filter((other) => other !== id)
   let at = -1
   rest.forEach((other, index) => {
-    if (other === plugin || (isAccountId(other) && other.startsWith(`${plugin}-`))) at = index
+    if (other === plugin || ((isAccountId(other) || isWslId(other)) && other.startsWith(`${plugin}-`))) at = index
   })
   return at < 0 ? [...rest, id] : [...rest.slice(0, at + 1), id, ...rest.slice(at + 1)]
 }

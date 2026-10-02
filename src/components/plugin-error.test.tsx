@@ -52,4 +52,9 @@ describe("PluginError", () => {
     expect(openUrl).toHaveBeenCalledWith("https://z.ai/manage-apikey/apikey-list")
     useAppPluginStore.getState().setPluginsMeta([])
   })
+
+  it("offers no Windows fix for a WSL card", () => {
+    render(<PluginError message="Start Antigravity or run `agy` and try again." pluginId="claude-wsl-1a2b3c4d" />)
+    expect(screen.queryByRole("button")).toBeNull()
+  })
 })

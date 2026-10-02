@@ -10,6 +10,7 @@
   "links": [
     { "label": "Status", "url": "https://www.devinstatus.com/" }
   ],
+  "wsl": { "login": ["~/.local/share/devin/credentials.toml"] },
   "lines": [
     { "type": "progress", "label": "Weekly quota", "scope": "overview", "period": "weekly", "primaryOrder": 1 },
     { "type": "progress", "label": "Daily quota", "scope": "overview" },

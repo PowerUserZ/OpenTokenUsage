@@ -35,16 +35,13 @@ export const PLUGIN_ERROR_PATTERNS: readonly { pattern: RegExp; key: PluginError
   { pattern: /^Request failed \(HTTP (?<status>\d+)\)\. Try again later\.$/, key: "requestFailedHttp" },
   { pattern: /^Request failed \(HTTP (?<status>\d+)\)$/, key: "requestFailedHttpShort" },
   { pattern: /^Could not parse usage data\.$/, key: "parseFailed" },
-  { pattern: /^Unable to connect\. Try again later\.$/, key: "unableToConnect" },
+  { pattern: /^WSL isn't running\. Start it to update this card\.$/, key: "wslNotRunning" },
 
   { pattern: /^Usage request failed\. Check your connection\.$/, key: "usageRequestFailed" },
   { pattern: /^Usage request failed \(HTTP (?<status>\d+)\)\. Try again later\.$/, key: "usageRequestFailedHttp" },
   { pattern: /^Usage request failed after refresh\. Try again\.$/, key: "usageFailedAfterRefresh" },
   { pattern: /^Usage response invalid\. Try again later\.$/, key: "usageResponseInvalid" },
   { pattern: /^Usage response missing data\. Try again later\.$/, key: "usageResponseMissingData" },
-  { pattern: /^Usage data unavailable\. Try again later\.$/, key: "usageDataUnavailable" },
-  { pattern: /^Rate limits unavailable\. Try again later\.$/, key: "rateLimitsUnavailable" },
-  { pattern: /^Balance unavailable\. Try again later\.$/, key: "balanceUnavailable" },
   { pattern: /^Usage not available for API key\.$/, key: "usageNotForApiKey" },
   { pattern: /^Total usage limit missing from API response\.$/, key: "totalLimitMissing" },
 
@@ -59,7 +56,6 @@ export const PLUGIN_ERROR_PATTERNS: readonly { pattern: RegExp; key: PluginError
   { pattern: /^Token invalid\. Run `(?<cmd>[^`]+)` to re-authenticate\.$/, key: "tokenInvalidRun" },
   { pattern: /^Invalid auth file\. Run `(?<cmd>[^`]+)` to authenticate\.$/, key: "invalidAuthFileRun" },
 
-  { pattern: /^Not logged in\. Sign in via (?<app>.+?) app\.$/, key: "notLoggedInSignInApp" },
   { pattern: /^Not logged in\. Sign in via (?<app>.+?) app or run `(?<cmd>[^`]+)`\.$/, key: "notLoggedInSignInOrRun" },
   { pattern: /^Session expired\. Sign in via (?<app>.+?) app or run `(?<cmd>[^`]+)`\.$/, key: "sessionExpiredSignInOrRun" },
   { pattern: /^Token expired\. Sign in via (?<app>.+?) app or run `(?<cmd>[^`]+)`\.$/, key: "tokenExpiredSignInOrRun" },

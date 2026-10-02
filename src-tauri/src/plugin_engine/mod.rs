@@ -7,7 +7,7 @@ mod sqlite;
 use manifest::LoadedPlugin;
 use std::path::{Path, PathBuf};
 
-const RETIRED_BUNDLED_PLUGIN_IDS: &[&str] = &["windsurf"];
+const RETIRED_BUNDLED_PLUGIN_IDS: &[&str] = &["windsurf", "perplexity"];
 
 pub fn initialize_plugins(
     app_data_dir: &Path,

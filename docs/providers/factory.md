@@ -142,3 +142,7 @@ droid
 ```
 
 This creates auth data in the droid auth store (file and/or keychain, depending on droid version/configuration).
+
+## WSL
+
+A login inside a running WSL distro shows as its own `Factory · WSL` card when it's a different account than the ones already shown. A stopped distro is never started; its card keeps its last data.

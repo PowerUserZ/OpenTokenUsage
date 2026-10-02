@@ -255,5 +255,10 @@
     return { lines: lines };
   }
 
-  globalThis.__openusage_plugin = { id: "synthetic", probe: probe };
+  // Who is signed in, for the WSL same-account check (wsl.rs): the API key probe would use. Local only.
+  function accountKey(ctx) {
+    return loadApiKey(ctx);
+  }
+
+  globalThis.__openusage_plugin = { id: "synthetic", probe: probe, accountKey: accountKey };
 })();

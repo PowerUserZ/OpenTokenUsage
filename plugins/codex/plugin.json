@@ -5,12 +5,13 @@
   "version": "0.0.1",
   "entry": "plugin.js",
   "icon": "icon.svg",
-  "brandColor": "#74AA9C",
+  "brandColor": "#000000",
   "statusPageUrl": "https://status.openai.com",
   "links": [
     { "label": "Status", "url": "https://status.openai.com/" },
     { "label": "Usage dashboard", "url": "https://chatgpt.com/codex/settings/usage" }
   ],
+  "wsl": { "login": ["~/.codex/auth.json"] },
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview", "period": "weekly", "primaryOrder": 2 },

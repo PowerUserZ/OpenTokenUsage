@@ -10,6 +10,7 @@
   "links": [
     { "label": "Status", "url": "https://status.factory.ai/" }
   ],
+  "wsl": { "login": ["~/.factory/auth.v2.file", "~/.factory/auth.encrypted", "~/.factory/auth.json"] },
   "lines": [
     { "type": "progress", "label": "Standard", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Premium", "scope": "detail" }
