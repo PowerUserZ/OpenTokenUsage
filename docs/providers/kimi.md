@@ -98,3 +98,7 @@ refresh_token=<refresh_token>
 - The plugin refreshes tokens when near expiry (5-minute buffer).
 - If refresh is rejected (401/403), user must run `kimi login` again.
 - `limits[0].window.duration=300` and `TIME_UNIT_MINUTE` maps to the 5-hour session window.
+
+## WSL
+
+A login inside a running WSL distro shows as its own `Kimi · WSL` card when it's a different account than the ones already shown. A stopped distro is never started; its card keeps its last data.

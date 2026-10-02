@@ -5,16 +5,12 @@ const deDE: PluginErrorMessages = {
   requestFailedHttp: "Anforderung fehlgeschlagen (HTTP {status}). Versuchen Sie es später erneut.",
   requestFailedHttpShort: "Anforderung fehlgeschlagen (HTTP {status})",
   parseFailed: "Nutzungsdaten konnten nicht analysiert werden.",
-  unableToConnect: "Keine Verbindung möglich. Versuchen Sie es später erneut.",
 
   usageRequestFailed: "Nutzungsabfrage fehlgeschlagen. Überprüfen Sie Ihre Verbindung.",
   usageRequestFailedHttp: "Nutzungsabfrage fehlgeschlagen (HTTP {status}). Versuchen Sie es später erneut.",
   usageFailedAfterRefresh: "Nutzungsabfrage nach der Aktualisierung fehlgeschlagen. Versuchen Sie es erneut.",
   usageResponseInvalid: "Ungültige Nutzungsantwort. Versuchen Sie es später erneut.",
   usageResponseMissingData: "In der Nutzungsantwort fehlen Daten. Versuchen Sie es später erneut.",
-  usageDataUnavailable: "Nutzungsdaten nicht verfügbar. Versuchen Sie es später erneut.",
-  rateLimitsUnavailable: "Ratenlimits nicht verfügbar. Versuchen Sie es später erneut.",
-  balanceUnavailable: "Guthaben nicht verfügbar. Versuchen Sie es später erneut.",
   usageNotForApiKey: "Für API-Schlüssel ist keine Nutzung verfügbar.",
   totalLimitMissing: "Gesamtnutzungslimit fehlt in der API-Antwort.",
 
@@ -29,7 +25,6 @@ const deDE: PluginErrorMessages = {
   tokenInvalidRun: "Ungültiges Token. Führen Sie `{cmd}` aus, um sich erneut zu authentifizieren.",
   invalidAuthFileRun: "Ungültige Authentifizierungsdatei. Führen Sie `{cmd}` aus, um sich zu authentifizieren.",
 
-  notLoggedInSignInApp: "Nicht angemeldet. Melden Sie sich in der {app}-App an.",
   notLoggedInSignInOrRun: "Nicht angemeldet. Melden Sie sich in der {app}-App an, oder führen Sie `{cmd}` aus.",
   sessionExpiredSignInOrRun: "Sitzung abgelaufen. Melden Sie sich in der {app}-App an, oder führen Sie `{cmd}` aus.",
   tokenExpiredSignInOrRun: "Token abgelaufen. Melden Sie sich in der {app}-App an, oder führen Sie `{cmd}` aus.",
@@ -75,6 +70,7 @@ const deDE: PluginErrorMessages = {
   pluginFailed: "Fehler beim Plug-In. Versuchen Sie es erneut, oder wenden Sie sich an den Plug-In-Autor.",
   probeStartFailed: "Abfrage konnte nicht gestartet werden",
   updateFailed: "Daten konnten nicht aktualisiert werden. Erneut versuchen?",
+  wslNotRunning: "WSL läuft nicht. Starten Sie WSL, um diese Karte zu aktualisieren.",
 }
 
 export default deDE

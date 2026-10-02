@@ -249,15 +249,11 @@
   "plugin-errors.requestFailedHttp": "e9007f763b",
   "plugin-errors.requestFailedHttpShort": "9683353ab9",
   "plugin-errors.parseFailed": "eee8ad7b1c",
-  "plugin-errors.unableToConnect": "a27cc16892",
   "plugin-errors.usageRequestFailed": "5201bf8bb6",
   "plugin-errors.usageRequestFailedHttp": "b3f40931f3",
   "plugin-errors.usageFailedAfterRefresh": "06d67babe1",
   "plugin-errors.usageResponseInvalid": "b971a83c99",
   "plugin-errors.usageResponseMissingData": "acfe40ee3a",
-  "plugin-errors.usageDataUnavailable": "cf09b484c7",
-  "plugin-errors.rateLimitsUnavailable": "40db95cedc",
-  "plugin-errors.balanceUnavailable": "088ca919ce",
   "plugin-errors.usageNotForApiKey": "8f39809b2c",
   "plugin-errors.totalLimitMissing": "08842dd5d2",
   "plugin-errors.notLoggedInRun": "f907e5bd41",
@@ -270,7 +266,6 @@
   "plugin-errors.tokenRevokedRun": "650d290e85",
   "plugin-errors.tokenInvalidRun": "0e6be3ae13",
   "plugin-errors.invalidAuthFileRun": "358083c4a1",
-  "plugin-errors.notLoggedInSignInApp": "8f3f781610",
   "plugin-errors.notLoggedInSignInOrRun": "c28695ae51",
   "plugin-errors.sessionExpiredSignInOrRun": "b3da01522a",
   "plugin-errors.tokenExpiredSignInOrRun": "afc0d58811",
@@ -312,5 +307,6 @@
   "plugin-errors.probeTimedOut": "f682fd053a",
   "plugin-errors.pluginFailed": "6252c16f47",
   "plugin-errors.probeStartFailed": "0af5da2403",
-  "plugin-errors.updateFailed": "c10c914d19"
+  "plugin-errors.updateFailed": "c10c914d19",
+  "plugin-errors.wslNotRunning": "26e5198224"
 }

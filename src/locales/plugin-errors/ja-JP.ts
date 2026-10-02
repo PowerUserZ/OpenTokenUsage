@@ -5,16 +5,12 @@ const jaJP: PluginErrorMessages = {
   requestFailedHttp: "要求に失敗しました (HTTP {status})。後でもう一度やり直してください。",
   requestFailedHttpShort: "要求に失敗しました (HTTP {status})",
   parseFailed: "使用状況データを解析できませんでした。",
-  unableToConnect: "接続できません。後でもう一度やり直してください。",
 
   usageRequestFailed: "使用状況の要求に失敗しました。接続を確認してください。",
   usageRequestFailedHttp: "使用状況の要求に失敗しました (HTTP {status})。後でもう一度やり直してください。",
   usageFailedAfterRefresh: "更新後に使用状況の要求に失敗しました。もう一度やり直してください。",
   usageResponseInvalid: "使用状況の応答が無効です。後でもう一度やり直してください。",
   usageResponseMissingData: "使用状況の応答にデータがありません。後でもう一度やり直してください。",
-  usageDataUnavailable: "使用状況データを利用できません。後でもう一度やり直してください。",
-  rateLimitsUnavailable: "レート制限の情報を利用できません。後でもう一度やり直してください。",
-  balanceUnavailable: "残高を利用できません。後でもう一度やり直してください。",
   usageNotForApiKey: "API キーでは使用状況を利用できません。",
   totalLimitMissing: "API の応答に合計使用量の上限がありません。",
 
@@ -29,7 +25,6 @@ const jaJP: PluginErrorMessages = {
   tokenInvalidRun: "トークンが無効です。`{cmd}` を実行して再認証してください。",
   invalidAuthFileRun: "認証ファイルが無効です。`{cmd}` を実行して認証してください。",
 
-  notLoggedInSignInApp: "サインインしていません。{app} アプリでサインインしてください。",
   notLoggedInSignInOrRun: "サインインしていません。{app} アプリでサインインするか、`{cmd}` を実行してください。",
   sessionExpiredSignInOrRun: "セッションの有効期限が切れました。{app} アプリでサインインするか、`{cmd}` を実行してください。",
   tokenExpiredSignInOrRun: "トークンの有効期限が切れました。{app} アプリでサインインするか、`{cmd}` を実行してください。",
@@ -75,6 +70,7 @@ const jaJP: PluginErrorMessages = {
   pluginFailed: "プラグインでエラーが発生しました。もう一度やり直すか、プラグインの作成者に連絡してください。",
   probeStartFailed: "データの取得を開始できませんでした",
   updateFailed: "データを更新できませんでした。もう一度やり直しますか?",
+  wslNotRunning: "WSL が実行されていません。このカードを更新するには WSL を起動してください。",
 }
 
 export default jaJP

@@ -5,16 +5,12 @@ const itIT: PluginErrorMessages = {
   requestFailedHttp: "Richiesta non riuscita (HTTP {status}). Riprova più tardi.",
   requestFailedHttpShort: "Richiesta non riuscita (HTTP {status})",
   parseFailed: "Impossibile analizzare i dati di utilizzo.",
-  unableToConnect: "Impossibile connettersi. Riprova più tardi.",
 
   usageRequestFailed: "Richiesta di utilizzo non riuscita. Controlla la connessione.",
   usageRequestFailedHttp: "Richiesta di utilizzo non riuscita (HTTP {status}). Riprova più tardi.",
   usageFailedAfterRefresh: "Richiesta di utilizzo non riuscita dopo l'aggiornamento. Riprova.",
   usageResponseInvalid: "Risposta di utilizzo non valida. Riprova più tardi.",
   usageResponseMissingData: "Dati mancanti nella risposta di utilizzo. Riprova più tardi.",
-  usageDataUnavailable: "Dati di utilizzo non disponibili. Riprova più tardi.",
-  rateLimitsUnavailable: "Limiti di frequenza non disponibili. Riprova più tardi.",
-  balanceUnavailable: "Saldo non disponibile. Riprova più tardi.",
   usageNotForApiKey: "Utilizzo non disponibile per la chiave API.",
   totalLimitMissing: "Limite di utilizzo totale mancante nella risposta dell'API.",
 
@@ -29,7 +25,6 @@ const itIT: PluginErrorMessages = {
   tokenInvalidRun: "Token non valido. Esegui `{cmd}` per ripetere l'autenticazione.",
   invalidAuthFileRun: "File di autenticazione non valido. Esegui `{cmd}` per l'autenticazione.",
 
-  notLoggedInSignInApp: "Accesso non eseguito. Accedi dall'app {app}.",
   notLoggedInSignInOrRun: "Accesso non eseguito. Accedi dall'app {app} o esegui `{cmd}`.",
   sessionExpiredSignInOrRun: "Sessione scaduta. Accedi dall'app {app} o esegui `{cmd}`.",
   tokenExpiredSignInOrRun: "Token scaduto. Accedi dall'app {app} o esegui `{cmd}`.",
@@ -75,6 +70,7 @@ const itIT: PluginErrorMessages = {
   pluginFailed: "Errore del plug-in. Riprova o contatta l'autore del plug-in.",
   probeStartFailed: "Impossibile avviare la raccolta dati",
   updateFailed: "Impossibile aggiornare i dati. Riprovare?",
+  wslNotRunning: "WSL non è in esecuzione. Avvialo per aggiornare questa scheda.",
 }
 
 export default itIT

@@ -34,6 +34,15 @@ This file holds the project facts that are easy to get wrong.
   home variable (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`) in `ctx.host.env` and hides `CLAUDE_CODE_OAUTH_TOKEN`;
   ccusage uses the base id. Never copy the usual login's tokens into an account (a rotated refresh
   token logs the CLI out); sign-in goes through `start_account_login` (fixed commands, env set in Rust).
+- WSL logins (`wsl.rs`): a plugin whose `plugin.json` has `wsl.login` gets a copy per login found in a
+  *running* distro (`wsl.exe --list --running`, 5 s limit; a distro is never started): id
+  `<plugin>-wsl-<8 hex>`, card `<Name> · WSL`. Its `AccountBinding.home` is the Linux home
+  (`\\wsl.localhost\<distro>\home\<user>`: `~` resolves there, `~/Library/Application Support/X` →
+  `~/.config/X`), `isolated_env` hides the whole Windows environment, and ccusage answers `no_runner`.
+  Same-account check: each plugin's local-only `accountKey(ctx)` (the host hashes it); a WSL copy without a
+  key isn't shown, one matching the usual login, an extra account or another WSL copy isn't either. Cards are
+  saved in `wsl-accounts.json` after their first good probe; while the distro is stopped a card gets its
+  cached data with `staleSince` (the UI shows that time). Logins are read and refreshed in place — never copy them.
 
 ## UI
 - Windows 11 Fluent look: colors are tokens in `src/index.css` (`--accent-base` = Windows accent

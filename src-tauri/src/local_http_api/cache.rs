@@ -265,6 +265,11 @@ pub fn cache_successful_output(output: &PluginOutput) {
     schedule_cache_flush_locked(&mut state);
 }
 
+/// The last successful output cached for `plugin_id`: what a WSL card shows while its distro is stopped.
+pub fn cached_snapshot(plugin_id: &str) -> Option<CachedPluginSnapshot> {
+    cache_state().lock().ok()?.snapshots.get(plugin_id).cloned()
+}
+
 pub fn flush_cache() {
     if let CacheFlushResult::Failed(e) = flush_pending_cache_once() {
         log::warn!("{}", e);
@@ -371,6 +376,7 @@ mod tests {
                 subtitle: None,
             }],
             icon_url: String::new(),
+            stale_since: None,
         }
     }
 

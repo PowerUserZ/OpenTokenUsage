@@ -121,3 +121,7 @@ Devin currently returns no `weeklyQuotaRemainingPercent` field in the observed p
 3. POST `GetUserStatus` with `ideName: "devin"`.
 4. Build weekly quota and extra balance lines. Show daily quota only if Devin does not mark it hidden.
 5. If auth fails, show: `Run devin auth login or sign in to Devin and try again.`
+
+## WSL
+
+A login inside a running WSL distro shows as its own `Devin · WSL` card when it's a different account than the ones already shown. A stopped distro is never started; its card keeps its last data.

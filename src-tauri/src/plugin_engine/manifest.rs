@@ -1,4 +1,4 @@
-use base64::{Engine, engine::general_purpose::STANDARD};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -24,6 +24,14 @@ pub struct PluginLink {
     pub url: String,
 }
 
+/// Where the provider's CLI keeps its login inside a home folder (`wsl.rs` finds WSL logins by it).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WslManifest {
+    /// Home-relative files (`~/…`); the plugin has a login in a home when any of them exists.
+    pub login: Vec<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginManifest {
@@ -39,6 +47,9 @@ pub struct PluginManifest {
     pub links: Vec<PluginLink>,
     /// Base URL of an Atlassian Statuspage-compatible page (`<url>/api/v2/status.json`).
     pub status_page_url: Option<String>,
+    /// Set for providers whose CLI runs in WSL and keeps its login in a file (`wsl.rs`).
+    #[serde(default)]
+    pub wsl: Option<WslManifest>,
 }
 
 #[derive(Debug, Clone)]
@@ -51,13 +62,17 @@ pub struct LoadedPlugin {
     pub account: Option<AccountBinding>,
 }
 
-/// What makes a plugin copy probe one extra account: its base plugin, and environment variables
-/// that win over the real ones (`None` hides a variable), pointing the CLI's own home variable at
-/// the account's login folder.
-#[derive(Debug, Clone)]
+/// What makes a plugin copy probe another login: its base plugin; environment variables that win
+/// over the real ones (`None` hides a variable), which point an extra account's CLI home variable
+/// at its login folder (`accounts.rs`); and for a WSL login (`wsl.rs`), the Linux home.
+#[derive(Debug, Clone, Default)]
 pub struct AccountBinding {
     pub base_id: String,
     pub env: Vec<(String, Option<String>)>,
+    /// `\\wsl.localhost\<distro>\home\<user>`: `~` resolves under it.
+    pub home: Option<PathBuf>,
+    /// The copy sees no environment at all: Windows variables don't apply inside WSL.
+    pub isolated_env: bool,
 }
 
 pub fn load_plugins_from_dir(plugins_dir: &std::path::Path) -> Vec<LoadedPlugin> {
@@ -158,7 +173,9 @@ fn load_single_plugin(
 fn is_valid_plugin_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 64
-        && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 /// A file named by the manifest (entry script, icon) must stay inside the plugin's folder.
@@ -490,5 +507,53 @@ mod tests {
             None
         );
         assert_eq!(sanitize_status_page_url("x", None), None);
+    }
+
+    #[test]
+    fn wsl_login_files_are_read() {
+        let manifest = parse_manifest(
+            r#"{ "schemaVersion": 1, "id": "claude", "name": "Claude", "version": "1", "entry": "plugin.js",
+                 "icon": "icon.svg", "lines": [], "wsl": { "login": ["~/.claude/.credentials.json"] } }"#,
+        );
+        assert_eq!(
+            manifest.wsl.expect("wsl").login,
+            vec!["~/.claude/.credentials.json"]
+        );
+        let without = parse_manifest(
+            r#"{ "schemaVersion": 1, "id": "x", "name": "X", "version": "1", "entry": "plugin.js",
+                 "icon": "icon.svg", "lines": [] }"#,
+        );
+        assert!(without.wsl.is_none());
+    }
+
+    #[test]
+    fn bundled_plugins_that_run_in_wsl_declare_their_login_files() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
+        let mut ids: Vec<String> = load_plugins_from_dir(&dir)
+            .into_iter()
+            .filter(|plugin| {
+                plugin
+                    .manifest
+                    .wsl
+                    .as_ref()
+                    .is_some_and(|wsl| !wsl.login.is_empty())
+            })
+            .map(|plugin| plugin.manifest.id)
+            .collect();
+        ids.sort();
+        assert_eq!(
+            ids,
+            [
+                "amp",
+                "claude",
+                "codex",
+                "devin",
+                "factory",
+                "grok",
+                "kimi",
+                "opencode-go",
+                "synthetic"
+            ]
+        );
     }
 }

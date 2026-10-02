@@ -305,4 +305,62 @@ describe("useSettingsPluginActions", () => {
     expect(setPluginSettings).toHaveBeenCalledWith({ order: ["claude", "codex"], disabled: [] })
     expect(startBatch).not.toHaveBeenCalled()
   })
+
+  it("adds and removes WSL cards in one change", async () => {
+    invokeMock.mockResolvedValue(["claude", "claude-wsl-0a1b2c3d", "codex"].map((id) => ({ id, name: id })))
+    const setPluginSettings = vi.fn()
+    const startBatch = vi.fn(() => Promise.resolve([]))
+    const setLoadingForPlugins = vi.fn()
+    const { result } = renderHook(() =>
+      useSettingsPluginActions({
+        pluginSettings: { order: ["claude", "claude-wsl-99999999", "codex"], disabled: ["codex"] },
+        setPluginSettings,
+        setPluginsMeta: vi.fn(),
+        setLoadingForPlugins,
+        setErrorForPlugins: vi.fn(),
+        startBatch,
+        scheduleTrayIconUpdate: vi.fn(),
+      })
+    )
+
+    await act(() =>
+      result.current.handlePluginsChanged({
+        added: [{ id: "claude-wsl-0a1b2c3d", plugin: "claude" }],
+        removed: ["claude-wsl-99999999"],
+      })
+    )
+
+    expect(setPluginSettings).toHaveBeenCalledWith({ order: ["claude", "claude-wsl-0a1b2c3d", "codex"], disabled: ["codex"] })
+    expect(setLoadingForPlugins).toHaveBeenCalledWith(["claude-wsl-0a1b2c3d"])
+    expect(startBatch).toHaveBeenCalledWith(["claude-wsl-0a1b2c3d"])
+  })
+
+  it("keeps a change that arrives before the settings load, and applies it once they do", async () => {
+    invokeMock.mockResolvedValue(["claude", "claude-wsl-0a1b2c3d", "codex"].map((id) => ({ id, name: id })))
+    const setPluginSettings = vi.fn()
+    const startBatch = vi.fn(() => Promise.resolve([]))
+    const { result, rerender } = renderHook(
+      ({ pluginSettings }: { pluginSettings: { order: string[]; disabled: string[] } | null }) =>
+        useSettingsPluginActions({
+          pluginSettings,
+          setPluginSettings,
+          setPluginsMeta: vi.fn(),
+          setLoadingForPlugins: vi.fn(),
+          setErrorForPlugins: vi.fn(),
+          startBatch,
+          scheduleTrayIconUpdate: vi.fn(),
+        }),
+      { initialProps: { pluginSettings: null as { order: string[]; disabled: string[] } | null } }
+    )
+
+    await act(() => result.current.handlePluginsChanged({ added: [{ id: "claude-wsl-0a1b2c3d", plugin: "claude" }], removed: [] }))
+    expect(setPluginSettings).not.toHaveBeenCalled()
+
+    rerender({ pluginSettings: { order: ["claude", "codex"], disabled: [] } })
+
+    await waitFor(() =>
+      expect(setPluginSettings).toHaveBeenCalledWith({ order: ["claude", "claude-wsl-0a1b2c3d", "codex"], disabled: [] })
+    )
+    expect(startBatch).toHaveBeenCalledWith(["claude-wsl-0a1b2c3d"])
+  })
 })

@@ -11,6 +11,7 @@
     { "label": "Status", "url": "https://status.anthropic.com/" },
     { "label": "Console", "url": "https://console.anthropic.com/" }
   ],
+  "wsl": { "login": ["~/.claude/.credentials.json"] },
   "lines": [
     { "type": "badge", "label": "Status", "scope": "overview" },
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },

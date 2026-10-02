@@ -14,7 +14,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 /// Create a `Command` that won't flash a console window on Windows.
-fn silent_command(program: &str) -> Command {
+pub(crate) fn silent_command(program: &str) -> Command {
     let mut cmd = Command::new(program);
     #[cfg(target_os = "windows")]
     {
@@ -627,9 +627,11 @@ pub(crate) fn inject_host_api_with_deadline<'js>(
     )?;
     probe_ctx.set("app", app_obj)?;
 
+    let home = account.and_then(|account| account.home.clone());
+    let isolated_env = account.is_some_and(|account| account.isolated_env);
     let host = Object::new(ctx.clone())?;
     inject_log(ctx, &host, plugin_id)?;
-    inject_fs(ctx, &host)?;
+    inject_fs(ctx, &host, home.clone())?;
     inject_crypto(ctx, &host)?;
     inject_env(
         ctx,
@@ -637,14 +639,16 @@ pub(crate) fn inject_host_api_with_deadline<'js>(
         account
             .map(|account| account.env.clone())
             .unwrap_or_default(),
+        isolated_env,
     )?;
     inject_http(ctx, &host, plugin_id, deadline)?;
     inject_keychain(ctx, &host, plugin_id)?;
-    inject_sqlite(ctx, &host)?;
+    inject_sqlite(ctx, &host, home.clone())?;
     inject_ls(ctx, &host, plugin_id)?;
-    // An account copy reads the same kind of local logs as its base plugin (from its own home).
+    // An account copy reads the same kind of local logs as its base plugin (from its own home). A
+    // WSL copy reads none: its logs live in WSL, far too slow to scan over \\wsl.localhost.
     let ccusage_id = account.map_or(plugin_id, |account| account.base_id.as_str());
-    inject_ccusage(ctx, &host, ccusage_id, deadline)?;
+    inject_ccusage(ctx, &host, ccusage_id, deadline, home.is_none())?;
 
     probe_ctx.set("host", host)?;
     globals.set("__openusage_ctx", probe_ctx)?;
@@ -727,35 +731,42 @@ fn write_text_atomic(
     Ok(())
 }
 
-fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+fn inject_fs<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    home: Option<PathBuf>,
+) -> rquickjs::Result<()> {
     let fs_obj = Object::new(ctx.clone())?;
 
+    let h = home.clone();
     fs_obj.set(
         "exists",
         Function::new(ctx.clone(), move |path: String| -> bool {
-            let expanded = expand_path(&path);
+            let expanded = expand_path_in(&path, h.as_deref());
             std::path::Path::new(&expanded).exists()
         })?,
     )?;
 
+    let h = home.clone();
     fs_obj.set(
         "readText",
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, path: String| -> rquickjs::Result<String> {
-                let expanded = expand_path(&path);
+                let expanded = expand_path_in(&path, h.as_deref());
                 std::fs::read_to_string(&expanded)
                     .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))
             },
         )?,
     )?;
 
+    let h = home.clone();
     fs_obj.set(
         "writeText",
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, path: String, content: String| -> rquickjs::Result<()> {
-                let expanded = expand_path(&path);
+                let expanded = expand_path_in(&path, h.as_deref());
                 write_text_atomic(Path::new(&expanded), &content, |from, to| {
                     std::fs::rename(from, to)
                 })
@@ -769,7 +780,7 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, path: String| -> rquickjs::Result<Vec<String>> {
-                let expanded = expand_path(&path);
+                let expanded = expand_path_in(&path, home.as_deref());
                 let entries = std::fs::read_dir(&expanded)
                     .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))?;
 
@@ -845,17 +856,19 @@ fn inject_crypto<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
     Ok(())
 }
 
-/// `overrides` (an account copy's home folder) win over the real environment; `None` hides a variable.
+/// `overrides` (an account copy's home folder) win over the real environment; `None` hides a
+/// variable. `isolated` (a WSL copy) hides every variable.
 fn inject_env<'js>(
     ctx: &Ctx<'js>,
     host: &Object<'js>,
     overrides: Vec<(String, Option<String>)>,
+    isolated: bool,
 ) -> rquickjs::Result<()> {
     let env_obj = Object::new(ctx.clone())?;
     env_obj.set(
         "get",
         Function::new(ctx.clone(), move |name: String| -> Option<String> {
-            if !WHITELISTED_ENV_VARS.contains(&name.as_str()) {
+            if isolated || !WHITELISTED_ENV_VARS.contains(&name.as_str()) {
                 return None;
             }
             if let Some((_, value)) = overrides.iter().find(|(key, _)| *key == name) {
@@ -1465,8 +1478,19 @@ fn powershell_with_timeout(
     script: &str,
     timeout: Duration,
 ) -> std::io::Result<std::process::Output> {
-    let mut child = silent_command("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+    let mut command = silent_command("powershell");
+    command.args(["-NoProfile", "-NonInteractive", "-Command", script]);
+    output_with_timeout(&mut command, timeout)
+}
+
+/// Run `command` (built with `silent_command`), keeping stdout and dropping stderr; killed after
+/// `timeout`. A native call can't be interrupted by the probe deadline, so every child gets its own.
+pub(crate) fn output_with_timeout(
+    command: &mut Command,
+    timeout: Duration,
+) -> std::io::Result<std::process::Output> {
+    let program = command.get_program().to_string_lossy().into_owned();
+    let mut child = command
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .spawn()?;
@@ -1493,7 +1517,7 @@ fn powershell_with_timeout(
             let _ = child.wait();
             return Err(std::io::Error::new(
                 std::io::ErrorKind::TimedOut,
-                format!("powershell timed out after {}s", timeout.as_secs()),
+                format!("{program} timed out after {}s", timeout.as_secs()),
             ));
         }
         std::thread::sleep(Duration::from_millis(50));
@@ -2653,6 +2677,7 @@ fn inject_ccusage<'js>(
     host: &Object<'js>,
     plugin_id: &str,
     deadline: ProbeDeadline,
+    enabled: bool,
 ) -> rquickjs::Result<()> {
     let ccusage_obj = Object::new(ctx.clone())?;
     let pid = plugin_id.to_string();
@@ -2662,6 +2687,9 @@ fn inject_ccusage<'js>(
         Function::new(
             ctx.clone(),
             move |_ctx_inner: Ctx<'_>, opts_json: String| -> rquickjs::Result<String> {
+                if !enabled {
+                    return Ok(r#"{"status":"no_runner"}"#.to_string());
+                }
                 let opts: CcusageQueryOpts = match serde_json::from_str(&opts_json) {
                     Ok(v) => v,
                     Err(e) => {
@@ -2717,8 +2745,41 @@ pub fn patch_ccusage_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
     )
 }
 
-/// Plugins still probe `ctx.host.keychain`. Windows has no macOS Keychain, so
-/// every call fails fast and plugins fall back to their file-based sources.
+/// go-keyring (the `agy` CLI) stores a secret in Windows Credential Manager as a generic
+/// credential named `service:account`, its value as raw UTF-8 bytes.
+#[cfg(windows)]
+fn read_windows_credential(service: &str, account: &str) -> Option<String> {
+    use windows_sys::Win32::Security::Credentials::{
+        CredFree, CredReadW, CREDENTIALW, CRED_TYPE_GENERIC,
+    };
+    let target: Vec<u16> = format!("{service}:{account}")
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    let mut cred: *mut CREDENTIALW = std::ptr::null_mut();
+    if unsafe { CredReadW(target.as_ptr(), CRED_TYPE_GENERIC, 0, &mut cred) } == 0 {
+        return None;
+    }
+    let bytes = unsafe {
+        let c = &*cred;
+        if c.CredentialBlob.is_null() {
+            Vec::new()
+        } else {
+            std::slice::from_raw_parts(c.CredentialBlob, c.CredentialBlobSize as usize).to_vec()
+        }
+    };
+    unsafe { CredFree(cred as *const _) };
+    String::from_utf8(bytes).ok()
+}
+
+#[cfg(not(windows))]
+fn read_windows_credential(_service: &str, _account: &str) -> Option<String> {
+    None
+}
+
+/// Windows has no macOS Keychain. `readGenericPassword(service, account)` reads the
+/// go-keyring item from Credential Manager; Credential Manager has no service-only lookup,
+/// so every other call fails fast and plugins fall back to their file-based sources.
 fn inject_keychain<'js>(
     ctx: &Ctx<'js>,
     host: &Object<'js>,
@@ -2731,10 +2792,15 @@ fn inject_keychain<'js>(
         Function::new(
             ctx.clone(),
             |ctx_inner: Ctx<'_>,
-             _service: String,
-             _account: Rest<Option<String>>|
+             service: String,
+             account: Rest<Option<String>>|
              -> rquickjs::Result<String> {
-                Err(Exception::throw_message(&ctx_inner, UNSUPPORTED))
+                match account.0.into_iter().next().flatten() {
+                    Some(account) => read_windows_credential(&service, &account).ok_or_else(|| {
+                        Exception::throw_message(&ctx_inner, "keychain item not found")
+                    }),
+                    None => Err(Exception::throw_message(&ctx_inner, UNSUPPORTED)),
+                }
             },
         )?,
     )?;
@@ -2762,15 +2828,20 @@ fn inject_keychain<'js>(
     Ok(())
 }
 
-fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+fn inject_sqlite<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    home: Option<PathBuf>,
+) -> rquickjs::Result<()> {
     let sqlite_obj = Object::new(ctx.clone())?;
 
+    let h = home.clone();
     sqlite_obj.set(
         "query",
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, db_path: String, sql: String| -> rquickjs::Result<String> {
-                super::sqlite::query_json(&expand_path(&db_path), &sql)
+                super::sqlite::query_json(&expand_path_in(&db_path, h.as_deref()), &sql)
                     .map_err(|e| Exception::throw_message(&ctx_inner, &e))
             },
         )?,
@@ -2781,7 +2852,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, db_path: String, sql: String| -> rquickjs::Result<()> {
-                super::sqlite::exec(&expand_path(&db_path), &sql)
+                super::sqlite::exec(&expand_path_in(&db_path, home.as_deref()), &sql)
                     .map_err(|e| Exception::throw_message(&ctx_inner, &e))
             },
         )?,
@@ -2805,12 +2876,23 @@ fn iso_now() -> String {
 const MAC_APP_SUPPORT_PREFIX: &str = "~/Library/Application Support/";
 
 fn expand_path(path: &str) -> String {
+    expand_path_in(path, None)
+}
+
+/// `home` is a WSL copy's Linux home: `~` resolves under it, and the macOS app-support prefix maps
+/// to `~/.config` (where Linux apps keep their data) instead of `%APPDATA%`.
+fn expand_path_in(path: &str, home: Option<&Path>) -> String {
+    let home_dir = || home.map(Path::to_path_buf).or_else(dirs::home_dir);
     let (base, rest) = if let Some(rest) = path.strip_prefix(MAC_APP_SUPPORT_PREFIX) {
-        (dirs::data_dir(), rest)
+        (
+            home.map(|home| home.join(".config"))
+                .or_else(dirs::data_dir),
+            rest,
+        )
     } else if path == "~" {
-        (dirs::home_dir(), "")
+        (home_dir(), "")
     } else if let Some(rest) = path.strip_prefix("~/") {
-        (dirs::home_dir(), rest)
+        (home_dir(), rest)
     } else {
         return path.to_string();
     };
@@ -3192,6 +3274,49 @@ mod tests {
         });
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn keychain_reads_go_keyring_item_from_credential_manager() {
+        use windows_sys::Win32::Security::Credentials::{
+            CredDeleteW, CredWriteW, CREDENTIALW, CRED_PERSIST_SESSION, CRED_TYPE_GENERIC,
+        };
+        let wide = |s: &str| s.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+        let mut target = wide("__openusage_test__:acct");
+        let mut user = wide("acct");
+        let mut blob = br#"{"token":{"access_token":"t"}}"#.to_vec();
+        let mut cred: CREDENTIALW = unsafe { std::mem::zeroed() };
+        cred.Type = CRED_TYPE_GENERIC;
+        cred.TargetName = target.as_mut_ptr();
+        cred.UserName = user.as_mut_ptr();
+        cred.CredentialBlob = blob.as_mut_ptr();
+        cred.CredentialBlobSize = blob.len() as u32;
+        cred.Persist = CRED_PERSIST_SESSION;
+        assert_ne!(unsafe { CredWriteW(&cred, 0) }, 0, "write test credential");
+
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        let results: Vec<String> = ctx.with(|ctx| {
+            inject_host_api(&ctx, "test", &std::env::temp_dir(), "0.0.0").expect("inject");
+            ctx.eval(
+                r#"
+                var k = __openusage_ctx.host.keychain;
+                [["__openusage_test__", "acct"], ["__openusage_test__", "other"], ["__openusage_test__"]]
+                    .map(function (a) { try { return k.readGenericPassword.apply(k, a) } catch (e) { return String(e) } })
+                "#,
+            )
+            .expect("js eval")
+        });
+        unsafe { CredDeleteW(target.as_ptr(), CRED_TYPE_GENERIC, 0) };
+
+        assert_eq!(results[0], r#"{"token":{"access_token":"t"}}"#);
+        assert!(results[1].contains("not found"), "got: {}", results[1]);
+        assert!(
+            results[2].contains("only supported on macOS"),
+            "got: {}",
+            results[2]
+        );
+    }
+
     #[test]
     fn ls_command_matches_language_server_variants() {
         assert!(ls_command_matches_process(
@@ -3353,6 +3478,7 @@ mod tests {
                 ),
                 ("CLAUDE_CODE_OAUTH_TOKEN".to_string(), None),
             ],
+            ..Default::default()
         };
         let rt = Runtime::new().expect("runtime");
         let ctx = Context::full(&rt).expect("context");
@@ -4708,7 +4834,8 @@ Saved lockfile
             "different provider should have its own guard"
         );
         assert!(
-            CcusageQueryGuard::acquire(CcusageProvider::Codex, Some("C:/accounts/codex-00000001")).is_some(),
+            CcusageQueryGuard::acquire(CcusageProvider::Codex, Some("C:/accounts/codex-00000001"))
+                .is_some(),
             "an extra account's home has its own guard"
         );
         drop(first);
@@ -5090,5 +5217,72 @@ wait
             "grandchild survived the timeout kill"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn expand_path_in_resolves_under_a_wsl_home() {
+        let home = std::env::temp_dir().join("otu-wsl-home");
+        std::fs::create_dir_all(&home).expect("home");
+        let s = |p: PathBuf| p.to_string_lossy().into_owned();
+        assert_eq!(expand_path_in("~", Some(&home)), s(home.clone()));
+        assert_eq!(
+            expand_path_in("~/.claude/.credentials.json", Some(&home)),
+            s(home.join(".claude/.credentials.json"))
+        );
+        assert_eq!(
+            expand_path_in(
+                "~/Library/Application Support/Devin/User/state.vscdb",
+                Some(&home)
+            ),
+            s(home.join(".config").join("Devin/User/state.vscdb"))
+        );
+        assert_eq!(
+            expand_path_in(r"C:\data\plugins_data\x", Some(&home)),
+            r"C:\data\plugins_data\x"
+        );
+    }
+
+    #[test]
+    fn expand_path_in_keeps_a_wsl_copy_inside_its_home() {
+        let root = std::env::temp_dir().join("otu-wsl-escape");
+        let home = root.join("home");
+        std::fs::create_dir_all(&home).expect("home");
+        std::fs::write(root.join("secret"), "x").expect("secret");
+        assert_eq!(
+            expand_path_in("~/../secret", Some(&home)),
+            home.to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn a_wsl_copy_sees_no_environment_and_no_ccusage() {
+        let account = crate::plugin_engine::manifest::AccountBinding {
+            base_id: "claude".to_string(),
+            env: vec![("CLAUDE_CONFIG_DIR".to_string(), Some(r"C:\x".to_string()))],
+            home: Some(std::env::temp_dir().join("otu-wsl-home")),
+            isolated_env: true,
+        };
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            inject_host_api_with_deadline(
+                &ctx,
+                "claude-wsl-00000000",
+                &std::env::temp_dir(),
+                "0.0.0",
+                ProbeDeadline::none(),
+                Some(&account),
+            )
+            .expect("inject host api");
+            patch_ccusage_wrapper(&ctx).expect("ccusage wrapper");
+            let config_dir: Option<String> = ctx
+                .eval(r#"__openusage_ctx.host.env.get("CLAUDE_CONFIG_DIR")"#)
+                .expect("env");
+            assert_eq!(config_dir, None, "isolation wins over overrides too");
+            let status: String = ctx
+                .eval(r#"__openusage_ctx.host.ccusage.query({}).status"#)
+                .expect("ccusage");
+            assert_eq!(status, "no_runner");
+        });
     }
 }

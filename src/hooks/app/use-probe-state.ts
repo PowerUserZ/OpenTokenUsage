@@ -92,7 +92,7 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
             lastManualRefreshAt: !errorMessage && isManual
               ? now
               : existing?.lastManualRefreshAt ?? null,
-            lastUpdatedAt: errorMessage ? (existing?.lastUpdatedAt ?? null) : now,
+            lastUpdatedAt: errorMessage ? (existing?.lastUpdatedAt ?? null) : (output.staleSince ?? now),
           },
         }
       })

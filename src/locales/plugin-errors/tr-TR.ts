@@ -5,16 +5,12 @@ const trTR: PluginErrorMessages = {
   requestFailedHttp: "İstek başarısız oldu (HTTP {status}). Daha sonra yeniden deneyin.",
   requestFailedHttpShort: "İstek başarısız oldu (HTTP {status})",
   parseFailed: "Kullanım verileri ayrıştırılamadı.",
-  unableToConnect: "Bağlanılamıyor. Daha sonra yeniden deneyin.",
 
   usageRequestFailed: "Kullanım isteği başarısız oldu. Bağlantınızı denetleyin.",
   usageRequestFailedHttp: "Kullanım isteği başarısız oldu (HTTP {status}). Daha sonra yeniden deneyin.",
   usageFailedAfterRefresh: "Yenilemeden sonra kullanım isteği başarısız oldu. Yeniden deneyin.",
   usageResponseInvalid: "Kullanım yanıtı geçersiz. Daha sonra yeniden deneyin.",
   usageResponseMissingData: "Kullanım yanıtında veri eksik. Daha sonra yeniden deneyin.",
-  usageDataUnavailable: "Kullanım verileri kullanılamıyor. Daha sonra yeniden deneyin.",
-  rateLimitsUnavailable: "Hız sınırları kullanılamıyor. Daha sonra yeniden deneyin.",
-  balanceUnavailable: "Bakiye kullanılamıyor. Daha sonra yeniden deneyin.",
   usageNotForApiKey: "API anahtarı için kullanım bilgisi yok.",
   totalLimitMissing: "API yanıtında toplam kullanım sınırı eksik.",
 
@@ -29,7 +25,6 @@ const trTR: PluginErrorMessages = {
   tokenInvalidRun: "Belirteç geçersiz. Kimliğinizi yeniden doğrulamak için `{cmd}` komutunu çalıştırın.",
   invalidAuthFileRun: "Kimlik doğrulama dosyası geçersiz. Kimlik doğrulaması için `{cmd}` komutunu çalıştırın.",
 
-  notLoggedInSignInApp: "Oturum açılmadı. {app} uygulamasından oturum açın.",
   notLoggedInSignInOrRun: "Oturum açılmadı. {app} uygulamasından oturum açın veya `{cmd}` komutunu çalıştırın.",
   sessionExpiredSignInOrRun: "Oturumun süresi doldu. {app} uygulamasından oturum açın veya `{cmd}` komutunu çalıştırın.",
   tokenExpiredSignInOrRun: "Belirtecin süresi doldu. {app} uygulamasından oturum açın veya `{cmd}` komutunu çalıştırın.",
@@ -75,6 +70,7 @@ const trTR: PluginErrorMessages = {
   pluginFailed: "Eklenti başarısız oldu. Yeniden deneyin veya eklenti yazarına başvurun.",
   probeStartFailed: "Veri sorgusu başlatılamadı",
   updateFailed: "Veriler güncelleştirilemedi. Yeniden denensin mi?",
+  wslNotRunning: "WSL çalışmıyor. Bu kartı güncellemek için WSL'yi başlatın.",
 }
 
 export default trTR

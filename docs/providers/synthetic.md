@@ -165,3 +165,7 @@ Progress lines include:
 | Non-2xx without detail | "Request failed (HTTP {status})"                                          |
 | Unparseable response   | "Could not parse usage data."                                             |
 | Network error          | "Request failed. Check your connection."                                  |
+
+## WSL
+
+A login inside a running WSL distro shows as its own `Synthetic · WSL` card when it's a different account than the ones already shown. A stopped distro is never started; its card keeps its last data.

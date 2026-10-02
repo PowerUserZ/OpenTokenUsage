@@ -41,6 +41,8 @@ export type PluginOutput = {
   plan?: string
   lines: MetricLine[]
   iconUrl: string
+  /** Cached data shown again (a stopped WSL distro): when it was fetched, in epoch ms. */
+  staleSince?: number
 }
 
 export type PluginMeta = {

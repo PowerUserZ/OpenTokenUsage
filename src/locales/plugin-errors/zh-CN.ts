@@ -5,16 +5,12 @@ const zhCN: PluginErrorMessages = {
   requestFailedHttp: "请求失败 (HTTP {status})。请稍后重试。",
   requestFailedHttpShort: "请求失败 (HTTP {status})",
   parseFailed: "无法解析用量数据。",
-  unableToConnect: "无法连接。请稍后重试。",
 
   usageRequestFailed: "用量请求失败。请检查你的连接。",
   usageRequestFailedHttp: "用量请求失败 (HTTP {status})。请稍后重试。",
   usageFailedAfterRefresh: "刷新后用量请求失败。请重试。",
   usageResponseInvalid: "用量响应无效。请稍后重试。",
   usageResponseMissingData: "用量响应缺少数据。请稍后重试。",
-  usageDataUnavailable: "用量数据不可用。请稍后重试。",
-  rateLimitsUnavailable: "速率限制信息不可用。请稍后重试。",
-  balanceUnavailable: "余额信息不可用。请稍后重试。",
   usageNotForApiKey: "API 密钥不提供用量信息。",
   totalLimitMissing: "API 响应中缺少总用量限额。",
 
@@ -29,7 +25,6 @@ const zhCN: PluginErrorMessages = {
   tokenInvalidRun: "令牌无效。请运行 `{cmd}` 重新进行身份验证。",
   invalidAuthFileRun: "身份验证文件无效。请运行 `{cmd}` 进行身份验证。",
 
-  notLoggedInSignInApp: "未登录。请通过 {app} 应用登录。",
   notLoggedInSignInOrRun: "未登录。请通过 {app} 应用登录，或运行 `{cmd}`。",
   sessionExpiredSignInOrRun: "会话已过期。请通过 {app} 应用登录，或运行 `{cmd}`。",
   tokenExpiredSignInOrRun: "令牌已过期。请通过 {app} 应用登录，或运行 `{cmd}`。",
@@ -75,6 +70,7 @@ const zhCN: PluginErrorMessages = {
   pluginFailed: "插件出错。请重试或联系插件作者。",
   probeStartFailed: "无法启动数据查询",
   updateFailed: "无法更新数据。要重试吗？",
+  wslNotRunning: "WSL 未运行。启动 WSL 以更新此卡片。",
 }
 
 export default zhCN

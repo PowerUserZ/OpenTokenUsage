@@ -354,5 +354,18 @@
     return { plan: fetchPlanName(ctx, auth.token), lines }
   }
 
-  globalThis.__openusage_plugin = { id: "grok", probe }
+  // Who is signed in, for the WSL same-account check (wsl.rs): the account's user id. Reads the
+  // file only; unlike loadAuth it never refreshes a token.
+  function accountKey(ctx) {
+    const auth = readJson(ctx, AUTH_PATH)
+    if (!auth || typeof auth !== "object") return null
+    for (const entryKey of Object.keys(auth)) {
+      const entry = auth[entryKey]
+      if (!entry || typeof entry !== "object" || typeof entry.key !== "string" || !entry.key.trim()) continue
+      return typeof entry.user_id === "string" && entry.user_id.trim() ? entry.user_id.trim() : entryKey
+    }
+    return null
+  }
+
+  globalThis.__openusage_plugin = { id: "grok", probe, accountKey }
 })()

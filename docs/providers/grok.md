@@ -91,3 +91,7 @@ Used fields:
 | HTTP error | "Grok billing request failed (HTTP {status}). Try again later." |
 | Network error | "Grok billing request failed. Check your connection." |
 | Invalid response | "Grok billing response changed." |
+
+## WSL
+
+A login inside a running WSL distro shows as its own `Grok · WSL` card when it's a different account than the ones already shown. A stopped distro is never started; its card keeps its last data.

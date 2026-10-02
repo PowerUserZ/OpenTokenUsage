@@ -104,12 +104,6 @@ const FIXTURES: [string, PluginErrorKey][] = [
   ["OpenCode Go not detected. Log in with OpenCode Go first.", "notDetectedLogIn"],
   ["OpenCode Go key was rejected. Log into OpenCode Go again.", "keyRejected"],
   ["No OpenCode Go subscription on this key.", "noSubscriptionOnKey"],
-  // perplexity
-  ["Not logged in. Sign in via Perplexity app.", "notLoggedInSignInApp"],
-  ["Unable to connect. Try again later.", "unableToConnect"],
-  ["Usage data unavailable. Try again later.", "usageDataUnavailable"],
-  ["Rate limits unavailable. Try again later.", "rateLimitsUnavailable"],
-  ["Balance unavailable. Try again later.", "balanceUnavailable"],
   // synthetic
   [
     "Synthetic API key not found. Set SYNTHETIC_API_KEY or add key to ~/.pi/agent/auth.json",
@@ -127,6 +121,8 @@ const FIXTURES: [string, PluginErrorKey][] = [
   ["The plugin failed, try again or contact plugin author.", "pluginFailed"],
   ["Failed to start probe", "probeStartFailed"],
   ["Couldn't update data. Try again?", "updateFailed"],
+  // wsl.rs
+  ["WSL isn't running. Start it to update this card.", "wslNotRunning"],
 ]
 
 const DICTS = {

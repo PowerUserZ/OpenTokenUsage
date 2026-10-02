@@ -9,6 +9,7 @@
   "links": [
     { "label": "Usage", "url": "https://grok.com/?_s=usage" }
   ],
+  "wsl": { "login": ["~/.grok/auth.json"] },
   "lines": [
     { "type": "progress", "label": "Weekly limit", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Credits used", "scope": "overview", "primaryOrder": 2 },

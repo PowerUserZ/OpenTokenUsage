@@ -10,6 +10,7 @@
   "links": [
     { "label": "Status", "url": "https://ampcodestatus.com/" }
   ],
+  "wsl": { "login": ["~/.local/share/amp/secrets.json"] },
   "lines": [
     { "type": "progress", "label": "Free", "scope": "overview", "primaryOrder": 1 },
     { "type": "text", "label": "Bonus", "scope": "detail" },

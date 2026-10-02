@@ -5,16 +5,12 @@ const esES: PluginErrorMessages = {
   requestFailedHttp: "Error en la solicitud (HTTP {status}). Vuelve a intentarlo más tarde.",
   requestFailedHttpShort: "Error en la solicitud (HTTP {status})",
   parseFailed: "No se pudieron analizar los datos de uso.",
-  unableToConnect: "No se puede conectar. Vuelve a intentarlo más tarde.",
 
   usageRequestFailed: "Error en la solicitud de uso. Comprueba la conexión.",
   usageRequestFailedHttp: "Error en la solicitud de uso (HTTP {status}). Vuelve a intentarlo más tarde.",
   usageFailedAfterRefresh: "Error en la solicitud de uso tras la actualización. Vuelve a intentarlo.",
   usageResponseInvalid: "Respuesta de uso no válida. Vuelve a intentarlo más tarde.",
   usageResponseMissingData: "Faltan datos en la respuesta de uso. Vuelve a intentarlo más tarde.",
-  usageDataUnavailable: "Datos de uso no disponibles. Vuelve a intentarlo más tarde.",
-  rateLimitsUnavailable: "Límites de frecuencia no disponibles. Vuelve a intentarlo más tarde.",
-  balanceUnavailable: "Saldo no disponible. Vuelve a intentarlo más tarde.",
   usageNotForApiKey: "El uso no está disponible para claves de API.",
   totalLimitMissing: "Falta el límite de uso total en la respuesta de la API.",
 
@@ -29,7 +25,6 @@ const esES: PluginErrorMessages = {
   tokenInvalidRun: "Token no válido. Ejecuta `{cmd}` para volver a autenticarte.",
   invalidAuthFileRun: "Archivo de autenticación no válido. Ejecuta `{cmd}` para autenticarte.",
 
-  notLoggedInSignInApp: "No has iniciado sesión. Inicia sesión en la aplicación {app}.",
   notLoggedInSignInOrRun: "No has iniciado sesión. Inicia sesión en la aplicación {app} o ejecuta `{cmd}`.",
   sessionExpiredSignInOrRun: "La sesión ha caducado. Inicia sesión en la aplicación {app} o ejecuta `{cmd}`.",
   tokenExpiredSignInOrRun: "El token ha caducado. Inicia sesión en la aplicación {app} o ejecuta `{cmd}`.",
@@ -75,6 +70,7 @@ const esES: PluginErrorMessages = {
   pluginFailed: "Error del complemento. Vuelve a intentarlo o ponte en contacto con el autor del complemento.",
   probeStartFailed: "No se pudo iniciar la consulta de datos",
   updateFailed: "No se pudieron actualizar los datos. ¿Quieres volver a intentarlo?",
+  wslNotRunning: "WSL no se está ejecutando. Inícialo para actualizar esta tarjeta.",
 }
 
 export default esES

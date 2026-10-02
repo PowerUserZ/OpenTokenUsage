@@ -117,3 +117,7 @@ Content-Type: application/json
   "expires_in": 3600                       // seconds
 }
 ```
+
+## WSL
+
+A login inside a running WSL distro shows as its own `Claude · WSL` card when it's a different account than the ones already shown. A stopped distro is never started; its card keeps its last data.

@@ -5,16 +5,12 @@ const koKR: PluginErrorMessages = {
   requestFailedHttp: "요청하지 못했습니다(HTTP {status}). 나중에 다시 시도하세요.",
   requestFailedHttpShort: "요청하지 못했습니다(HTTP {status})",
   parseFailed: "사용량 데이터를 구문 분석할 수 없습니다.",
-  unableToConnect: "연결할 수 없습니다. 나중에 다시 시도하세요.",
 
   usageRequestFailed: "사용량을 요청하지 못했습니다. 연결을 확인하세요.",
   usageRequestFailedHttp: "사용량을 요청하지 못했습니다(HTTP {status}). 나중에 다시 시도하세요.",
   usageFailedAfterRefresh: "새로 고친 후 사용량을 요청하지 못했습니다. 다시 시도하세요.",
   usageResponseInvalid: "사용량 응답이 잘못되었습니다. 나중에 다시 시도하세요.",
   usageResponseMissingData: "사용량 응답에 데이터가 없습니다. 나중에 다시 시도하세요.",
-  usageDataUnavailable: "사용량 데이터를 가져올 수 없습니다. 나중에 다시 시도하세요.",
-  rateLimitsUnavailable: "속도 제한 정보를 가져올 수 없습니다. 나중에 다시 시도하세요.",
-  balanceUnavailable: "잔액 정보를 가져올 수 없습니다. 나중에 다시 시도하세요.",
   usageNotForApiKey: "API 키에는 사용량 정보가 제공되지 않습니다.",
   totalLimitMissing: "API 응답에 총 사용 한도가 없습니다.",
 
@@ -29,7 +25,6 @@ const koKR: PluginErrorMessages = {
   tokenInvalidRun: "토큰이 잘못되었습니다. `{cmd}`을(를) 실행하여 다시 인증하세요.",
   invalidAuthFileRun: "인증 파일이 잘못되었습니다. `{cmd}`을(를) 실행하여 인증하세요.",
 
-  notLoggedInSignInApp: "로그인되어 있지 않습니다. {app} 앱에서 로그인하세요.",
   notLoggedInSignInOrRun: "로그인되어 있지 않습니다. {app} 앱에서 로그인하거나 `{cmd}`을(를) 실행하세요.",
   sessionExpiredSignInOrRun: "세션이 만료되었습니다. {app} 앱에서 로그인하거나 `{cmd}`을(를) 실행하세요.",
   tokenExpiredSignInOrRun: "토큰이 만료되었습니다. {app} 앱에서 로그인하거나 `{cmd}`을(를) 실행하세요.",
@@ -75,6 +70,7 @@ const koKR: PluginErrorMessages = {
   pluginFailed: "플러그인에서 오류가 발생했습니다. 다시 시도하거나 플러그인 작성자에게 문의하세요.",
   probeStartFailed: "데이터 조회를 시작하지 못했습니다",
   updateFailed: "데이터를 업데이트하지 못했습니다. 다시 시도하시겠습니까?",
+  wslNotRunning: "WSL이 실행 중이 아닙니다. 이 카드를 업데이트하려면 WSL을 시작하세요.",
 }
 
 export default koKR

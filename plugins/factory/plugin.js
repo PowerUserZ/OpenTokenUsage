@@ -483,5 +483,13 @@
     return { plan: plan, lines: lines }
   }
 
-  globalThis.__openusage_plugin = { id: "factory", probe }
+  // Who is signed in, for the WSL same-account check (wsl.rs): the access token's subject. Local only.
+  function accountKey(ctx) {
+    const state = loadAuth(ctx)
+    const token = state && state.auth && state.auth.access_token
+    const payload = typeof token === "string" ? ctx.jwt.decodePayload(token) : null
+    return payload && typeof payload.sub === "string" && payload.sub ? payload.sub : null
+  }
+
+  globalThis.__openusage_plugin = { id: "factory", probe, accountKey }
 })()

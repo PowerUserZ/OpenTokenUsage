@@ -354,5 +354,15 @@
     }
   }
 
-  globalThis.__openusage_plugin = { id: "kimi", probe }
+  // Who is signed in, for the WSL same-account check (wsl.rs): the token's subject, else the
+  // refresh token itself (then two logins of one account look like two accounts). Local only.
+  function accountKey(ctx) {
+    const creds = loadCredentials(ctx)
+    if (!creds) return null
+    const payload = typeof creds.access_token === "string" ? ctx.jwt.decodePayload(creds.access_token) : null
+    if (payload && typeof payload.sub === "string" && payload.sub) return payload.sub
+    return typeof creds.refresh_token === "string" && creds.refresh_token ? creds.refresh_token : null
+  }
+
+  globalThis.__openusage_plugin = { id: "kimi", probe, accountKey }
 })()

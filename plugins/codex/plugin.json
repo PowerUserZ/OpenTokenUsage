@@ -11,6 +11,7 @@
     { "label": "Status", "url": "https://status.openai.com/" },
     { "label": "Usage dashboard", "url": "https://chatgpt.com/codex/settings/usage" }
   ],
+  "wsl": { "login": ["~/.codex/auth.json"] },
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview", "period": "weekly", "primaryOrder": 2 },

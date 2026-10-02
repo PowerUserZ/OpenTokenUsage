@@ -5,16 +5,12 @@ const enUS = {
   requestFailedHttp: "Request failed (HTTP {status}). Try again later.",
   requestFailedHttpShort: "Request failed (HTTP {status})",
   parseFailed: "Could not parse usage data.",
-  unableToConnect: "Unable to connect. Try again later.",
 
   usageRequestFailed: "Usage request failed. Check your connection.",
   usageRequestFailedHttp: "Usage request failed (HTTP {status}). Try again later.",
   usageFailedAfterRefresh: "Usage request failed after refresh. Try again.",
   usageResponseInvalid: "Usage response invalid. Try again later.",
   usageResponseMissingData: "Usage response missing data. Try again later.",
-  usageDataUnavailable: "Usage data unavailable. Try again later.",
-  rateLimitsUnavailable: "Rate limits unavailable. Try again later.",
-  balanceUnavailable: "Balance unavailable. Try again later.",
   usageNotForApiKey: "Usage not available for API key.",
   totalLimitMissing: "Total usage limit missing from API response.",
 
@@ -29,7 +25,6 @@ const enUS = {
   tokenInvalidRun: "Token invalid. Run `{cmd}` to re-authenticate.",
   invalidAuthFileRun: "Invalid auth file. Run `{cmd}` to authenticate.",
 
-  notLoggedInSignInApp: "Not logged in. Sign in via {app} app.",
   notLoggedInSignInOrRun: "Not logged in. Sign in via {app} app or run `{cmd}`.",
   sessionExpiredSignInOrRun: "Session expired. Sign in via {app} app or run `{cmd}`.",
   tokenExpiredSignInOrRun: "Token expired. Sign in via {app} app or run `{cmd}`.",
@@ -75,6 +70,7 @@ const enUS = {
   pluginFailed: "The plugin failed, try again or contact plugin author.",
   probeStartFailed: "Failed to start probe",
   updateFailed: "Couldn't update data. Try again?",
+  wslNotRunning: "WSL isn't running. Start it to update this card.",
 }
 
 export default enUS

@@ -112,5 +112,10 @@
     };
   }
 
-  globalThis.__openusage_plugin = { id: PROVIDER_ID, probe };
+  // Who is signed in, for the WSL same-account check (wsl.rs): the Go key itself. Local only.
+  function accountKey(ctx) {
+    return loadAuthKey(ctx);
+  }
+
+  globalThis.__openusage_plugin = { id: PROVIDER_ID, probe, accountKey };
 })();

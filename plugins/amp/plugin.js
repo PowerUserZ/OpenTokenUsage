@@ -171,5 +171,10 @@
     return { plan: plan, lines: lines }
   }
 
-  globalThis.__openusage_plugin = { id: "amp", probe: probe }
+  // Who is signed in, for the WSL same-account check (wsl.rs): the API key itself. Local only.
+  function accountKey(ctx) {
+    return loadApiKey(ctx)
+  }
+
+  globalThis.__openusage_plugin = { id: "amp", probe: probe, accountKey: accountKey }
 })()

@@ -27,3 +27,7 @@ Percents are clamped to 0–100.
 - `403` with `error.type: "EntitlementError"` → no OpenCode Go subscription on this key
 - Other non-2xx → HTTP error
 - Missing `usage` or a missing `percent` → "Could not parse usage data"
+
+## WSL
+
+A login inside a running WSL distro shows as its own `OpenCode Go · WSL` card when it's a different account than the ones already shown. A stopped distro is never started; its card keeps its last data.

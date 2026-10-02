@@ -11,6 +11,8 @@ import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-action
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
 import { useTrayIcon } from "@/hooks/app/use-tray-icon"
 import { REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
+import { listen } from "@tauri-apps/api/event"
+import type { PluginsChange } from "@/lib/accounts"
 import { type PluginContextAction } from "@/components/side-nav"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
@@ -264,6 +266,7 @@ function App() {
     handleReorder,
     handleToggle,
     handleAccountsChanged,
+    handlePluginsChanged,
   } = useSettingsPluginActions({
     pluginSettings,
     setPluginSettings,
@@ -273,6 +276,23 @@ function App() {
     startBatch,
     scheduleTrayIconUpdate,
   })
+
+  // WSL cards come and go with WSL logins (`wsl.rs`); the host says so after a refresh. Subscribed
+  // once, so no event falls into a re-subscribe gap; the latest handler is read through a ref.
+  const pluginsChangedRef = useRef(handlePluginsChanged)
+  pluginsChangedRef.current = handlePluginsChanged
+  useEffect(() => {
+    let disposed = false
+    let unlisten: (() => void) | undefined
+    listen<PluginsChange>("plugins:changed", (event) => void pluginsChangedRef.current(event.payload)).then((stop) => {
+      if (disposed) stop()
+      else unlisten = stop
+    })
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [])
 
   const settingsPlugins = useSettingsPluginList({
     pluginSettings,

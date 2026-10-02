@@ -1144,5 +1144,16 @@
     return { plan: plan, lines: lines }
   }
 
-  globalThis.__openusage_plugin = { id: "claude", probe }
+  // Who is signed in, for the WSL same-account check (wsl.rs). Claude Code keeps the account in
+  // `.claude.json`: inside CLAUDE_CONFIG_DIR when that is set, else in the home folder. Local only.
+  function accountKey(ctx) {
+    const override = getClaudeHomeOverride(ctx)
+    const path = override ? override.replace(/[\\/]+$/, "") + "/.claude.json" : "~/.claude.json"
+    if (!ctx.host.fs.exists(path)) return null
+    const data = ctx.util.tryParseJson(ctx.host.fs.readText(path))
+    const id = data && data.oauthAccount && data.oauthAccount.accountUuid
+    return typeof id === "string" && id.trim() ? id.trim() : null
+  }
+
+  globalThis.__openusage_plugin = { id: "claude", probe, accountKey }
 })()
