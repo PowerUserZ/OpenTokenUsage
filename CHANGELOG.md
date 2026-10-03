@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.7.3
+
+Logins inside WSL get their own cards, Antigravity and Copilot work from their CLI logins, and the Codex logo follows the theme.
+
+### New Features
+- WSL: when Claude, Codex, OpenCode Go, Amp, Grok, Kimi, Factory, Synthetic or Devin is signed in to a different account inside a running WSL distro, it gets its own card, such as "Claude · WSL". The same account as on Windows gets no extra card. A distro is never started for this; while it's stopped, its card keeps the last data with the time it was updated
+
+### Changes
+- The Codex logo is white on the dark theme and a dark taskbar and black on light ones, like the other black logos (it was green)
+- Perplexity is removed: it read the Perplexity Mac app's data, so on Windows it always said "Not logged in"
+
+### Bug Fixes
+- Antigravity works while Antigravity is closed: it uses the "agy" login (it asked you to start Antigravity or run "agy"), and paid plans no longer get "subscription required" errors
+- Copilot finds the GitHub CLI login in Windows Credential Manager (signed-in users were told to run "gh auth login")
+
 ## v0.7.2
 
 A second Claude or Codex account on its own card, the taskbar strip on other monitors, and a way to support the app.
