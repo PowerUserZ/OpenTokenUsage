@@ -2677,27 +2677,38 @@ type CodexScan = Arc<Mutex<super::retained_scan::RetainedScan>>;
 static CODEX_HISTORY_SCANS: OnceLock<Mutex<HashMap<String, CodexScan>>> = OnceLock::new();
 
 fn retained_codex_history(opts: CcusageQueryOpts, pid: String, deadline: ProbeDeadline) -> String {
-    let Some(wait) = deadline.clamp_duration_reserving(Duration::from_millis(150), CCUSAGE_PROBE_RESERVE) else {
+    let Some(wait) = deadline.clamp_duration_reserving(
+        Duration::from_millis(150), CCUSAGE_PROBE_RESERVE,
+    ) else {
         return serde_json::json!({ "status": "runner_failed" }).to_string();
     };
-    // One worker per home. Scope also includes account identity and date bounds, so a new login
-    // or midnight rollover cannot receive a completed scan from the preceding scope.
-    let home = ccusage_home_override(&opts, CcusageProvider::Codex).map(expand_path)
-        .map(|path| path.to_string_lossy().into_owned()).unwrap_or_default();
+    // One worker per home. Account identity and date bounds prevent a new login or midnight
+    // rollover from receiving a completed scan from the preceding scope.
+    let home = ccusage_home_override(&opts, CcusageProvider::Codex)
+        .map(expand_path).unwrap_or_default();
     let scope = serde_json::to_string(&opts).expect("serialize ccusage scope");
     let scans = CODEX_HISTORY_SCANS.get_or_init(|| Mutex::new(HashMap::new()));
     let scan = scans.lock().unwrap_or_else(|err| err.into_inner())
         .entry(home).or_default().clone();
-    let result = scan.lock().unwrap_or_else(|err| err.into_inner()).value(scope, wait, move || {
-        let Some(_guard) = CcusageQueryGuard::acquire(CcusageProvider::Codex, ccusage_home_override(&opts, CcusageProvider::Codex)) else {
-            return serde_json::json!({ "status": "runner_failed" }).to_string();
-        };
-        let scan_deadline = ProbeDeadline::at(Instant::now() + Duration::from_secs(CCUSAGE_TIMEOUT_SECS + 5));
-        run_ccusage_query_with_runners(collect_ccusage_runners(), &opts, CcusageProvider::Codex, &pid,
-            |kind, program, opts, provider, plugin_id| {
-                run_ccusage_with_runner_deadline(kind, program, opts, provider, plugin_id, scan_deadline)
-            })
-    });
+    let result = scan.lock().unwrap_or_else(|err| err.into_inner())
+        .value(scope, wait, move || {
+            let Some(_guard) = CcusageQueryGuard::acquire(
+                CcusageProvider::Codex, ccusage_home_override(&opts, CcusageProvider::Codex),
+            ) else {
+                return serde_json::json!({ "status": "runner_failed" }).to_string();
+            };
+            let scan_deadline = ProbeDeadline::at(
+                Instant::now() + Duration::from_secs(CCUSAGE_TIMEOUT_SECS + 5),
+            );
+            run_ccusage_query_with_runners(
+                collect_ccusage_runners(), &opts, CcusageProvider::Codex, &pid,
+                |kind, program, opts, provider, plugin_id| {
+                    run_ccusage_with_runner_deadline(
+                        kind, program, opts, provider, plugin_id, scan_deadline,
+                    )
+                },
+            )
+        });
     result.unwrap_or_else(|| serde_json::json!({ "status": "pending" }).to_string())
 }
 

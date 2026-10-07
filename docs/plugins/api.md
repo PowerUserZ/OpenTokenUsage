@@ -529,13 +529,14 @@ host.ccusage.query(opts: {
   provider?: "claude" | "codex", // Optional; defaults to plugin id, then "claude"
   since?: string,                // Start date (YYYYMMDD or YYYY-MM-DD)
   until?: string,                // End date (YYYYMMDD or YYYY-MM-DD)
-  accountId?: string // Codex retained-history scope; not sent to the CLI
+  accountId?: string, // Codex retained-history scope; not sent to the CLI
   homePath?: string,             // Provider home override (CLAUDE_CONFIG_DIR or CODEX_HOME)
   claudePath?: string,           // Legacy Claude-only override (deprecated; use homePath)
 }):
   | { status: "ok", data: { daily: DailyUsage[] } }
   | { status: "no_runner" }
   | { status: "runner_failed" }
+  | { status: "pending" } // Codex only: quota can render before local history finishes
 ```
 
 Queries local token usage via provider-focused ccusage commands:

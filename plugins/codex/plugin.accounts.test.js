@@ -42,3 +42,16 @@ it.each(["C:/Users/test/extra-codex", null])("refreshes and scans the selected a
   expect(result.lines.some((line) => line.label === "Today")).toBe(false)
   expect(result.plan).toBe("Pro 500")
 })
+
+it.each([
+  ["prolite", "Pro 100"], [" PRO ", "Pro 200"], [" ProMax ", "Pro 500"],
+  ["self_serve_business_prolite", "Business Premium"], ["plus", "Plus"],
+  ["future_plan", "Future_plan"], ["", null], [500, null],
+])("maps upstream plan %s to %s", async (raw, expected) => {
+  const ctx = makeCtx()
+  ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({ tokens: { access_token: "token" } }))
+  ctx.host.http.request.mockReturnValue({ status: 200, headers: {}, bodyText: JSON.stringify({ plan_type: raw }) })
+  ctx.host.ccusage.query.mockReturnValue({ status: "pending" })
+  await import("./plugin.js")
+  expect(globalThis.__openusage_plugin.probe(ctx).plan).toBe(expected)
+})
